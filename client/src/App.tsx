@@ -1,5 +1,3 @@
-// client/src/App.tsx
-
 import React from 'react';
 import type { Tab, UserDto } from './types';
 import { useAuth } from './hooks/useAuth';
@@ -40,11 +38,10 @@ export default function App() {
         editMessage, deleteMessage, createChat,
     } = useChats(user);
 
-    // Инициализация E2E ключей при старте
     React.useEffect(() => {
-        cryptoManager.initialize().catch(e => {
-            console.warn('E2E init failed:', e);
-        });
+        cryptoManager.initialize().then(keys => {
+            if (keys) console.log('[E2E] Keys loaded from storage');
+        }).catch(e => console.warn('[E2E] Init failed:', e));
     }, []);
 
     const toggleDark = React.useCallback(() => {
@@ -66,7 +63,6 @@ export default function App() {
 
     const theme = dark ? 'dark' : 'light';
 
-    // Загрузка
     if (authLoading) {
         return (
             <div className={`root ${theme}`}>
@@ -79,7 +75,6 @@ export default function App() {
         );
     }
 
-    // Авторизация
     if (!user) {
         return (
             <div className={`root ${theme}`}>
@@ -89,7 +84,6 @@ export default function App() {
         );
     }
 
-    // Основное приложение
     return (
         <div className={`root ${theme}`}>
             <div className="layout">
@@ -111,10 +105,12 @@ export default function App() {
                             onSearch={setSearch}
                             onNewChat={() => setNewChatOpen(true)}
                             loading={loadingChats}
+                            currentUserId={user.id}
                         />
                         {selectedChat ? (
                             <ChatView
                                 chat={selectedChat}
+                                currentUserId={user.id}
                                 loadingMessages={loadingMessages}
                                 onSendMessage={sendMessage}
                                 onSendVoice={sendVoiceMessage}

@@ -1,10 +1,9 @@
-// client/src/components/settings/SettingsView.tsx
-
 import React, { useState, useRef } from 'react';
 import { Icon } from '../../icons';
 import { Avatar } from '../ui/Avatar';
 import * as api from '../../api';
 import type { UserDto } from '../../types';
+import { cryptoManager } from '../../crypto';
 
 interface Props {
     darkMode: boolean;
@@ -18,8 +17,11 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [inviteCode, setInviteCode] = useState<string | null>(null);
     const [creatingInvite, setCreatingInvite] = useState(false);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const [settingUpE2E, setSettingUpE2E] = useState(false);
+    const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // ── Инвайты ────────────────────────────────────────────
     const handleCreateInvite = async () => {
         setCreatingInvite(true);
         try {
@@ -40,6 +42,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         }
     };
 
+    // ── Аватарка ───────────────────────────────────────────
     const handleAvatarClick = () => {
         fileInputRef.current?.click();
     };
@@ -48,13 +51,10 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Проверка типа
         if (!file.type.startsWith('image/')) {
             showToast('Выберите изображение', 'error');
             return;
         }
-
-        // Проверка размера (5MB)
         if (file.size > 5 * 1024 * 1024) {
             showToast('Файл слишком большой (макс 5MB)', 'error');
             return;
@@ -64,8 +64,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         try {
             const result = await api.uploadAvatar(file);
             showToast('Аватарка обновлена!', 'success');
-
-            // Обновляем юзера локально
             if (user && onUserUpdate) {
                 onUserUpdate({ ...user, avatar_url: result.avatar_url });
             }
@@ -73,20 +71,15 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
             showToast(e.message || 'Ошибка загрузки аватарки', 'error');
         } finally {
             setUploadingAvatar(false);
-            // Сбрасываем input
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
     const handleDeleteAvatar = async () => {
         if (!user?.avatar_url) return;
-
         try {
             await api.deleteAvatar();
             showToast('Аватарка удалена', 'success');
-
             if (user && onUserUpdate) {
                 onUserUpdate({ ...user, avatar_url: undefined });
             }
@@ -95,12 +88,61 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         }
     };
 
+    // ── E2E Шифрование ─────────────────────────────────────
+    const handleSetupE2E = async () => {
+        setSettingUpE2E(true);
+        try {
+            // 1. Генерируем ключи локально
+            const publicKeys = await cryptoManager.generateKeys();
+
+            // 2. Отправляем публичные ключи на сервер
+            const updatedUser = await api.updateProfile({
+                public_keys: publicKeys,
+            });
+
+            setE2eEnabled(true);
+            showToast('E2E шифрование настроено!', 'success');
+
+            if (onUserUpdate) {
+                onUserUpdate(updatedUser);
+            }
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка настройки E2E', 'error');
+            console.error('[E2E] Setup failed:', e);
+        } finally {
+            setSettingUpE2E(false);
+        }
+    };
+
+    const handleResetE2E = async () => {
+        if (!confirm('Сбросить ключи шифрования? Зашифрованные сообщения станут недоступны.')) {
+            return;
+        }
+
+        try {
+            // Генерируем новые ключи
+            const publicKeys = await cryptoManager.generateKeys();
+            const updatedUser = await api.updateProfile({ public_keys: publicKeys });
+
+            setE2eEnabled(true);
+            showToast('Ключи шифрования обновлены', 'success');
+
+            if (onUserUpdate) {
+                onUserUpdate(updatedUser);
+            }
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка', 'error');
+        }
+    };
+
+    const keyId = cryptoManager.getKeyId();
+
     return (
         <section className="settings-view">
             <div className="settings-inner">
                 <h2 className="settings-title">Настройки</h2>
 
-                {/* Профиль с аватаркой */}
+                {/* ═══ Профиль ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Профиль</div>
                     <div className="s-profile">
@@ -112,7 +154,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                             />
                             <div className="avatar-edit-overlay">
                                 {uploadingAvatar ? (
-                                    <span className="avatar-loading">...</span>
+                                    <span className="avatar-loading">…</span>
                                 ) : (
                                     Icon.camera(24)
                                 )}
@@ -121,7 +163,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
                             style={{ display: 'none' }}
                             onChange={handleFileChange}
                         />
@@ -137,28 +179,60 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </div>
                 </div>
 
-                {/* E2E шифрование */}
+                {/* ═══ E2E Шифрование ═══ */}
                 <div className="s-group">
-                    <div className="s-group-label">Шифрование</div>
-                    <div className="s-row">
-                        <span className="s-row-left">
-                            {Icon.shield(19)} E2E шифрование
-                        </span>
-                        <span className={`e2e-status ${user?.public_keys ? 'active' : ''}`}>
-                            {user?.public_keys ? '✓ Включено' : 'Не настроено'}
-                        </span>
-                    </div>
-                    {user?.public_keys && (
-                        <div className="s-row key-info">
-                            <span className="s-row-left">
-                                {Icon.lock(16)} Key ID
-                            </span>
-                            <code className="key-id">{user.public_keys.key_id.slice(0, 16)}...</code>
+                    <div className="s-group-label">Сквозное шифрование (E2E)</div>
+
+                    {e2eEnabled ? (
+                        <>
+                            <div className="e2e-status-card">
+                                <div className="e2e-status-header">
+                                    <span className="e2e-badge active">{Icon.shield(16)} Включено</span>
+                                </div>
+                                {keyId && (
+                                    <div className="e2e-key-row">
+                                        <span className="e2e-key-label">Отпечаток ключа:</span>
+                                        <code className="e2e-key-value">{keyId}</code>
+                                    </div>
+                                )}
+                                <p className="e2e-hint">
+                                    Ваши сообщения в личных чатах шифруются на устройстве.
+                                    Сервер не может их прочитать.
+                                </p>
+                                <button className="e2e-reset-btn" onClick={handleResetE2E}>
+                                    Пересоздать ключи
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="e2e-setup-card">
+                            <div className="e2e-setup-icon">{Icon.lock(32)}</div>
+                            <h3 className="e2e-setup-title">Шифрование не настроено</h3>
+                            <p className="e2e-setup-desc">
+                                Настройте сквозное шифрование, чтобы ваши сообщения
+                                были защищены. Только вы и собеседник сможете их прочитать.
+                            </p>
+                            <ul className="e2e-features">
+                                <li>{Icon.check(14)} Шифрование на устройстве</li>
+                                <li>{Icon.check(14)} Сервер не видит содержимое</li>
+                                <li>{Icon.check(14)} ECDH + AES-256-GCM</li>
+                            </ul>
+                            <button
+                                className="e2e-setup-btn"
+                                onClick={handleSetupE2E}
+                                disabled={settingUpE2E}
+                            >
+                                {settingUpE2E ? (
+                                    <>Генерация ключей...</>
+                                ) : (
+                                    <>{Icon.shield(16)} Настроить E2E шифрование</>
+                                )}
+                            </button>
                         </div>
                     )}
                 </div>
 
-                {/* Инвайты */}
+                {/* ═══ Инвайты ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Пригласить друга</div>
 
@@ -183,7 +257,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </div>
 
-                {/* Внешний вид */}
+                {/* ═══ Внешний вид ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Внешний вид</div>
                     <button className="s-row" onClick={onToggleTheme}>
@@ -197,7 +271,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </button>
                 </div>
 
-                {/* О приложении */}
+                {/* ═══ О приложении ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">О приложении</div>
                     <div className="s-row">

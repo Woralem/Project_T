@@ -13,14 +13,22 @@ interface Props {
     onSearch: (q: string) => void;
     onNewChat: () => void;
     loading?: boolean;
+    currentUserId?: string;
 }
 
 export function ChatListPanel({
-    chats, selectedId, onSelect, search, onSearch, onNewChat, loading,
+    chats, selectedId, onSelect, search, onSearch, onNewChat, loading, currentUserId,
 }: Props) {
     const filtered = chats.filter(c =>
         c.name.toLowerCase().includes(search.toLowerCase())
     );
+
+    // Получаем аватарку чата (для личных — аватарка собеседника)
+    const getChatAvatar = (chat: LocalChat): string | undefined => {
+        if (chat.is_group) return undefined;
+        const other = chat.members.find(m => m.user_id !== currentUserId);
+        return other?.avatar_url || undefined;
+    };
 
     return (
         <aside className="chat-list-panel">
@@ -48,6 +56,8 @@ export function ChatListPanel({
 
                 {filtered.map(chat => {
                     const preview = getChatPreview(chat);
+                    const avatarUrl = getChatAvatar(chat);
+
                     return (
                         <button
                             key={chat.id}
@@ -58,6 +68,7 @@ export function ChatListPanel({
                                 name={chat.name}
                                 size={46}
                                 online={chat.is_group ? undefined : chat.online}
+                                avatarUrl={avatarUrl}
                             />
                             <div className="chat-item-body">
                                 <div className="chat-item-row">

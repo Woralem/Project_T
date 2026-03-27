@@ -1709,3 +1709,226 @@ input {
         opacity: 0.5;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   AVATAR EDIT
+   ═══════════════════════════════════════════════════════════ */
+.avatar-edit-wrap {
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.avatar-edit-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.avatar-edit-wrap:hover .avatar-edit-overlay {
+    opacity: 1;
+}
+
+.avatar-loading {
+    font-size: 18px;
+    animation: pulse 1s infinite;
+}
+
+.profile-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.avatar-delete-btn {
+    font-size: 12px;
+    color: var(--red);
+    margin-top: 4px;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+}
+
+.avatar-delete-btn:hover {
+    text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   E2E SETUP CARD
+   ═══════════════════════════════════════════════════════════ */
+.e2e-setup-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 20px;
+    border-radius: 16px;
+    background: var(--bg-surface);
+    text-align: center;
+    gap: 12px;
+}
+
+.e2e-setup-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    color: var(--accent);
+    display: grid;
+    place-items: center;
+}
+
+.e2e-setup-title {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.e2e-setup-desc {
+    font-size: 13px;
+    color: var(--text2);
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+.e2e-features {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+    margin: 4px 0;
+}
+
+.e2e-features li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text2);
+}
+
+.e2e-features li svg {
+    color: var(--green);
+    flex-shrink: 0;
+}
+
+.e2e-setup-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+    margin-top: 4px;
+}
+
+.e2e-setup-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.02);
+}
+
+.e2e-setup-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   E2E STATUS CARD
+   ═══════════════════════════════════════════════════════════ */
+.e2e-status-card {
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.e2e-status-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.e2e-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--bg-active);
+    color: var(--text3);
+}
+
+.e2e-badge.active {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--green);
+}
+
+.e2e-key-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.e2e-key-label {
+    font-size: 12px;
+    color: var(--text3);
+}
+
+.e2e-key-value {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text2);
+    user-select: all;
+    word-break: break-all;
+}
+
+.e2e-hint {
+    font-size: 12px;
+    color: var(--text3);
+    line-height: 1.4;
+}
+
+.e2e-reset-btn {
+    font-size: 12px;
+    color: var(--text3);
+    padding: 4px 0;
+    text-decoration: underline;
+    align-self: flex-start;
+}
+
+.e2e-reset-btn:hover {
+    color: var(--text2);
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}

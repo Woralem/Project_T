@@ -1,6 +1,4 @@
-// client/src/api.ts
-
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle } from './types';
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto } from './types';
 
 // ═══════════════════════════════════════════════════════════
 //  Конфигурация

@@ -1,5 +1,3 @@
-// client/src/types.ts
-
 // ═══════════════════════════════════════════════════════════
 //  Серверные типы
 // ═══════════════════════════════════════════════════════════
@@ -15,6 +13,13 @@ export interface EncryptedPayload {
     ciphertext: string;
     nonce: string;
     sender_key_id: string;
+}
+
+export interface AttachmentDto {
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
 }
 
 export interface UserDto {
@@ -117,7 +122,6 @@ export interface LocalMessage {
     status: 'pending' | 'sent' | 'delivered' | 'read';
     attachment?: AttachmentDto;
     encrypted?: EncryptedPayload;
-    // Расшифрованный контент (если было зашифровано)
     decrypted_content?: string;
 }
 
@@ -148,9 +152,19 @@ export interface ContextMenuItem {
     onClick: () => void;
 }
 
-export interface AttachmentDto {
+// Legacy Chat type for compatibility
+export interface Chat {
     id: string;
-    filename: string;
-    mime_type: string;
-    size_bytes: number;
+    name: string;
+    group: boolean;
+    online: boolean;
+    unread: number;
+    messages: {
+        id: string;
+        author: string;
+        text: string;
+        time: string;
+        own: boolean;
+        status?: string;
+    }[];
 }

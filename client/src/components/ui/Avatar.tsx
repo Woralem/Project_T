@@ -1,27 +1,33 @@
-// client/src/components/ui/Avatar.tsx
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getInitials, getAvatarColor } from '../../utils';
-import { getFileUrl } from '../../api';
 
 interface Props {
     name: string;
     size?: number;
     online?: boolean;
     avatarUrl?: string | null;
-    userId?: string;
 }
 
-export function Avatar({ name, size = 40, online, avatarUrl, userId }: Props) {
+export function Avatar({ name, size = 40, online, avatarUrl }: Props) {
     const [imgError, setImgError] = useState(false);
 
-    // Если есть URL аватарки и картинка не сломана — показываем её
-    const showImage = avatarUrl && !imgError;
+    // Сбрасываем ошибку при смене URL
+    useEffect(() => {
+        setImgError(false);
+    }, [avatarUrl]);
+
+    const showImage = !!avatarUrl && !imgError;
 
     // Формируем полный URL
-    const fullUrl = avatarUrl?.startsWith('/api/')
-        ? `http://163.5.180.138:3000${avatarUrl}`
-        : avatarUrl;
+    const getFullUrl = (url: string): string => {
+        if (url.startsWith('http')) return url;
+        if (url.startsWith('/api/')) {
+            return `http://163.5.180.138:3000${url}`;
+        }
+        return `http://163.5.180.138:3000/api/files/${url}`;
+    };
+
+    const fullUrl = avatarUrl ? getFullUrl(avatarUrl) : null;
 
     return (
         <div
@@ -36,9 +42,9 @@ export function Avatar({ name, size = 40, online, avatarUrl, userId }: Props) {
                 overflow: 'hidden',
             }}
         >
-            {showImage ? (
+            {showImage && fullUrl ? (
                 <img
-                    src={fullUrl!}
+                    src={fullUrl}
                     alt={name}
                     style={{
                         width: '100%',
@@ -46,7 +52,10 @@ export function Avatar({ name, size = 40, online, avatarUrl, userId }: Props) {
                         objectFit: 'cover',
                         borderRadius: '50%',
                     }}
-                    onError={() => setImgError(true)}
+                    onError={() => {
+                        console.warn('Avatar load failed:', fullUrl);
+                        setImgError(true);
+                    }}
                 />
             ) : (
                 getInitials(name)
@@ -57,7 +66,7 @@ export function Avatar({ name, size = 40, online, avatarUrl, userId }: Props) {
                     style={{
                         width: size * 0.3,
                         height: size * 0.3,
-                        borderWidth: size * 0.06
+                        borderWidth: size * 0.06,
                     }}
                 />
             )}

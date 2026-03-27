@@ -10,6 +10,7 @@ import * as api from '../../api';
 
 interface Props {
     chat: LocalChat;
+    currentUserId: string;
     loadingMessages?: boolean;
     onSendMessage: (text: string) => void;
     onSendVoice: (chatId: string, attachmentId: string) => void;
@@ -19,13 +20,20 @@ interface Props {
 }
 
 export function ChatView({
-    chat, loadingMessages, onSendMessage, onSendVoice,
+    chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
     onDeleteMessage, onEditMessage, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
+
+    // Получаем аватарку собеседника для шапки
+    const getChatAvatar = (): string | undefined => {
+        if (chat.is_group) return undefined;
+        const other = chat.members.find(m => m.user_id !== currentUserId);
+        return other?.avatar_url || undefined;
+    };
 
     // Скролл вниз при новых сообщениях
     useEffect(() => {
@@ -118,7 +126,12 @@ export function ChatView({
             {/* Шапка */}
             <div className="chat-header">
                 <div className="chat-header-left">
-                    <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} />
+                    <Avatar
+                        name={chat.name}
+                        size={38}
+                        online={chat.is_group ? undefined : chat.online}
+                        avatarUrl={getChatAvatar()}
+                    />
                     <div className="chat-header-info">
                         <h3>{chat.name}</h3>
                         <span className="chat-header-sub">
