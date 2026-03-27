@@ -1336,3 +1336,155 @@ input {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGES LOADING
+   ═══════════════════════════════════════════════════════════ */
+.messages-loading {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text3);
+    font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PENDING MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg.pending .msg-bubble {
+    opacity: 0.6;
+}
+
+.msg.pending .msg-time {
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH ERROR
+   ═══════════════════════════════════════════════════════════ */
+.auth-error {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, .12);
+    color: var(--red);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.auth-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INVITE
+   ═══════════════════════════════════════════════════════════ */
+.invite-result {
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.invite-code {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    padding: 12px 24px;
+    border-radius: 12px;
+    background: var(--accent-dim);
+    user-select: all;
+    cursor: pointer;
+}
+
+.invite-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+}
+
+.invite-copy-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.invite-new-btn {
+    font-size: 12px;
+    color: var(--text2);
+    text-decoration: underline;
+    padding: 4px;
+}
+
+.invite-new-btn:hover {
+    color: var(--text);
+}
+
+.invite-hint {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+}
+
+.invite-create-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEW CHAT MODAL
+   ═══════════════════════════════════════════════════════════ */
+.modal-wide {
+    max-width: 460px;
+}
+
+.user-list {
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.selected-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+.selected-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    border-radius: 16px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.selected-chip:hover {
+    background: var(--accent-glow);
+}
+
+.modal-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

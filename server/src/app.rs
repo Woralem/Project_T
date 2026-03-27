@@ -1,3 +1,4 @@
+use axum::http::{HeaderName, Method};
 use axum::{
     routing::{get, post},
     Router,
@@ -9,8 +10,17 @@ use crate::{api, state::AppState, ws};
 pub fn create_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            HeaderName::from_static("content-type"),
+            HeaderName::from_static("authorization"),
+        ]);
 
     let api = Router::new()
         // Auth
@@ -20,17 +30,15 @@ pub fn create_app(state: AppState) -> Router {
         // Users
         .route("/users", get(api::users::search))
         // Chats
-        .route("/chats", get(api::chats::list))
-        .route("/chats", post(api::chats::create))
-        .route("/chats/{chat_id}", get(api::chats::get))
+        .route("/chats", get(api::chats::list).post(api::chats::create))
+        .route("/chats/:chat_id", get(api::chats::get))
         // Messages
-        .route(
-            "/chats/{chat_id}/messages",
-            get(api::messages::list),
-        )
+        .route("/chats/:chat_id/messages", get(api::messages::list))
         // Invites
-        .route("/invites", get(api::invites::list))
-        .route("/invites", post(api::invites::create));
+        .route(
+            "/invites",
+            get(api::invites::list).post(api::invites::create),
+        );
 
     Router::new()
         .route("/health", get(health))

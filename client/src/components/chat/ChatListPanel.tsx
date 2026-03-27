@@ -1,20 +1,23 @@
 import React from 'react';
-import type { Chat } from '../../types';
-import { getLastMessage } from '../../utils';
+import type { LocalChat } from '../../types';
+import { getChatPreview } from '../../utils';
 import { Icon } from '../../icons';
 import { Avatar } from '../ui/Avatar';
 import { Badge } from '../ui/Badge';
 
 interface Props {
-    chats: Chat[];
+    chats: LocalChat[];
     selectedId: string | null;
     onSelect: (id: string) => void;
     search: string;
     onSearch: (q: string) => void;
     onNewChat: () => void;
+    loading?: boolean;
 }
 
-export function ChatListPanel({ chats, selectedId, onSelect, search, onSearch, onNewChat }: Props) {
+export function ChatListPanel({
+    chats, selectedId, onSelect, search, onSearch, onNewChat, loading,
+}: Props) {
     const filtered = chats.filter(c =>
         c.name.toLowerCase().includes(search.toLowerCase())
     );
@@ -39,8 +42,12 @@ export function ChatListPanel({ chats, selectedId, onSelect, search, onSearch, o
             </div>
 
             <div className="chat-list">
+                {loading && chats.length === 0 && (
+                    <div className="chat-list-empty">Загрузка чатов...</div>
+                )}
+
                 {filtered.map(chat => {
-                    const last = getLastMessage(chat);
+                    const preview = getChatPreview(chat);
                     return (
                         <button
                             key={chat.id}
@@ -50,26 +57,33 @@ export function ChatListPanel({ chats, selectedId, onSelect, search, onSearch, o
                             <Avatar
                                 name={chat.name}
                                 size={46}
-                                online={chat.group ? undefined : chat.online}
+                                online={chat.is_group ? undefined : chat.online}
                             />
                             <div className="chat-item-body">
                                 <div className="chat-item-row">
                                     <span className="chat-item-name">
-                                        {chat.group && <span className="group-badge">{Icon.users(13)}</span>}
+                                        {chat.is_group && <span className="group-badge">{Icon.users(13)}</span>}
                                         {chat.name}
                                     </span>
-                                    <span className="chat-item-time">{last.time}</span>
+                                    <span className="chat-item-time">{preview.time}</span>
                                 </div>
                                 <div className="chat-item-row">
-                                    <span className="chat-item-preview">{last.text}</span>
-                                    <Badge count={chat.unread} />
+                                    <span className="chat-item-preview">{preview.text || 'Нет сообщений'}</span>
+                                    <Badge count={chat.unread_count} />
                                 </div>
                             </div>
                         </button>
                     );
                 })}
-                {filtered.length === 0 && (
+
+                {!loading && filtered.length === 0 && chats.length > 0 && (
                     <div className="chat-list-empty">Ничего не найдено</div>
+                )}
+
+                {!loading && chats.length === 0 && (
+                    <div className="chat-list-empty">
+                        Нет чатов. Нажмите + чтобы начать переписку
+                    </div>
                 )}
             </div>
         </aside>

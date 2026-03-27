@@ -1,4 +1,4 @@
-import type { Chat } from './types';
+import type { LocalChat, LocalMessage } from './types';
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -21,10 +21,50 @@ export const getNow = () => {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-export const getLastMessage = (chat: Chat) => {
-    const m = chat.messages[chat.messages.length - 1];
-    if (!m) return { text: 'Нет сообщений', time: '' };
-    const prefix = chat.group && !m.own ? `${m.author}: ` : m.own ? 'Вы: ' : '';
-    const full = prefix + m.text;
-    return { text: full.length > 42 ? full.slice(0, 42) + '…' : full, time: m.time };
-};
+export function formatTime(iso: string): string {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        if (isToday) {
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (d.toDateString() === yesterday.toDateString()) {
+            return 'Вчера';
+        }
+        return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+    } catch {
+        return '';
+    }
+}
+
+/** Получить превью последнего сообщения для списка чатов */
+export function getChatPreview(chat: LocalChat): { text: string; time: string } {
+    // Если сообщения загружены — берём из них
+    if (chat.messages.length > 0) {
+        const m = chat.messages[chat.messages.length - 1];
+        const prefix = chat.is_group && !m.own
+            ? `${m.sender_name}: `
+            : m.own ? 'Вы: ' : '';
+        const full = prefix + m.content;
+        return {
+            text: full.length > 42 ? full.slice(0, 42) + '…' : full,
+            time: formatTime(m.created_at),
+        };
+    }
+
+    // Иначе — из серверного превью
+    if (chat.lastMessageText) {
+        return {
+            text: chat.lastMessageText.length > 42
+                ? chat.lastMessageText.slice(0, 42) + '…'
+                : chat.lastMessageText,
+            time: chat.lastMessageTime,
+        };
+    }
+
+    return { text: 'Нет сообщений', time: '' };
+}

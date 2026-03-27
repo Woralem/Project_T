@@ -2,14 +2,17 @@ import type { WsClientMsg, WsServerMsg } from './types';
 import { getToken, WS_URL } from './api';
 
 type WsListener = (msg: WsServerMsg) => void;
+type StatusListener = (connected: boolean) => void;
 
 class WebSocketManager {
     private ws: WebSocket | null = null;
     private listeners: Set<WsListener> = new Set();
+    private statusListeners: Set<StatusListener> = new Set();
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private reconnectDelay = 1000;
     private maxReconnectDelay = 30000;
     private shouldReconnect = false;
+    private _connected = false;
 
     connect() {
         const token = getToken();
@@ -32,6 +35,8 @@ class WebSocketManager {
         this.ws.onopen = () => {
             console.log('[WS] connected');
             this.reconnectDelay = 1000;
+            this._connected = true;
+            this.notifyStatus(true);
         };
 
         this.ws.onmessage = (event) => {
@@ -45,27 +50,32 @@ class WebSocketManager {
 
         this.ws.onclose = (event) => {
             console.log('[WS] closed', event.code, event.reason);
+            this._connected = false;
+            this.notifyStatus(false);
             if (this.shouldReconnect) {
                 this.scheduleReconnect();
             }
         };
 
-        this.ws.onerror = (event) => {
-            console.error('[WS] error', event);
+        this.ws.onerror = () => {
+            console.error('[WS] error');
         };
     }
 
     disconnect() {
         this.shouldReconnect = false;
+        this._connected = false;
         this.cleanup();
+        this.notifyStatus(false);
     }
 
-    send(msg: WsClientMsg) {
+    send(msg: WsClientMsg): boolean {
         if (this.ws?.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(msg));
-        } else {
-            console.warn('[WS] not connected, message dropped');
+            return true;
         }
+        console.warn('[WS] not connected, message dropped');
+        return false;
     }
 
     subscribe(fn: WsListener): () => void {
@@ -73,8 +83,18 @@ class WebSocketManager {
         return () => this.listeners.delete(fn);
     }
 
+    /** Подписка на изменение статуса соединения */
+    onStatusChange(fn: StatusListener): () => void {
+        this.statusListeners.add(fn);
+        return () => this.statusListeners.delete(fn);
+    }
+
     get connected(): boolean {
-        return this.ws?.readyState === WebSocket.OPEN;
+        return this._connected;
+    }
+
+    private notifyStatus(connected: boolean) {
+        this.statusListeners.forEach(fn => fn(connected));
     }
 
     private cleanup() {
@@ -96,16 +116,13 @@ class WebSocketManager {
 
     private scheduleReconnect() {
         if (this.reconnectTimer) return;
-
         console.log(`[WS] reconnecting in ${this.reconnectDelay}ms...`);
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.connect();
         }, this.reconnectDelay);
-
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
     }
 }
 
-// Синглтон
 export const wsManager = new WebSocketManager();

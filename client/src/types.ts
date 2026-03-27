@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-//  Серверные типы (совпадают с shared/src/lib.rs)
+//  Серверные типы
 // ═══════════════════════════════════════════════════════════
 
 export interface UserDto {
@@ -75,30 +75,16 @@ export type WsClientMsg =
     | { type: 'mark_read'; payload: { chat_id: string; message_id: string } };
 
 // ═══════════════════════════════════════════════════════════
-//  UI типы
+//  Локальные UI типы
 // ═══════════════════════════════════════════════════════════
 
 export type View = 'auth' | 'main';
 export type Tab = 'chats' | 'calls' | 'settings';
 export type AuthTab = 'login' | 'register';
 
-export interface ToastData {
-    id: string;
-    text: string;
-    type?: 'info' | 'success' | 'error';
-}
-
-export interface ContextMenuItem {
-    label: string;
-    icon?: JSX.Element;
-    danger?: boolean;
-    onClick: () => void;
-}
-
-// Локальное сообщение для UI (включает pending статус)
 export interface LocalMessage {
     id: string;
-    client_id?: string; // для pending сообщений
+    client_id?: string;
     chat_id: string;
     sender_id: string;
     sender_name: string;
@@ -115,7 +101,24 @@ export interface LocalChat {
     name: string;
     members: ChatMemberDto[];
     messages: LocalMessage[];
+    messagesLoaded: boolean;           // ← НОВОЕ: загружены ли сообщения
     unread_count: number;
     online: boolean;
     created_at: string;
+    // Превью для списка чатов (до загрузки сообщений)
+    lastMessageText: string;           // ← НОВОЕ
+    lastMessageTime: string;           // ← НОВОЕ
+}
+
+export interface ToastData {
+    id: string;
+    text: string;
+    type?: 'info' | 'success' | 'error';
+}
+
+export interface ContextMenuItem {
+    label: string;
+    icon?: JSX.Element;
+    danger?: boolean;
+    onClick: () => void;
 }

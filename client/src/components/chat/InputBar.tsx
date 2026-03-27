@@ -1,12 +1,19 @@
 import React from 'react';
-import type { Message } from '../../types';
 import { Icon } from '../../icons';
+
+interface EditableMessage {
+    id: string;
+    text: string;
+    author: string;
+    time: string;
+    own: boolean;
+}
 
 interface Props {
     value: string;
     onChange: (v: string) => void;
     onSend: () => void;
-    editingMessage: Message | null;
+    editingMessage: EditableMessage | null;
     onCancelEdit: () => void;
     onAttach: () => void;
     onMic: () => void;
@@ -29,7 +36,6 @@ export function InputBar({
 
     return (
         <div className="input-area">
-            {/* Полоска редактирования */}
             {editingMessage && (
                 <div className="edit-bar">
                     <span className="edit-bar-icon">{Icon.edit(15)}</span>
@@ -43,7 +49,6 @@ export function InputBar({
                 </div>
             )}
 
-            {/* Поле ввода */}
             <div className="input-bar">
                 <button className="icon-btn attach-btn" onClick={onAttach} title="Прикрепить файл">
                     {Icon.paperclip(21)}
