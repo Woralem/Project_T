@@ -19,6 +19,7 @@ function serverMsgToLocal(msg: MessageDto, currentUserId: string): LocalMessage 
         created_at: msg.created_at,
         own: msg.sender_id === currentUserId,
         status: 'delivered',
+        attachment: msg.attachment,
     };
 }
 
@@ -85,7 +86,6 @@ export function useChats(user: UserDto | null) {
     const [loadingChats, setLoadingChats] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
 
-    // Ref чтобы избежать повторной загрузки
     const loadingRef = useRef(false);
     const currentUserId = user?.id || '';
     const selectedIdRef = useRef(selectedId);
@@ -100,7 +100,6 @@ export function useChats(user: UserDto | null) {
         try {
             const serverChats = await api.getChats();
             setChats(prev => {
-                // Мержим с текущими — сохраняем загруженные сообщения
                 const existingMap = new Map(prev.map(c => [c.id, c]));
 
                 return serverChats.map(dto => {
@@ -108,7 +107,6 @@ export function useChats(user: UserDto | null) {
                     const fresh = chatDtoToLocal(dto, currentUserId);
 
                     if (existing && existing.messagesLoaded) {
-                        // Сохраняем загруженные сообщения
                         return {
                             ...fresh,
                             messages: existing.messages,
@@ -131,12 +129,10 @@ export function useChats(user: UserDto | null) {
         setSelectedId(chatId);
         saveSelectedId(chatId);
 
-        // Сбросить непрочитанные
         setChats(prev => prev.map(c =>
             c.id !== chatId ? c : { ...c, unread_count: 0 }
         ));
 
-        // Проверяем нужно ли загружать сообщения
         const chat = chats.find(c => c.id === chatId);
         if (chat?.messagesLoaded) return;
 
@@ -160,7 +156,7 @@ export function useChats(user: UserDto | null) {
         }
     }, [currentUserId, chats]);
 
-    // ── Отправка сообщения ──────────────────────────────────
+    // ── Отправка текстового сообщения ───────────────────────
     const sendMessage = useCallback((text: string) => {
         if (!selectedId || !text.trim() || !user) return;
 
@@ -168,7 +164,6 @@ export function useChats(user: UserDto | null) {
         const clientId = uid();
         const now = new Date().toISOString();
 
-        // Оптимистичное добавление
         const pendingMsg: LocalMessage = {
             id: clientId,
             client_id: clientId,
@@ -196,7 +191,6 @@ export function useChats(user: UserDto | null) {
             payload: { chat_id: selectedId, content: trimmed, client_id: clientId },
         });
 
-        // Если WS не подключен — помечаем как failed
         if (!sent) {
             setChats(prev => prev.map(c =>
                 c.id !== selectedId ? c : {
@@ -209,11 +203,56 @@ export function useChats(user: UserDto | null) {
         }
     }, [selectedId, user]);
 
+    // ── Отправка голосового сообщения ───────────────────────
+    const sendVoiceMessage = useCallback((chatId: string, attachmentId: string) => {
+        if (!user) return;
+
+        const clientId = uid();
+        const now = new Date().toISOString();
+
+        const pendingMsg: LocalMessage = {
+            id: clientId,
+            client_id: clientId,
+            chat_id: chatId,
+            sender_id: user.id,
+            sender_name: user.display_name,
+            content: '🎤 Голосовое сообщение',
+            edited: false,
+            created_at: now,
+            own: true,
+            status: 'pending',
+            attachment: {
+                id: attachmentId,
+                filename: 'voice',
+                mime_type: 'audio/webm',
+                size_bytes: 0,
+            },
+        };
+
+        setChats(prev => prev.map(c =>
+            c.id !== chatId ? c : {
+                ...c,
+                messages: [...c.messages, pendingMsg],
+                lastMessageText: 'Вы: 🎤 Голосовое сообщение',
+                lastMessageTime: formatTime(now),
+            }
+        ));
+
+        wsManager.send({
+            type: 'send_message',
+            payload: {
+                chat_id: chatId,
+                content: '🎤 Голосовое сообщение',
+                client_id: clientId,
+                attachment_id: attachmentId,
+            },
+        });
+    }, [user]);
+
     // ── Редактирование ──────────────────────────────────────
     const editMessage = useCallback((messageId: string, newText: string) => {
         if (!newText.trim()) return;
 
-        // Оптимистичное обновление
         setChats(prev => prev.map(c => ({
             ...c,
             messages: c.messages.map(m =>
@@ -229,7 +268,6 @@ export function useChats(user: UserDto | null) {
 
     // ── Удаление ────────────────────────────────────────────
     const deleteMessage = useCallback((messageId: string) => {
-        // Оптимистичное удаление
         setChats(prev => prev.map(c => ({
             ...c,
             messages: c.messages.filter(m => m.id !== messageId),
@@ -251,12 +289,8 @@ export function useChats(user: UserDto | null) {
             const newChat = await api.createChat(memberIds, isGroup, name);
 
             setChats(prev => {
-                // Проверяем нет ли уже этого чата в списке
                 const exists = prev.find(c => c.id === newChat.id);
-                if (exists) {
-                    // Чат уже есть — просто выбираем его
-                    return prev;
-                }
+                if (exists) return prev;
                 return [chatDtoToLocal(newChat, currentUserId), ...prev];
             });
 
@@ -282,10 +316,7 @@ export function useChats(user: UserDto | null) {
                             ...c,
                             messages: c.messages.map(m =>
                                 m.client_id === client_id
-                                    ? {
-                                        ...serverMsgToLocal(message, currentUserId),
-                                        status: 'sent' as const,
-                                    }
+                                    ? { ...serverMsgToLocal(message, currentUserId), status: 'sent' as const }
                                     : m
                             ),
                             lastMessageText: 'Вы: ' + message.content,
@@ -307,8 +338,6 @@ export function useChats(user: UserDto | null) {
 
                         return prev.map(c => {
                             if (c.id !== message.chat_id) return c;
-
-                            // Защита от дубликатов
                             if (c.messages.some(m => m.id === message.id)) return c;
 
                             const localMsg = serverMsgToLocal(message, currentUserId);
@@ -410,7 +439,6 @@ export function useChats(user: UserDto | null) {
         if (chats.length > 0 && selectedId) {
             const exists = chats.some(c => c.id === selectedId);
             if (exists) {
-                // Если чат есть но сообщения не загружены — загрузить
                 const chat = chats.find(c => c.id === selectedId);
                 if (chat && !chat.messagesLoaded) {
                     selectChat(selectedId);
@@ -420,7 +448,7 @@ export function useChats(user: UserDto | null) {
                 saveSelectedId(null);
             }
         }
-    }, [chats.length]); // Только при изменении количества чатов
+    }, [chats.length]);
 
     const selectedChat = chats.find(c => c.id === selectedId) ?? null;
 
@@ -432,6 +460,7 @@ export function useChats(user: UserDto | null) {
         loadingMessages,
         selectChat,
         sendMessage,
+        sendVoiceMessage,
         editMessage,
         deleteMessage,
         createChat,

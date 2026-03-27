@@ -23,22 +23,20 @@ pub fn create_app(state: AppState) -> Router {
         ]);
 
     let api = Router::new()
-        // Auth
         .route("/auth/register", post(api::auth::register))
         .route("/auth/login", post(api::auth::login))
         .route("/auth/me", get(api::auth::me))
-        // Users
         .route("/users", get(api::users::search))
-        // Chats
         .route("/chats", get(api::chats::list).post(api::chats::create))
         .route("/chats/:chat_id", get(api::chats::get))
-        // Messages
         .route("/chats/:chat_id/messages", get(api::messages::list))
-        // Invites
         .route(
             "/invites",
             get(api::invites::list).post(api::invites::create),
-        );
+        )
+        // Files
+        .route("/upload", post(api::files::upload))
+        .route("/files/:file_id", get(api::files::download));
 
     Router::new()
         .route("/health", get(health))

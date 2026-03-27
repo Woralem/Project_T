@@ -1,4 +1,5 @@
 use axum::{
+    extract::multipart::MultipartError,
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -43,5 +44,11 @@ impl From<sqlx::Error> for AppError {
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(e: jsonwebtoken::errors::Error) -> Self {
         Self::Unauthorized(format!("token error: {e}"))
+    }
+}
+
+impl From<MultipartError> for AppError {
+    fn from(e: MultipartError) -> Self {
+        Self::BadRequest(format!("upload error: {e}"))
     }
 }

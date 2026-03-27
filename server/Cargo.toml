@@ -6,36 +6,27 @@ edition = "2021"
 [dependencies]
 shared = { path = "../shared" }
 
-# Web
-axum = { version = "0.7", features = ["ws"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
+axum = { version = "0.7", features = ["ws", "multipart"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "fs"] }
 tower-http = { version = "0.5", features = ["cors"] }
 
-# Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Database
 sqlx = { version = "0.7", features = [
     "runtime-tokio-rustls", "postgres",
     "uuid", "chrono", "json", "migrate"
 ] }
 
-# Crypto
 argon2 = "0.5"
 jsonwebtoken = "9"
 rand = "0.8"
 
-# Common
 uuid = { version = "1", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
-# Async
 futures = "0.3"
-
-# Config
 dotenvy = "0.15"
 
-# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

@@ -15,7 +15,6 @@ import { NewChatModal } from './components/chat/NewChatModal';
 import { CallsView } from './components/calls/CallsView';
 import { SettingsView } from './components/settings/SettingsView';
 
-// Сохраняем тему
 function loadDark(): boolean {
     try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; }
 }
@@ -34,8 +33,8 @@ export default function App() {
     const {
         chats, selectedId, selectedChat,
         loadingChats, loadingMessages,
-        selectChat, sendMessage, editMessage, deleteMessage,
-        createChat,
+        selectChat, sendMessage, sendVoiceMessage,
+        editMessage, deleteMessage, createChat,
     } = useChats(user);
 
     const toggleDark = React.useCallback(() => {
@@ -99,6 +98,7 @@ export default function App() {
                                 chat={selectedChat}
                                 loadingMessages={loadingMessages}
                                 onSendMessage={sendMessage}
+                                onSendVoice={sendVoiceMessage}
                                 onDeleteMessage={deleteMessage}
                                 onEditMessage={editMessage}
                                 showToast={showToast}

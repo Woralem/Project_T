@@ -159,3 +159,35 @@ export async function createInvite(expires_in_hours?: number): Promise<InviteDto
 export async function getInvites(): Promise<InviteDto[]> {
     return request<InviteDto[]>('/invites');
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Files API
+// ═══════════════════════════════════════════════════════════
+
+export function getFileUrl(fileId: string): string {
+    return `${API_URL}/files/${fileId}`;
+}
+
+export async function uploadFile(file: Blob, filename: string): Promise<AttachmentDto> {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    // НЕ ставим Content-Type — браузер сам добавит с boundary
+
+    const res = await fetch(`${API_URL}/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new ApiError(res.status, body.error || 'Upload failed');
+    }
+
+    return res.json();
+}

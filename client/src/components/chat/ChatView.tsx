@@ -6,18 +6,21 @@ import { Avatar } from '../ui/Avatar';
 import { ContextMenu } from '../ui/ContextMenu';
 import { MessageBubble } from './MessageBubble';
 import { InputBar } from './InputBar';
+import * as api from '../../api';
 
 interface Props {
     chat: LocalChat;
     loadingMessages?: boolean;
     onSendMessage: (text: string) => void;
+    onSendVoice: (chatId: string, attachmentId: string) => void;
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
-    chat, loadingMessages, onSendMessage, onDeleteMessage, onEditMessage, showToast,
+    chat, loadingMessages, onSendMessage, onSendVoice,
+    onDeleteMessage, onEditMessage, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
@@ -48,6 +51,7 @@ export function ChatView({
         return () => window.removeEventListener('keydown', onKey);
     }, [ctxMenu, editingMsg]);
 
+    // Отправка текста / сохранение редактирования
     const handleSend = useCallback(() => {
         const text = inputText.trim();
         if (!text) return;
@@ -63,6 +67,19 @@ export function ChatView({
         setInputText('');
     }, [inputText, editingMsg, onSendMessage, onEditMessage]);
 
+    // Отправка голосового
+    const handleSendVoice = useCallback(async (blob: Blob) => {
+        try {
+            const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
+            const attachment = await api.uploadFile(blob, `voice.${ext}`);
+            onSendVoice(chat.id, attachment.id);
+        } catch (e: any) {
+            showToast('Ошибка загрузки голосового', 'error');
+            console.error('Voice upload error:', e);
+        }
+    }, [chat.id, onSendVoice, showToast]);
+
+    // Контекстное меню
     const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
         e.preventDefault();
         setCtxMenu({ x: e.clientX, y: e.clientY, message: msg });
@@ -160,16 +177,16 @@ export function ChatView({
                 value={inputText}
                 onChange={setInputText}
                 onSend={handleSend}
+                onSendVoice={handleSendVoice}
                 editingMessage={editingMsg ? {
                     id: editingMsg.id,
-                    author: editingMsg.sender_name,
                     text: editingMsg.content,
+                    author: editingMsg.sender_name,
                     time: formatTime(editingMsg.created_at),
                     own: editingMsg.own,
                 } : null}
                 onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
                 onAttach={() => showToast('Файлы будут доступны после обновления')}
-                onMic={() => showToast('Голосовые сообщения в разработке')}
             />
 
             {/* Контекстное меню */}

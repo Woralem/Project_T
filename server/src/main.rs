@@ -18,12 +18,15 @@ async fn main() {
 
     let config = config::Config::from_env();
 
-    // ── БД ────────────────────────────────────────────────
+    // Создаём директорию для файлов
+    tokio::fs::create_dir_all(&config.upload_dir)
+        .await
+        .expect("failed to create upload dir");
+
     let pool = db::connect(&config.database_url).await;
     db::run_migrations(&pool).await;
     tracing::info!("database connected, migrations applied");
 
-    // ── Сервер ────────────────────────────────────────────
     let state = state::AppState::new(pool, config.clone());
     let app = app::create_app(state);
 

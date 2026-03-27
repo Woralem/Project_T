@@ -18,6 +18,7 @@ export interface MessageDto {
     content: string;
     edited: boolean;
     created_at: string;
+    attachment?: AttachmentDto;
 }
 
 export interface ChatMemberDto {
@@ -93,6 +94,7 @@ export interface LocalMessage {
     created_at: string;
     own: boolean;
     status: 'pending' | 'sent' | 'delivered' | 'read';
+    attachment?: AttachmentDto;
 }
 
 export interface LocalChat {
@@ -121,4 +123,11 @@ export interface ContextMenuItem {
     icon?: JSX.Element;
     danger?: boolean;
     onClick: () => void;
+}
+
+export interface AttachmentDto {
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
 }

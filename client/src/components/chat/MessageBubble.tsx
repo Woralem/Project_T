@@ -1,7 +1,9 @@
 import React from 'react';
 import type { LocalMessage } from '../../types';
 import { getAvatarColor, formatTime } from '../../utils';
+import { getFileUrl } from '../../api';
 import { MsgStatus } from '../ui/MsgStatus';
+import { AudioPlayer } from './AudioPlayer';
 
 interface Props {
     message: LocalMessage;
@@ -13,6 +15,8 @@ interface Props {
 export function MessageBubble({ message, isFirst, isGroup, onContextMenu }: Props) {
     const showAuthor = isGroup && !message.own && isFirst;
     const isPending = message.status === 'pending';
+    const isVoice = message.attachment?.mime_type?.startsWith('audio/');
+    const hasText = message.content && message.content !== '🎤 Голосовое сообщение';
 
     return (
         <div
@@ -24,8 +28,15 @@ export function MessageBubble({ message, isFirst, isGroup, onContextMenu }: Prop
                     {message.sender_name}
                 </span>
             )}
-            <div className="msg-bubble">
-                <span className="msg-text">{message.content}</span>
+            <div className={`msg-bubble ${isVoice && !hasText ? 'voice-bubble' : ''}`}>
+                {/* Текст (не показываем дефолтный текст голосовых) */}
+                {hasText && <span className="msg-text">{message.content}</span>}
+
+                {/* Аудиоплеер */}
+                {isVoice && message.attachment && (
+                    <AudioPlayer src={getFileUrl(message.attachment.id)} />
+                )}
+
                 <div className="msg-meta">
                     {message.edited && <span className="msg-edited">ред.</span>}
                     <span className="msg-time">{formatTime(message.created_at)}</span>

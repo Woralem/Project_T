@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ═══════════════════════════════════════════════════════════
-//  WebSocket: клиент → сервер
+//  WS: клиент → сервер
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -13,8 +13,9 @@ pub enum WsClientMsg {
     SendMessage {
         chat_id: Uuid,
         content: String,
-        /// Временный ID на стороне клиента — для ACK
         client_id: String,
+        #[serde(default)]
+        attachment_id: Option<Uuid>,
     },
     EditMessage {
         message_id: Uuid,
@@ -36,18 +37,16 @@ pub enum WsClientMsg {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  WebSocket: сервер → клиент
+//  WS: сервер → клиент
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "payload")]
 #[serde(rename_all = "snake_case")]
 pub enum WsServerMsg {
-    /// Новое сообщение в чате (от другого участника)
     NewMessage {
         message: MessageDto,
     },
-    /// ACK: твоё сообщение сохранено, вот его серверный ID
     MessageSent {
         client_id: String,
         message: MessageDto,
@@ -86,8 +85,16 @@ pub enum WsServerMsg {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  DTO — Data Transfer Objects (сервер ↔ клиент)
+//  DTOs
 // ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AttachmentDto {
+    pub id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageDto {
@@ -98,6 +105,8 @@ pub struct MessageDto {
     pub content: String,
     pub edited: bool,
     pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<AttachmentDto>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -136,10 +145,6 @@ pub struct InviteDto {
     pub expires_at: Option<DateTime<Utc>>,
     pub used: bool,
 }
-
-// ═══════════════════════════════════════════════════════════
-//  API Request / Response
-// ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterReq {
