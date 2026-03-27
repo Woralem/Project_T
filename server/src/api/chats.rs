@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use shared::{AttachmentDto, ChatDto, ChatMemberDto, MessageDto};
+use shared::{AttachmentDto, ChatDto, ChatMemberDto, MessageDto, PublicKeyBundle};
 use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
@@ -119,8 +119,21 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         .fetch_one(&state.db)
         .await?;
 
-    let rows: Vec<(Uuid, String, String, String)> = sqlx::query_as(
-        "SELECT u.id, u.username, u.display_name, cm.role
+    type MemberRow = (
+        Uuid,
+        String,
+        String,
+        String,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+
+    let rows: Vec<MemberRow> = sqlx::query_as(
+        "SELECT u.id, u.username, u.display_name, cm.role,
+                u.avatar_id, u.identity_key, u.signing_key, u.key_signature, u.key_id
          FROM chat_members cm JOIN users u ON u.id = cm.user_id
          WHERE cm.chat_id = $1",
     )
@@ -129,17 +142,31 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
     .await?;
 
     let mut members = Vec::new();
-    for (uid, uname, dname, role) in &rows {
+    for (uid, uname, dname, role, avatar_id, identity_key, signing_key, key_sig, key_id) in &rows {
+        let avatar_url = avatar_id.map(|id| format!("/api/files/{}", id));
+
+        let public_keys = if identity_key.is_some() {
+            Some(PublicKeyBundle {
+                identity_key: identity_key.clone().unwrap_or_default(),
+                signing_key: signing_key.clone().unwrap_or_default(),
+                signature: key_sig.clone().unwrap_or_default(),
+                key_id: key_id.clone().unwrap_or_default(),
+            })
+        } else {
+            None
+        };
+
         members.push(ChatMemberDto {
             user_id: *uid,
             username: uname.clone(),
             display_name: dname.clone(),
             role: role.clone(),
             online: state.is_online(uid).await,
+            avatar_url,
+            public_keys,
         });
     }
 
-    // Последнее сообщение с аттачментом
     type LastRow = (
         Uuid,
         Uuid,
@@ -183,6 +210,7 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
                 edited,
                 created_at: at,
                 attachment,
+                encrypted: None,
             }
         },
     );

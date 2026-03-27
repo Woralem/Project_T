@@ -1,6 +1,6 @@
 use axum::{extract::State, Json};
 use chrono::Utc;
-use shared::{AuthRes, LoginReq, RegisterReq, UserDto};
+use shared::{AuthRes, LoginReq, PublicKeyBundle, RegisterReq, UserDto};
 use uuid::Uuid;
 
 use crate::{
@@ -16,7 +16,6 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterReq>,
 ) -> Result<Json<AuthRes>, AppError> {
-    // ── Валидация ─────────────────────────────────────────
     if req.username.len() < 3 || req.username.len() > 32 {
         return Err(AppError::BadRequest("username: 3‑32 символов".into()));
     }
@@ -27,11 +26,9 @@ pub async fn register(
         return Err(AppError::BadRequest("display_name: 1‑64 символов".into()));
     }
 
-    // ── Первый юзер — не нужен инвайт ─────────────────────
-    let (user_count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_one(&state.db)
-            .await?;
+    let (user_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db)
+        .await?;
 
     if user_count > 0 {
         let code = req
@@ -39,11 +36,10 @@ pub async fn register(
             .as_deref()
             .ok_or_else(|| AppError::BadRequest("нужен инвайт‑код".into()))?;
 
-        let inv: Option<models::Invite> =
-            sqlx::query_as("SELECT * FROM invites WHERE code = $1")
-                .bind(code)
-                .fetch_optional(&state.db)
-                .await?;
+        let inv: Option<models::Invite> = sqlx::query_as("SELECT * FROM invites WHERE code = $1")
+            .bind(code)
+            .fetch_optional(&state.db)
+            .await?;
 
         let inv = inv.ok_or_else(|| AppError::BadRequest("неверный инвайт‑код".into()))?;
 
@@ -55,35 +51,50 @@ pub async fn register(
         }
     }
 
-    // ── Уникальность username ─────────────────────────────
-    let (exists,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM users WHERE username = $1")
-            .bind(&req.username)
-            .fetch_one(&state.db)
-            .await?;
+    let (exists,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE username = $1")
+        .bind(&req.username)
+        .fetch_one(&state.db)
+        .await?;
 
     if exists > 0 {
         return Err(AppError::Conflict("username уже занят".into()));
     }
 
-    // ── Создание юзера ────────────────────────────────────
     let user_id = Uuid::new_v4();
     let hash = password::hash(&req.password)?;
     let now = Utc::now();
 
-    sqlx::query(
-        "INSERT INTO users (id, username, display_name, password_hash, created_at, last_seen)
-         VALUES ($1, $2, $3, $4, $5, $5)",
-    )
-    .bind(user_id)
-    .bind(&req.username)
-    .bind(&req.display_name)
-    .bind(&hash)
-    .bind(now)
-    .execute(&state.db)
-    .await?;
+    if let Some(ref keys) = req.public_keys {
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, created_at, last_seen,
+                                identity_key, signing_key, key_signature, key_id)
+             VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9)",
+        )
+        .bind(user_id)
+        .bind(&req.username)
+        .bind(&req.display_name)
+        .bind(&hash)
+        .bind(now)
+        .bind(&keys.identity_key)
+        .bind(&keys.signing_key)
+        .bind(&keys.signature)
+        .bind(&keys.key_id)
+        .execute(&state.db)
+        .await?;
+    } else {
+        sqlx::query(
+            "INSERT INTO users (id, username, display_name, password_hash, created_at, last_seen)
+             VALUES ($1, $2, $3, $4, $5, $5)",
+        )
+        .bind(user_id)
+        .bind(&req.username)
+        .bind(&req.display_name)
+        .bind(&hash)
+        .bind(now)
+        .execute(&state.db)
+        .await?;
+    }
 
-    // ── Пометить инвайт как использованный ────────────────
     if let Some(code) = &req.invite_code {
         sqlx::query("UPDATE invites SET used = TRUE, used_by = $1 WHERE code = $2")
             .bind(user_id)
@@ -92,13 +103,19 @@ pub async fn register(
             .await?;
     }
 
-    // ── JWT ───────────────────────────────────────────────
     let token = jwt::create_token(
         user_id,
         &req.username,
         &state.config.jwt_secret,
         state.config.jwt_expiry_hours,
     )?;
+
+    let public_keys = req.public_keys.as_ref().map(|k| PublicKeyBundle {
+        identity_key: k.identity_key.clone(),
+        signing_key: k.signing_key.clone(),
+        signature: k.signature.clone(),
+        key_id: k.key_id.clone(),
+    });
 
     Ok(Json(AuthRes {
         token,
@@ -108,6 +125,8 @@ pub async fn register(
             display_name: req.display_name,
             online: true,
             last_seen: now,
+            avatar_url: None,
+            public_keys,
         },
     }))
 }
@@ -117,12 +136,11 @@ pub async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginReq>,
 ) -> Result<Json<AuthRes>, AppError> {
-    let user: models::User =
-        sqlx::query_as("SELECT * FROM users WHERE username = $1")
-            .bind(&req.username)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("неверные данные".into()))?;
+    let user: models::User = sqlx::query_as("SELECT * FROM users WHERE username = $1")
+        .bind(&req.username)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("неверные данные".into()))?;
 
     if !password::verify(&req.password, &user.password_hash)? {
         return Err(AppError::Unauthorized("неверные данные".into()));
@@ -140,6 +158,19 @@ pub async fn login(
         state.config.jwt_expiry_hours,
     )?;
 
+    let avatar_url = user.avatar_id.map(|id| format!("/api/files/{}", id));
+
+    let public_keys = if user.identity_key.is_some() {
+        Some(PublicKeyBundle {
+            identity_key: user.identity_key.unwrap_or_default(),
+            signing_key: user.signing_key.unwrap_or_default(),
+            signature: user.key_signature.unwrap_or_default(),
+            key_id: user.key_id.unwrap_or_default(),
+        })
+    } else {
+        None
+    };
+
     Ok(Json(AuthRes {
         token,
         user: UserDto {
@@ -148,20 +179,31 @@ pub async fn login(
             display_name: user.display_name,
             online: true,
             last_seen: Utc::now(),
+            avatar_url,
+            public_keys,
         },
     }))
 }
 
 /// GET /api/auth/me
-pub async fn me(
-    State(state): State<AppState>,
-    auth: AuthUser,
-) -> Result<Json<UserDto>, AppError> {
-    let user: models::User =
-        sqlx::query_as("SELECT * FROM users WHERE id = $1")
-            .bind(auth.user_id)
-            .fetch_one(&state.db)
-            .await?;
+pub async fn me(State(state): State<AppState>, auth: AuthUser) -> Result<Json<UserDto>, AppError> {
+    let user: models::User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+        .bind(auth.user_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    let avatar_url = user.avatar_id.map(|id| format!("/api/files/{}", id));
+
+    let public_keys = if user.identity_key.is_some() {
+        Some(PublicKeyBundle {
+            identity_key: user.identity_key.unwrap_or_default(),
+            signing_key: user.signing_key.unwrap_or_default(),
+            signature: user.key_signature.unwrap_or_default(),
+            key_id: user.key_id.unwrap_or_default(),
+        })
+    } else {
+        None
+    };
 
     Ok(Json(UserDto {
         id: user.id,
@@ -169,5 +211,7 @@ pub async fn me(
         display_name: user.display_name,
         online: state.is_online(&user.id).await,
         last_seen: user.last_seen,
+        avatar_url,
+        public_keys,
     }))
 }

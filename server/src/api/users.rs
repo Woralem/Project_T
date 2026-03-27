@@ -1,6 +1,9 @@
-use axum::{extract::{Query, State}, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use serde::Deserialize;
-use shared::UserDto;
+use shared::{PublicKeyBundle, UserDto};
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
 
@@ -28,22 +31,35 @@ pub async fn search(
         .fetch_all(&state.db)
         .await?
     } else {
-        sqlx::query_as(
-            "SELECT * FROM users WHERE id != $1 ORDER BY username LIMIT 50",
-        )
-        .bind(auth.user_id)
-        .fetch_all(&state.db)
-        .await?
+        sqlx::query_as("SELECT * FROM users WHERE id != $1 ORDER BY username LIMIT 50")
+            .bind(auth.user_id)
+            .fetch_all(&state.db)
+            .await?
     };
 
     let mut out = Vec::with_capacity(users.len());
     for u in users {
+        let avatar_url = u.avatar_id.map(|id| format!("/api/files/{}", id));
+
+        let public_keys = if u.identity_key.is_some() {
+            Some(PublicKeyBundle {
+                identity_key: u.identity_key.unwrap_or_default(),
+                signing_key: u.signing_key.unwrap_or_default(),
+                signature: u.key_signature.unwrap_or_default(),
+                key_id: u.key_id.unwrap_or_default(),
+            })
+        } else {
+            None
+        };
+
         out.push(UserDto {
             id: u.id,
             username: u.username,
             display_name: u.display_name,
             online: state.is_online(&u.id).await,
             last_seen: u.last_seen,
+            avatar_url,
+            public_keys,
         });
     }
     Ok(Json(out))

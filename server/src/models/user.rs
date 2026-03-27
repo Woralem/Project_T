@@ -10,4 +10,9 @@ pub struct User {
     pub password_hash: String,
     pub created_at: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
+    pub avatar_id: Option<Uuid>,
+    pub identity_key: Option<String>,
+    pub signing_key: Option<String>,
+    pub key_signature: Option<String>,
+    pub key_id: Option<String>,
 }

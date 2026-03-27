@@ -3,6 +3,7 @@ pub mod chats;
 pub mod files;
 pub mod invites;
 pub mod messages;
+pub mod profile;
 pub mod users;
 
 use axum::{

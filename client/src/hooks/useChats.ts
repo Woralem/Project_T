@@ -1,8 +1,11 @@
+// client/src/hooks/useChats.ts
+
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto, UserDto } from '../types';
+import type { LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto, UserDto, EncryptedPayload } from '../types';
 import { formatTime, uid } from '../utils';
 import * as api from '../api';
 import { wsManager } from '../websocket';
+import { cryptoManager } from '../crypto';
 
 // ═══════════════════════════════════════════════════════════
 //  Конверторы
@@ -20,6 +23,7 @@ function serverMsgToLocal(msg: MessageDto, currentUserId: string): LocalMessage 
         own: msg.sender_id === currentUserId,
         status: 'delivered',
         attachment: msg.attachment,
+        encrypted: msg.encrypted,
     };
 }
 
@@ -74,6 +78,51 @@ function saveSelectedId(id: string | null) {
         if (id) localStorage.setItem('selected_chat_id', id);
         else localStorage.removeItem('selected_chat_id');
     } catch { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  E2E helpers
+// ═══════════════════════════════════════════════════════════
+
+async function setupChatEncryption(members: { user_id: string; public_keys?: { identity_key: string } | null }[], myUserId: string): Promise<void> {
+    for (const member of members) {
+        if (member.user_id === myUserId) continue;
+        if (!member.public_keys?.identity_key) continue;
+
+        try {
+            await cryptoManager.deriveSessionKey(
+                member.public_keys.identity_key,
+                member.user_id
+            );
+        } catch (e) {
+            console.warn(`Failed to derive key for ${member.user_id}:`, e);
+        }
+    }
+}
+
+function isChatEncrypted(members: { user_id: string; public_keys?: { identity_key: string } | null }[], myUserId: string): boolean {
+    if (!cryptoManager.hasKeys()) return false;
+    return members.every(m =>
+        m.user_id === myUserId || !!m.public_keys?.identity_key
+    );
+}
+
+async function tryDecryptMessage(msg: LocalMessage): Promise<LocalMessage> {
+    if (!msg.encrypted || !cryptoManager.hasKeys()) return msg;
+
+    try {
+        const decrypted = await cryptoManager.decrypt(
+            msg.sender_id,
+            msg.encrypted.ciphertext,
+            msg.encrypted.nonce
+        );
+        if (decrypted) {
+            return { ...msg, content: decrypted, decrypted_content: decrypted };
+        }
+    } catch (e) {
+        console.warn('Failed to decrypt message:', msg.id, e);
+    }
+    return msg;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -136,10 +185,22 @@ export function useChats(user: UserDto | null) {
         const chat = chats.find(c => c.id === chatId);
         if (chat?.messagesLoaded) return;
 
+        // Устанавливаем сессионные ключи для E2E
+        if (chat && cryptoManager.hasKeys()) {
+            await setupChatEncryption(chat.members, currentUserId);
+        }
+
         setLoadingMessages(true);
         try {
             const msgs = await api.getMessages(chatId);
-            const localMsgs = msgs.map(m => serverMsgToLocal(m, currentUserId));
+
+            // Конвертируем и расшифровываем сообщения
+            const localMsgs = await Promise.all(
+                msgs.map(async m => {
+                    const local = serverMsgToLocal(m, currentUserId);
+                    return tryDecryptMessage(local);
+                })
+            );
 
             setChats(prev => prev.map(c =>
                 c.id !== chatId ? c : {
@@ -157,12 +218,47 @@ export function useChats(user: UserDto | null) {
     }, [currentUserId, chats]);
 
     // ── Отправка текстового сообщения ───────────────────────
-    const sendMessage = useCallback((text: string) => {
+    const sendMessage = useCallback(async (text: string) => {
         if (!selectedId || !text.trim() || !user) return;
 
         const trimmed = text.trim();
         const clientId = uid();
         const now = new Date().toISOString();
+
+        const chat = chats.find(c => c.id === selectedId);
+        const encrypted = chat && isChatEncrypted(chat.members, user.id);
+
+        // Шифрование для личных чатов
+        let encryptedPayload: EncryptedPayload | undefined;
+        if (encrypted && chat && !chat.is_group) {
+            const recipient = chat.members.find(m => m.user_id !== user.id);
+            if (recipient) {
+                try {
+                    const enc = await cryptoManager.encrypt(recipient.user_id, trimmed);
+                    encryptedPayload = enc;
+                } catch (e) {
+                    console.warn('Encryption failed, sending unencrypted:', e);
+                }
+            }
+        }
+
+        // Для групповых чатов с E2E — шифруем для каждого участника
+        // (упрощённый вариант: шифруем для первого найденного)
+        if (encrypted && chat && chat.is_group) {
+            // В production нужно шифровать для каждого участника отдельно
+            // Пока шифруем общим ключом с первым участником
+            const recipient = chat.members.find(
+                m => m.user_id !== user.id && m.public_keys?.identity_key
+            );
+            if (recipient) {
+                try {
+                    const enc = await cryptoManager.encrypt(recipient.user_id, trimmed);
+                    encryptedPayload = enc;
+                } catch (e) {
+                    console.warn('Group encryption failed:', e);
+                }
+            }
+        }
 
         const pendingMsg: LocalMessage = {
             id: clientId,
@@ -170,11 +266,12 @@ export function useChats(user: UserDto | null) {
             chat_id: selectedId,
             sender_id: user.id,
             sender_name: user.display_name,
-            content: trimmed,
+            content: trimmed, // Отправитель видит оригинальный текст
             edited: false,
             created_at: now,
             own: true,
             status: 'pending',
+            encrypted: encryptedPayload,
         };
 
         setChats(prev => prev.map(c =>
@@ -186,9 +283,17 @@ export function useChats(user: UserDto | null) {
             }
         ));
 
+        // На сервер отправляем плейсхолдер если зашифровано
+        const serverContent = encryptedPayload ? '[Зашифрованное сообщение]' : trimmed;
+
         const sent = wsManager.send({
             type: 'send_message',
-            payload: { chat_id: selectedId, content: trimmed, client_id: clientId },
+            payload: {
+                chat_id: selectedId,
+                content: serverContent,
+                client_id: clientId,
+                encrypted: encryptedPayload,
+            },
         });
 
         if (!sent) {
@@ -201,7 +306,7 @@ export function useChats(user: UserDto | null) {
                 }
             ));
         }
-    }, [selectedId, user]);
+    }, [selectedId, user, chats]);
 
     // ── Отправка голосового сообщения ───────────────────────
     const sendVoiceMessage = useCallback((chatId: string, attachmentId: string) => {
@@ -250,21 +355,53 @@ export function useChats(user: UserDto | null) {
     }, [user]);
 
     // ── Редактирование ──────────────────────────────────────
-    const editMessage = useCallback((messageId: string, newText: string) => {
-        if (!newText.trim()) return;
+    const editMessage = useCallback(async (messageId: string, newText: string) => {
+        if (!newText.trim() || !user) return;
+
+        const trimmedText = newText.trim();
+
+        // Находим сообщение и чат
+        let chatId: string | null = null;
+        let encrypted: EncryptedPayload | undefined;
+
+        for (const chat of chats) {
+            const msg = chat.messages.find(m => m.id === messageId);
+            if (msg) {
+                chatId = chat.id;
+                // Если чат зашифрован — шифруем новый текст
+                if (isChatEncrypted(chat.members, user.id) && !chat.is_group) {
+                    const recipient = chat.members.find(m => m.user_id !== user.id);
+                    if (recipient) {
+                        try {
+                            const enc = await cryptoManager.encrypt(recipient.user_id, trimmedText);
+                            encrypted = enc;
+                        } catch (e) {
+                            console.warn('Edit encryption failed:', e);
+                        }
+                    }
+                }
+                break;
+            }
+        }
 
         setChats(prev => prev.map(c => ({
             ...c,
             messages: c.messages.map(m =>
-                m.id !== messageId ? m : { ...m, content: newText.trim(), edited: true }
+                m.id !== messageId ? m : { ...m, content: trimmedText, edited: true }
             ),
         })));
 
+        const serverContent = encrypted ? '[Зашифрованное сообщение]' : trimmedText;
+
         wsManager.send({
             type: 'edit_message',
-            payload: { message_id: messageId, new_content: newText.trim() },
+            payload: {
+                message_id: messageId,
+                new_content: serverContent,
+                encrypted,
+            },
         });
-    }, []);
+    }, [user, chats]);
 
     // ── Удаление ────────────────────────────────────────────
     const deleteMessage = useCallback((messageId: string) => {
@@ -288,10 +425,17 @@ export function useChats(user: UserDto | null) {
         try {
             const newChat = await api.createChat(memberIds, isGroup, name);
 
+            const localChat = chatDtoToLocal(newChat, currentUserId);
+
+            // Устанавливаем E2E ключи для нового чата
+            if (cryptoManager.hasKeys()) {
+                await setupChatEncryption(newChat.members, currentUserId);
+            }
+
             setChats(prev => {
                 const exists = prev.find(c => c.id === newChat.id);
                 if (exists) return prev;
-                return [chatDtoToLocal(newChat, currentUserId), ...prev];
+                return [localChat, ...prev];
             });
 
             setSelectedId(newChat.id);
@@ -307,19 +451,27 @@ export function useChats(user: UserDto | null) {
     useEffect(() => {
         if (!user) return;
 
-        const unsubscribe = wsManager.subscribe((msg: WsServerMsg) => {
+        const unsubscribe = wsManager.subscribe(async (msg: WsServerMsg) => {
             switch (msg.type) {
                 case 'message_sent': {
                     const { client_id, message } = msg.payload;
                     setChats(prev => prev.map(c =>
                         c.id !== message.chat_id ? c : {
                             ...c,
-                            messages: c.messages.map(m =>
-                                m.client_id === client_id
-                                    ? { ...serverMsgToLocal(message, currentUserId), status: 'sent' as const }
-                                    : m
+                            messages: c.messages.map(m => {
+                                if (m.client_id !== client_id) return m;
+                                const updated = serverMsgToLocal(message, currentUserId);
+                                // Сохраняем оригинальный контент для отправителя
+                                return {
+                                    ...updated,
+                                    status: 'sent' as const,
+                                    content: m.content, // Оригинальный незашифрованный текст
+                                };
+                            }),
+                            lastMessageText: 'Вы: ' + (
+                                // Используем локальный текст
+                                c.messages.find(m => m.client_id === client_id)?.content || message.content
                             ),
-                            lastMessageText: 'Вы: ' + message.content,
                             lastMessageTime: formatTime(message.created_at),
                         }
                     ));
@@ -328,6 +480,33 @@ export function useChats(user: UserDto | null) {
 
                 case 'new_message': {
                     const { message } = msg.payload;
+
+                    // Пробуем расшифровать
+                    let localMsg = serverMsgToLocal(message, currentUserId);
+                    if (message.encrypted && cryptoManager.hasKeys()) {
+                        try {
+                            // Убеждаемся что есть сессионный ключ
+                            const chat = chats.find(c => c.id === message.chat_id);
+                            if (chat) {
+                                await setupChatEncryption(chat.members, currentUserId);
+                            }
+
+                            const decrypted = await cryptoManager.decrypt(
+                                message.sender_id,
+                                message.encrypted.ciphertext,
+                                message.encrypted.nonce
+                            );
+                            if (decrypted) {
+                                localMsg = {
+                                    ...localMsg,
+                                    content: decrypted,
+                                    decrypted_content: decrypted,
+                                };
+                            }
+                        } catch (e) {
+                            console.warn('Failed to decrypt incoming message:', e);
+                        }
+                    }
 
                     setChats(prev => {
                         const chatExists = prev.some(c => c.id === message.chat_id);
@@ -340,15 +519,15 @@ export function useChats(user: UserDto | null) {
                             if (c.id !== message.chat_id) return c;
                             if (c.messages.some(m => m.id === message.id)) return c;
 
-                            const localMsg = serverMsgToLocal(message, currentUserId);
                             const isSelected = selectedIdRef.current === c.id;
+                            const displayContent = localMsg.decrypted_content || localMsg.content;
                             const senderPrefix = c.is_group ? `${message.sender_name}: ` : '';
 
                             return {
                                 ...c,
                                 messages: c.messagesLoaded ? [...c.messages, localMsg] : c.messages,
                                 unread_count: isSelected ? 0 : c.unread_count + 1,
-                                lastMessageText: senderPrefix + message.content,
+                                lastMessageText: senderPrefix + displayContent,
                                 lastMessageTime: formatTime(message.created_at),
                             };
                         });
@@ -357,12 +536,39 @@ export function useChats(user: UserDto | null) {
                 }
 
                 case 'message_edited': {
-                    const { chat_id, message_id, new_content } = msg.payload;
+                    const { chat_id, message_id, new_content, encrypted } = msg.payload;
+
+                    let displayContent = new_content;
+
+                    // Расшифровываем если есть encrypted payload
+                    if (encrypted && cryptoManager.hasKeys()) {
+                        try {
+                            const chat = chats.find(c => c.id === chat_id);
+                            const editedMsg = chat?.messages.find(m => m.id === message_id);
+                            if (editedMsg) {
+                                const decrypted = await cryptoManager.decrypt(
+                                    editedMsg.sender_id,
+                                    encrypted.ciphertext,
+                                    encrypted.nonce
+                                );
+                                if (decrypted) {
+                                    displayContent = decrypted;
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Failed to decrypt edited message:', e);
+                        }
+                    }
+
                     setChats(prev => prev.map(c =>
                         c.id !== chat_id ? c : {
                             ...c,
                             messages: c.messages.map(m =>
-                                m.id !== message_id ? m : { ...m, content: new_content, edited: true }
+                                m.id !== message_id ? m : {
+                                    ...m,
+                                    content: displayContent,
+                                    edited: true,
+                                }
                             ),
                         }
                     ));
@@ -400,6 +606,27 @@ export function useChats(user: UserDto | null) {
                     break;
                 }
 
+                case 'user_updated': {
+                    const { user: updatedUser } = msg.payload;
+                    // Обновляем данные участника во всех чатах
+                    setChats(prev => prev.map(c => ({
+                        ...c,
+                        members: c.members.map(m =>
+                            m.user_id !== updatedUser.id ? m : {
+                                ...m,
+                                display_name: updatedUser.display_name,
+                                avatar_url: updatedUser.avatar_url,
+                                public_keys: updatedUser.public_keys,
+                            }
+                        ),
+                        // Обновляем имя чата если это личный чат
+                        name: !c.is_group && c.members.some(m => m.user_id === updatedUser.id && m.user_id !== currentUserId)
+                            ? updatedUser.display_name
+                            : c.name,
+                    })));
+                    break;
+                }
+
                 case 'error': {
                     console.error('[WS] server error:', msg.payload.message);
                     break;
@@ -408,7 +635,7 @@ export function useChats(user: UserDto | null) {
         });
 
         return unsubscribe;
-    }, [user, currentUserId, loadChats]);
+    }, [user, currentUserId, loadChats, chats]);
 
     // ── При реконнекте WS — перезагружаем чаты ─────────────
     useEffect(() => {

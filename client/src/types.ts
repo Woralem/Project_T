@@ -1,6 +1,21 @@
+// client/src/types.ts
+
 // ═══════════════════════════════════════════════════════════
 //  Серверные типы
 // ═══════════════════════════════════════════════════════════
+
+export interface PublicKeyBundle {
+    identity_key: string;
+    signing_key: string;
+    signature: string;
+    key_id: string;
+}
+
+export interface EncryptedPayload {
+    ciphertext: string;
+    nonce: string;
+    sender_key_id: string;
+}
 
 export interface UserDto {
     id: string;
@@ -8,6 +23,8 @@ export interface UserDto {
     display_name: string;
     online: boolean;
     last_seen: string;
+    avatar_url?: string;
+    public_keys?: PublicKeyBundle;
 }
 
 export interface MessageDto {
@@ -19,6 +36,7 @@ export interface MessageDto {
     edited: boolean;
     created_at: string;
     attachment?: AttachmentDto;
+    encrypted?: EncryptedPayload;
 }
 
 export interface ChatMemberDto {
@@ -27,6 +45,8 @@ export interface ChatMemberDto {
     display_name: string;
     role: string;
     online: boolean;
+    avatar_url?: string;
+    public_keys?: PublicKeyBundle;
 }
 
 export interface ChatDto {
@@ -58,18 +78,19 @@ export interface AuthRes {
 export type WsServerMsg =
     | { type: 'new_message'; payload: { message: MessageDto } }
     | { type: 'message_sent'; payload: { client_id: string; message: MessageDto } }
-    | { type: 'message_edited'; payload: { chat_id: string; message_id: string; new_content: string } }
+    | { type: 'message_edited'; payload: { chat_id: string; message_id: string; new_content: string; encrypted?: EncryptedPayload } }
     | { type: 'message_deleted'; payload: { chat_id: string; message_id: string } }
     | { type: 'typing'; payload: { chat_id: string; user_id: string } }
     | { type: 'stop_typing'; payload: { chat_id: string; user_id: string } }
     | { type: 'messages_read'; payload: { chat_id: string; user_id: string; message_id: string } }
     | { type: 'user_online'; payload: { user_id: string } }
     | { type: 'user_offline'; payload: { user_id: string } }
+    | { type: 'user_updated'; payload: { user: UserDto } }
     | { type: 'error'; payload: { message: string } };
 
 export type WsClientMsg =
-    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string } }
-    | { type: 'edit_message'; payload: { message_id: string; new_content: string } }
+    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
+    | { type: 'edit_message'; payload: { message_id: string; new_content: string; encrypted?: EncryptedPayload } }
     | { type: 'delete_message'; payload: { message_id: string } }
     | { type: 'typing'; payload: { chat_id: string } }
     | { type: 'stop_typing'; payload: { chat_id: string } }
@@ -95,6 +116,9 @@ export interface LocalMessage {
     own: boolean;
     status: 'pending' | 'sent' | 'delivered' | 'read';
     attachment?: AttachmentDto;
+    encrypted?: EncryptedPayload;
+    // Расшифрованный контент (если было зашифровано)
+    decrypted_content?: string;
 }
 
 export interface LocalChat {
@@ -103,13 +127,12 @@ export interface LocalChat {
     name: string;
     members: ChatMemberDto[];
     messages: LocalMessage[];
-    messagesLoaded: boolean;           // ← НОВОЕ: загружены ли сообщения
+    messagesLoaded: boolean;
     unread_count: number;
     online: boolean;
     created_at: string;
-    // Превью для списка чатов (до загрузки сообщений)
-    lastMessageText: string;           // ← НОВОЕ
-    lastMessageTime: string;           // ← НОВОЕ
+    lastMessageText: string;
+    lastMessageTime: string;
 }
 
 export interface ToastData {

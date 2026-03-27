@@ -10,4 +10,6 @@ pub struct Message {
     pub content: String,
     pub edited: bool,
     pub created_at: DateTime<Utc>,
+    pub attachment_id: Option<Uuid>,
+    pub encrypted_content: Option<serde_json::Value>,
 }

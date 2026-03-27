@@ -1,8 +1,11 @@
+// client/src/App.tsx
+
 import React from 'react';
-import type { Tab } from './types';
+import type { Tab, UserDto } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useToast } from './hooks/useToast';
+import { cryptoManager } from './crypto';
 import './App.css';
 
 import { ToastContainer } from './components/ui/Toast';
@@ -29,13 +32,20 @@ export default function App() {
     const [newChatOpen, setNewChatOpen] = React.useState(false);
     const { toasts, showToast } = useToast();
 
-    const { user, loading: authLoading, login, register, logout } = useAuth();
+    const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
     const {
         chats, selectedId, selectedChat,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage,
         editMessage, deleteMessage, createChat,
     } = useChats(user);
+
+    // Инициализация E2E ключей при старте
+    React.useEffect(() => {
+        cryptoManager.initialize().catch(e => {
+            console.warn('E2E init failed:', e);
+        });
+    }, []);
 
     const toggleDark = React.useCallback(() => {
         setDark(d => {
@@ -44,6 +54,15 @@ export default function App() {
             return next;
         });
     }, []);
+
+    const handleLogout = React.useCallback(() => {
+        cryptoManager.clear();
+        logout();
+    }, [logout]);
+
+    const handleUserUpdate = React.useCallback((updated: UserDto) => {
+        setUser(updated);
+    }, [setUser]);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -79,7 +98,7 @@ export default function App() {
                     onTab={setTab}
                     darkMode={dark}
                     onToggleTheme={toggleDark}
-                    onLogout={logout}
+                    onLogout={handleLogout}
                 />
 
                 {tab === 'chats' && (
@@ -116,6 +135,7 @@ export default function App() {
                         onToggleTheme={toggleDark}
                         showToast={showToast}
                         user={user}
+                        onUserUpdate={handleUserUpdate}
                     />
                 )}
             </div>

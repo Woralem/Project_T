@@ -3,6 +3,25 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ═══════════════════════════════════════════════════════════
+//  E2E Encryption types
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EncryptedPayload {
+    pub ciphertext: String,
+    pub nonce: String,
+    pub sender_key_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PublicKeyBundle {
+    pub identity_key: String,
+    pub signing_key: String,
+    pub signature: String,
+    pub key_id: String,
+}
+
+// ═══════════════════════════════════════════════════════════
 //  WS: клиент → сервер
 // ═══════════════════════════════════════════════════════════
 
@@ -16,10 +35,14 @@ pub enum WsClientMsg {
         client_id: String,
         #[serde(default)]
         attachment_id: Option<Uuid>,
+        #[serde(default)]
+        encrypted: Option<EncryptedPayload>,
     },
     EditMessage {
         message_id: Uuid,
         new_content: String,
+        #[serde(default)]
+        encrypted: Option<EncryptedPayload>,
     },
     DeleteMessage {
         message_id: Uuid,
@@ -55,6 +78,8 @@ pub enum WsServerMsg {
         chat_id: Uuid,
         message_id: Uuid,
         new_content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        encrypted: Option<EncryptedPayload>,
     },
     MessageDeleted {
         chat_id: Uuid,
@@ -78,6 +103,9 @@ pub enum WsServerMsg {
     },
     UserOffline {
         user_id: Uuid,
+    },
+    UserUpdated {
+        user: UserDto,
     },
     Error {
         message: String,
@@ -107,6 +135,8 @@ pub struct MessageDto {
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachment: Option<AttachmentDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<EncryptedPayload>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -116,6 +146,10 @@ pub struct UserDto {
     pub display_name: String,
     pub online: bool,
     pub last_seen: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_keys: Option<PublicKeyBundle>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -136,6 +170,10 @@ pub struct ChatMemberDto {
     pub display_name: String,
     pub role: String,
     pub online: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_keys: Option<PublicKeyBundle>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -152,6 +190,7 @@ pub struct RegisterReq {
     pub password: String,
     pub display_name: String,
     pub invite_code: Option<String>,
+    pub public_keys: Option<PublicKeyBundle>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,4 +215,15 @@ pub struct CreateChatReq {
 #[derive(Debug, Deserialize)]
 pub struct CreateInviteReq {
     pub expires_in_hours: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileReq {
+    pub display_name: Option<String>,
+    pub public_keys: Option<PublicKeyBundle>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAvatarRes {
+    pub avatar_url: String,
 }

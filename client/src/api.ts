@@ -1,4 +1,6 @@
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto } from './types';
+// client/src/api.ts
+
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle } from './types';
 
 // ═══════════════════════════════════════════════════════════
 //  Конфигурация
@@ -73,10 +75,11 @@ export async function register(
     password: string,
     display_name: string,
     invite_code?: string,
+    public_keys?: PublicKeyBundle,
 ): Promise<AuthRes> {
     const data = await request<AuthRes>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password, display_name, invite_code }),
+        body: JSON.stringify({ username, password, display_name, invite_code, public_keys }),
     });
     setToken(data.token);
     return data;
@@ -97,6 +100,51 @@ export async function getMe(): Promise<UserDto> {
 
 export function logout() {
     setToken(null);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Profile API
+// ═══════════════════════════════════════════════════════════
+
+export async function updateProfile(data: {
+    display_name?: string;
+    public_keys?: PublicKeyBundle;
+}): Promise<UserDto> {
+    return request<UserDto>('/users/me', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_URL}/users/me/avatar`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new ApiError(res.status, body.error || 'Upload failed');
+    }
+
+    return res.json();
+}
+
+export async function deleteAvatar(): Promise<void> {
+    await request<void>('/users/me/avatar', { method: 'DELETE' });
+}
+
+export function getAvatarUrl(userId: string): string {
+    return `${API_URL}/users/${userId}/avatar`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -176,7 +224,6 @@ export async function uploadFile(file: Blob, filename: string): Promise<Attachme
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    // НЕ ставим Content-Type — браузер сам добавит с boundary
 
     const res = await fetch(`${API_URL}/upload`, {
         method: 'POST',

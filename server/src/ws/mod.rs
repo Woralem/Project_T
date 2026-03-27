@@ -7,7 +7,7 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
-use shared::{AttachmentDto, MessageDto, WsClientMsg, WsServerMsg};
+use shared::{AttachmentDto, EncryptedPayload, MessageDto, WsClientMsg, WsServerMsg};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -93,6 +93,7 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             content,
             client_id,
             attachment_id,
+            encrypted,
         } => {
             on_send(
                 state,
@@ -102,13 +103,15 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
                 content,
                 client_id,
                 attachment_id,
+                encrypted,
             )
             .await
         }
         WsClientMsg::EditMessage {
             message_id,
             new_content,
-        } => on_edit(state, uid, message_id, new_content).await,
+            encrypted,
+        } => on_edit(state, uid, message_id, new_content, encrypted).await,
         WsClientMsg::DeleteMessage { message_id } => on_delete(state, uid, message_id).await,
         WsClientMsg::Typing { chat_id } => {
             broadcast_to_chat(
@@ -161,6 +164,7 @@ async fn on_send(
     content: String,
     client_id: String,
     attachment_id: Option<Uuid>,
+    encrypted: Option<EncryptedPayload>,
 ) {
     // Проверяем членство
     let check: Option<(i64,)> =
@@ -184,7 +188,6 @@ async fn on_send(
         return;
     }
 
-    // Нужен контент или аттачмент
     if content.trim().is_empty() && attachment_id.is_none() {
         state
             .send_to_user(
@@ -207,7 +210,6 @@ async fn on_send(
             .map(|r| r.0)
             .unwrap_or_else(|| uname.to_string());
 
-    // Получаем инфу об аттачменте
     let attachment = if let Some(att_id) = attachment_id {
         let row: Option<(String, String, i64)> =
             sqlx::query_as("SELECT filename, mime_type, size_bytes FROM attachments WHERE id=$1")
@@ -230,9 +232,14 @@ async fn on_send(
     let msg_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
+    // Сериализуем encrypted payload для хранения в БД
+    let encrypted_json = encrypted
+        .as_ref()
+        .and_then(|e| serde_json::to_value(e).ok());
+
     if sqlx::query(
-        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6)",
+        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)",
     )
     .bind(msg_id)
     .bind(chat_id)
@@ -240,6 +247,7 @@ async fn on_send(
     .bind(&content)
     .bind(attachment_id)
     .bind(now)
+    .bind(&encrypted_json)
     .execute(&state.db)
     .await
     .is_err()
@@ -264,6 +272,7 @@ async fn on_send(
         edited: false,
         created_at: now,
         attachment,
+        encrypted: encrypted.clone(),
     };
 
     state
@@ -296,7 +305,13 @@ async fn on_send(
     }
 }
 
-async fn on_edit(state: &AppState, uid: Uuid, msg_id: Uuid, new_text: String) {
+async fn on_edit(
+    state: &AppState,
+    uid: Uuid,
+    msg_id: Uuid,
+    new_text: String,
+    encrypted: Option<EncryptedPayload>,
+) {
     let row: Option<(Uuid, Uuid)> =
         sqlx::query_as("SELECT chat_id, sender_id FROM messages WHERE id=$1")
             .bind(msg_id)
@@ -310,11 +325,20 @@ async fn on_edit(state: &AppState, uid: Uuid, msg_id: Uuid, new_text: String) {
     if sender_id != uid {
         return;
     }
-    let _ = sqlx::query("UPDATE messages SET content=$1, edited=TRUE WHERE id=$2")
-        .bind(&new_text)
-        .bind(msg_id)
-        .execute(&state.db)
-        .await;
+
+    let encrypted_json = encrypted
+        .as_ref()
+        .and_then(|e| serde_json::to_value(e).ok());
+
+    let _ = sqlx::query(
+        "UPDATE messages SET content=$1, edited=TRUE, encrypted_content=$3 WHERE id=$2",
+    )
+    .bind(&new_text)
+    .bind(msg_id)
+    .bind(&encrypted_json)
+    .execute(&state.db)
+    .await;
+
     broadcast_to_chat_all(
         state,
         chat_id,
@@ -322,6 +346,7 @@ async fn on_edit(state: &AppState, uid: Uuid, msg_id: Uuid, new_text: String) {
             chat_id,
             message_id: msg_id,
             new_content: new_text,
+            encrypted,
         },
     )
     .await;

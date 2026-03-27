@@ -1,5 +1,7 @@
+// client/src/hooks/useAuth.ts
+
 import { useState, useCallback, useEffect } from 'react';
-import type { UserDto } from '../types';
+import type { UserDto, PublicKeyBundle } from '../types';
 import * as api from '../api';
 import { wsManager } from '../websocket';
 
@@ -43,10 +45,11 @@ export function useAuth() {
         password: string,
         display_name: string,
         invite_code?: string,
+        public_keys?: PublicKeyBundle,
     ) => {
         setError(null);
         try {
-            const res = await api.register(username, password, display_name, invite_code);
+            const res = await api.register(username, password, display_name, invite_code, public_keys);
             setUser(res.user);
             wsManager.connect();
         } catch (e: any) {
@@ -61,5 +64,5 @@ export function useAuth() {
         setUser(null);
     }, []);
 
-    return { user, loading, error, login, register, logout };
+    return { user, setUser, loading, error, login, register, logout };
 }

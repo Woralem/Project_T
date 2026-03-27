@@ -45,12 +45,14 @@ pub async fn list(
         Option<String>,
         Option<String>,
         Option<i64>,
+        Option<serde_json::Value>,
     );
 
     let rows: Vec<Row> = if let Some(before_id) = p.before {
         sqlx::query_as(
             "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
-                    a.id, a.filename, a.mime_type, a.size_bytes
+                    a.id, a.filename, a.mime_type, a.size_bytes,
+                    m.encrypted_content
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              LEFT JOIN attachments a ON a.id = m.attachment_id
@@ -67,7 +69,8 @@ pub async fn list(
     } else {
         sqlx::query_as(
             "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
-                    a.id, a.filename, a.mime_type, a.size_bytes
+                    a.id, a.filename, a.mime_type, a.size_bytes,
+                    m.encrypted_content
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              LEFT JOIN attachments a ON a.id = m.attachment_id
@@ -84,13 +87,26 @@ pub async fn list(
     let mut msgs: Vec<MessageDto> = rows
         .into_iter()
         .map(
-            |(id, sid, sname, content, edited, at, att_id, att_fn, att_mime, att_size)| {
+            |(
+                id,
+                sid,
+                sname,
+                content,
+                edited,
+                at,
+                att_id,
+                att_fn,
+                att_mime,
+                att_size,
+                enc_json,
+            )| {
                 let attachment = att_id.map(|aid| AttachmentDto {
                     id: aid,
                     filename: att_fn.unwrap_or_default(),
                     mime_type: att_mime.unwrap_or_default(),
                     size_bytes: att_size.unwrap_or(0),
                 });
+                let encrypted = enc_json.and_then(|v| serde_json::from_value(v).ok());
                 MessageDto {
                     id,
                     chat_id,
@@ -100,6 +116,7 @@ pub async fn list(
                     edited,
                     created_at: at,
                     attachment,
+                    encrypted,
                 }
             },
         )

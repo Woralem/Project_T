@@ -1,0 +1,6522 @@
+================================================================================
+FILE PATH: ./Cargo.toml
+================================================================================
+[workspace]
+members = ["server", "shared"]
+resolver = "2"
+
+
+================================================================================
+FILE PATH: ./client/build.rs
+================================================================================
+fn main() {
+    tauri_build::build()
+}
+
+
+
+================================================================================
+FILE PATH: ./client/Cargo.toml
+================================================================================
+[workspace]
+
+[package]
+name = "client-ui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+default = []
+
+
+
+================================================================================
+FILE PATH: ./client/src/api.ts
+================================================================================
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto } from './types';
+
+// ═══════════════════════════════════════════════════════════
+//  Конфигурация
+// ═══════════════════════════════════════════════════════════
+
+const SERVER_URL = 'http://163.5.180.138:3000';
+const API_URL = `${SERVER_URL}/api`;
+export const WS_URL = 'ws://163.5.180.138:3000/ws';
+
+// ═══════════════════════════════════════════════════════════
+//  Token storage
+// ═══════════════════════════════════════════════════════════
+
+let token: string | null = localStorage.getItem('auth_token');
+
+export function getToken(): string | null {
+    return token;
+}
+
+export function setToken(t: string | null) {
+    token = t;
+    if (t) {
+        localStorage.setItem('auth_token', t);
+    } else {
+        localStorage.removeItem('auth_token');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Base fetch
+// ═══════════════════════════════════════════════════════════
+
+async function request<T>(
+    path: string,
+    options: RequestInit = {},
+): Promise<T> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(options.headers as Record<string, string> || {}),
+    };
+
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+    });
+
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new ApiError(res.status, body.error || 'Unknown error');
+    }
+
+    return res.json();
+}
+
+export class ApiError extends Error {
+    constructor(public status: number, message: string) {
+        super(message);
+        this.name = 'ApiError';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Auth API
+// ═══════════════════════════════════════════════════════════
+
+export async function register(
+    username: string,
+    password: string,
+    display_name: string,
+    invite_code?: string,
+): Promise<AuthRes> {
+    const data = await request<AuthRes>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password, display_name, invite_code }),
+    });
+    setToken(data.token);
+    return data;
+}
+
+export async function login(username: string, password: string): Promise<AuthRes> {
+    const data = await request<AuthRes>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+    });
+    setToken(data.token);
+    return data;
+}
+
+export async function getMe(): Promise<UserDto> {
+    return request<UserDto>('/auth/me');
+}
+
+export function logout() {
+    setToken(null);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Users API
+// ═══════════════════════════════════════════════════════════
+
+export async function searchUsers(query?: string): Promise<UserDto[]> {
+    const q = query ? `?q=${encodeURIComponent(query)}` : '';
+    return request<UserDto[]>(`/users${q}`);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Chats API
+// ═══════════════════════════════════════════════════════════
+
+export async function getChats(): Promise<ChatDto[]> {
+    return request<ChatDto[]>('/chats');
+}
+
+export async function getChat(chatId: string): Promise<ChatDto> {
+    return request<ChatDto>(`/chats/${chatId}`);
+}
+
+export async function createChat(
+    member_ids: string[],
+    is_group: boolean = false,
+    name?: string,
+): Promise<ChatDto> {
+    return request<ChatDto>('/chats', {
+        method: 'POST',
+        body: JSON.stringify({ member_ids, is_group, name }),
+    });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Messages API
+// ═══════════════════════════════════════════════════════════
+
+export async function getMessages(
+    chatId: string,
+    limit: number = 50,
+    before?: string,
+): Promise<MessageDto[]> {
+    let url = `/chats/${chatId}/messages?limit=${limit}`;
+    if (before) url += `&before=${before}`;
+    return request<MessageDto[]>(url);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Invites API
+// ═══════════════════════════════════════════════════════════
+
+export async function createInvite(expires_in_hours?: number): Promise<InviteDto> {
+    return request<InviteDto>('/invites', {
+        method: 'POST',
+        body: JSON.stringify({ expires_in_hours }),
+    });
+}
+
+export async function getInvites(): Promise<InviteDto[]> {
+    return request<InviteDto[]>('/invites');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Files API
+// ═══════════════════════════════════════════════════════════
+
+export function getFileUrl(fileId: string): string {
+    return `${API_URL}/files/${fileId}`;
+}
+
+export async function uploadFile(file: Blob, filename: string): Promise<AttachmentDto> {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    // НЕ ставим Content-Type — браузер сам добавит с boundary
+
+    const res = await fetch(`${API_URL}/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new ApiError(res.status, body.error || 'Upload failed');
+    }
+
+    return res.json();
+}
+
+
+================================================================================
+FILE PATH: ./client/src/App.css
+================================================================================
+/* ═══════════════════════════════════════════════════════════
+   RESET
+   ═══════════════════════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+button {
+    font: inherit;
+    cursor: pointer;
+    border: 0;
+    background: none;
+    color: inherit;
+}
+
+input {
+    font: inherit;
+    border: 0;
+    outline: 0;
+    color: inherit;
+    background: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   THEME VARIABLES
+   ═══════════════════════════════════════════════════════════ */
+.dark {
+    --bg-root: #0c0c10;
+    --bg-rail: #111116;
+    --bg-list: #15151c;
+    --bg-chat: #0c0c10;
+    --bg-surface: #1a1a24;
+    --bg-hover: #20202c;
+    --bg-active: #282836;
+    --bg-input: #16161e;
+    --bg-card: #18181f;
+    --accent: #7c6aef;
+    --accent-hover: #6d5ce0;
+    --accent-dim: rgba(124, 106, 239, .12);
+    --accent-glow: rgba(124, 106, 239, .3);
+    --bubble-own: #6366f1;
+    --bubble-own-text: #fff;
+    --bubble-other: #1e1e2a;
+    --bubble-other-text: #e4e4ec;
+    --text: #e4e4ec;
+    --text2: #8b8ba0;
+    --text3: #52526a;
+    --border: rgba(255, 255, 255, .06);
+    --green: #22c55e;
+    --red: #ef4444;
+    --shadow: 0 2px 12px rgba(0, 0, 0, .4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, .5);
+    color: #e4e4ec;
+}
+
+.light {
+    --bg-root: #f0f1f5;
+    --bg-rail: #ffffff;
+    --bg-list: #ffffff;
+    --bg-chat: #f0f1f5;
+    --bg-surface: #f6f6f9;
+    --bg-hover: #eaeaf0;
+    --bg-active: #e0e0e8;
+    --bg-input: #eeeef3;
+    --bg-card: #ffffff;
+    --accent: #6366f1;
+    --accent-hover: #5558e0;
+    --accent-dim: rgba(99, 102, 241, .1);
+    --accent-glow: rgba(99, 102, 241, .2);
+    --bubble-own: #6366f1;
+    --bubble-own-text: #fff;
+    --bubble-other: #ffffff;
+    --bubble-other-text: #1a1a2e;
+    --text: #1a1a2e;
+    --text2: #6b6b80;
+    --text3: #a0a0b4;
+    --border: rgba(0, 0, 0, .07);
+    --green: #16a34a;
+    --red: #dc2626;
+    --shadow: 0 1px 6px rgba(0, 0, 0, .08);
+    --shadow-lg: 0 8px 30px rgba(0, 0, 0, .1);
+    color: #1a1a2e;
+}
+
+.root {
+    height: 100%;
+    background: var(--bg-root);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+.layout {
+    display: flex;
+    height: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NAV RAIL
+   ═══════════════════════════════════════════════════════════ */
+.nav-rail {
+    width: 64px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    background: var(--bg-rail);
+    border-right: 1px solid var(--border);
+}
+
+.nav-rail-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+}
+
+.nav-btn {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    color: var(--text2);
+    transition: background .18s, color .18s, transform .12s;
+}
+
+.nav-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    transform: scale(1.04);
+}
+
+.nav-btn.active {
+    color: var(--accent);
+    background: var(--accent-dim);
+}
+
+.nav-btn-indicator {
+    position: absolute;
+    left: -8px;
+    width: 4px;
+    height: 0;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: height .2s;
+}
+
+.nav-btn.active .nav-btn-indicator {
+    height: 20px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHAT LIST PANEL
+   ═══════════════════════════════════════════════════════════ */
+.chat-list-panel {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-list);
+    border-right: 1px solid var(--border);
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 18px 6px;
+}
+
+.panel-header h2 {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.search-wrap {
+    position: relative;
+    padding: 8px 14px 12px;
+}
+
+.search-wrap input {
+    width: 100%;
+    padding: 9px 12px 9px 36px;
+    border-radius: 10px;
+    background: var(--bg-surface);
+    font-size: 13px;
+    border: 1px solid transparent;
+    transition: border .2s, background .2s;
+}
+
+.search-wrap input::placeholder {
+    color: var(--text3);
+}
+
+.search-wrap input:focus {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.search-ico {
+    position: absolute;
+    left: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text3);
+    pointer-events: none;
+    display: flex;
+}
+
+.chat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 6px 8px;
+}
+
+.chat-list-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text3);
+    font-size: 13px;
+}
+
+.chat-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 12px;
+    text-align: left;
+    transition: background .15s;
+}
+
+.chat-item:hover {
+    background: var(--bg-hover);
+}
+
+.chat-item.active {
+    background: var(--accent-dim);
+}
+
+.chat-item-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.chat-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-item-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.group-badge {
+    display: inline-flex;
+    color: var(--text2);
+}
+
+.chat-item-time {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.chat-item-preview {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BADGE
+   ═══════════════════════════════════════════════════════════ */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AVATAR
+   ═══════════════════════════════════════════════════════════ */
+.avatar {
+    position: relative;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: .3px;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.status-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    border-radius: 50%;
+    background: var(--text3);
+    border: 2px solid var(--bg-list);
+    transition: background .2s;
+}
+
+.status-dot.online {
+    background: var(--green);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHAT VIEW
+   ═══════════════════════════════════════════════════════════ */
+.chat-view {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-chat);
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px;
+    background: var(--bg-list);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.chat-header-info h3 {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.chat-header-sub {
+    font-size: 12px;
+    color: var(--text2);
+}
+
+.chat-header-actions {
+    display: flex;
+    gap: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGES
+   ═══════════════════════════════════════════════════════════ */
+.messages-scroll {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.messages-inner {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 18px 8px;
+    min-height: 100%;
+    justify-content: flex-end;
+}
+
+.encryption-notice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    margin: 0 auto 16px;
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 68%;
+    margin-top: 2px;
+    transition: opacity .15s;
+}
+
+.msg.first {
+    margin-top: 10px;
+}
+
+.msg.own {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+
+.msg:not(.own) {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+
+.msg:hover {
+    opacity: .92;
+}
+
+.msg-author {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+    padding-left: 4px;
+}
+
+/* ── Пузырь: flex-column чтобы мета была ниже текста ── */
+.msg-bubble {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px;
+    border-radius: 16px;
+    line-height: 1.45;
+    word-break: break-word;
+    box-shadow: var(--shadow);
+    position: relative;
+}
+
+.msg.own .msg-bubble {
+    background: var(--bubble-own);
+    color: var(--bubble-own-text);
+    border-bottom-right-radius: 4px;
+}
+
+.msg:not(.own) .msg-bubble {
+    background: var(--bubble-other);
+    color: var(--bubble-other-text);
+    border-bottom-left-radius: 4px;
+}
+
+.msg-text {
+    font-size: 14px;
+}
+
+/* ── Мета: отдельная строка ниже текста, выравнивание вправо ── */
+.msg-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.msg-time {
+    font-size: 11px;
+    opacity: .55;
+}
+
+.msg-edited {
+    font-size: 11px;
+    opacity: .45;
+    font-style: italic;
+}
+
+.msg-status {
+    display: inline-flex;
+    opacity: .55;
+}
+
+.msg-status.read {
+    opacity: .9;
+    color: #60a5fa;
+}
+
+.msg.own .msg-status.read {
+    color: #93c5fd;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INPUT AREA
+   ═══════════════════════════════════════════════════════════ */
+.input-area {
+    flex-shrink: 0;
+    background: var(--bg-list);
+    border-top: 1px solid var(--border);
+}
+
+.input-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+}
+
+.msg-input {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    background: var(--bg-surface);
+    border: 1px solid transparent;
+    transition: border .2s, background .2s;
+}
+
+.msg-input::placeholder {
+    color: var(--text3);
+}
+
+.msg-input:focus {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s, transform .12s;
+}
+
+.send-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.08);
+}
+
+.send-btn:active {
+    transform: scale(.95);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EDIT BAR
+   ═══════════════════════════════════════════════════════════ */
+.edit-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: var(--accent-dim);
+    border-bottom: 1px solid var(--border);
+}
+
+.edit-bar-icon {
+    color: var(--accent);
+    display: flex;
+    flex-shrink: 0;
+}
+
+.edit-bar-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.edit-bar-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.edit-bar-text {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edit-bar-close {
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ICON BUTTON
+   ═══════════════════════════════════════════════════════════ */
+.icon-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: var(--text2);
+    transition: background .15s, color .15s, transform .12s;
+}
+
+.icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    transform: scale(1.05);
+}
+
+.icon-btn:active {
+    transform: scale(.93);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EMPTY / PLACEHOLDER
+   ═══════════════════════════════════════════════════════════ */
+.empty-state,
+.placeholder-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text3);
+}
+
+.empty-icon,
+.placeholder-icon {
+    width: 88px;
+    height: 88px;
+    border-radius: 24px;
+    background: var(--bg-surface);
+    display: grid;
+    place-items: center;
+    margin-bottom: 6px;
+    color: var(--text3);
+}
+
+.empty-state h2,
+.placeholder-view h2 {
+    font-size: 20px;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.empty-state p,
+.placeholder-view p {
+    font-size: 14px;
+    max-width: 280px;
+    text-align: center;
+    line-height: 1.5;
+}
+
+.placeholder-pills {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH SCREEN
+   ═══════════════════════════════════════════════════════════ */
+.auth-screen {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(ellipse at 30% 20%, var(--accent-dim), transparent 50%),
+        radial-gradient(ellipse at 70% 80%, rgba(99, 102, 241, .06), transparent 50%),
+        var(--bg-root);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 380px;
+    padding: 36px 32px 28px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: fadeUp .45s ease both;
+}
+
+.auth-logo {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.auth-icon-wrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    margin: 0 auto 14px;
+    display: grid;
+    place-items: center;
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+.auth-logo h1 {
+    font-size: 24px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.auth-logo p {
+    font-size: 13px;
+    color: var(--text2);
+    letter-spacing: .3px;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--bg-surface);
+    margin-bottom: 20px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 9px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    transition: background .18s, color .18s;
+}
+
+.auth-tab.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.auth-tab:not(.active):hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+}
+
+.field input {
+    padding: 11px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    transition: border .2s, background .2s;
+}
+
+.field input::placeholder {
+    color: var(--text3);
+}
+
+.field input:focus {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.auth-btn {
+    margin-top: 4px;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 4px 16px var(--accent-glow);
+    transition: background .18s, transform .12s, box-shadow .18s;
+}
+
+.auth-btn:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px var(--accent-glow);
+}
+
+.auth-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.auth-features {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.auth-feat {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS
+   ═══════════════════════════════════════════════════════════ */
+.settings-view {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.settings-inner {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 28px 24px;
+}
+
+.settings-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 24px;
+}
+
+.s-group {
+    margin-bottom: 20px;
+}
+
+.s-group-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text3);
+    padding: 0 4px 8px;
+}
+
+.s-profile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+}
+
+.s-profile strong {
+    font-size: 15px;
+    display: block;
+}
+
+.s-sub {
+    font-size: 13px;
+    color: var(--text2);
+}
+
+.s-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 13px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    transition: background .15s;
+}
+
+.s-row:hover {
+    background: var(--bg-hover);
+}
+
+.s-row-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.s-arrow {
+    color: var(--text3);
+    font-size: 16px;
+}
+
+.toggle {
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    padding: 2px;
+    background: var(--bg-active);
+    transition: background .25s;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.toggle.on {
+    background: var(--accent);
+}
+
+.toggle-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .25s;
+    display: block;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+}
+
+.toggle.on .toggle-dot {
+    transform: translateX(20px);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CONTEXT MENU
+   ═══════════════════════════════════════════════════════════ */
+.context-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+.context-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 170px;
+    padding: 5px;
+    border-radius: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: scaleIn .15s ease;
+    transform-origin: top left;
+}
+
+.context-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background .12s;
+}
+
+.context-item:hover {
+    background: var(--bg-hover);
+}
+
+.context-item.danger {
+    color: var(--red);
+}
+
+.context-item.danger:hover {
+    background: rgba(239, 68, 68, .1);
+}
+
+.context-item-icon {
+    display: flex;
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════════════════════ */
+.toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    padding: 12px 20px;
+    border-radius: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    animation: slideIn .3s ease;
+    pointer-events: auto;
+}
+
+.toast-info {
+    border-left: 3px solid var(--accent);
+}
+
+.toast-success {
+    border-left: 3px solid var(--green);
+}
+
+.toast-error {
+    border-left: 3px solid var(--red);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL
+   ═══════════════════════════════════════════════════════════ */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 998;
+    background: rgba(0, 0, 0, .5);
+    display: grid;
+    place-items: center;
+    animation: fadeIn .2s ease;
+}
+
+.modal-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 24px 28px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: scaleIn .2s ease;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.modal-btn-secondary {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--bg-surface);
+    color: var(--text2);
+    transition: background .15s;
+}
+
+.modal-btn-secondary:hover {
+    background: var(--bg-hover);
+}
+
+.modal-btn-primary {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+}
+
+.modal-btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.modal-btn-primary:active {
+    transform: scale(.97);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--text3);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text2);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.fade-in {
+    animation: fadeUp .3s ease both;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH ERROR
+   ═══════════════════════════════════════════════════════════ */
+.auth-error {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, .12);
+    color: var(--red);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.auth-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEW CHAT MODAL EXTRAS
+   ═══════════════════════════════════════════════════════════ */
+.modal-wide {
+    max-width: 460px;
+}
+
+.user-list {
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.selected-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+.selected-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    border-radius: 16px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.selected-chip:hover {
+    background: var(--accent-glow);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PENDING MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg.pending .msg-bubble {
+    opacity: 0.65;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INVITE
+   ═══════════════════════════════════════════════════════════ */
+.invite-result {
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.invite-code {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    padding: 12px 24px;
+    border-radius: 12px;
+    background: var(--accent-dim);
+    user-select: all;
+    cursor: pointer;
+}
+
+.invite-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+}
+
+.invite-copy-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.invite-new-btn {
+    font-size: 12px;
+    color: var(--text2);
+    text-decoration: underline;
+    padding: 4px;
+}
+
+.invite-new-btn:hover {
+    color: var(--text);
+}
+
+.invite-hint {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+}
+
+.invite-create-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGES LOADING
+   ═══════════════════════════════════════════════════════════ */
+.messages-loading {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text3);
+    font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PENDING MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg.pending .msg-bubble {
+    opacity: 0.6;
+}
+
+.msg.pending .msg-time {
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH ERROR
+   ═══════════════════════════════════════════════════════════ */
+.auth-error {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, .12);
+    color: var(--red);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.auth-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INVITE
+   ═══════════════════════════════════════════════════════════ */
+.invite-result {
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.invite-code {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    padding: 12px 24px;
+    border-radius: 12px;
+    background: var(--accent-dim);
+    user-select: all;
+    cursor: pointer;
+}
+
+.invite-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+}
+
+.invite-copy-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.invite-new-btn {
+    font-size: 12px;
+    color: var(--text2);
+    text-decoration: underline;
+    padding: 4px;
+}
+
+.invite-new-btn:hover {
+    color: var(--text);
+}
+
+.invite-hint {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+}
+
+.invite-create-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEW CHAT MODAL
+   ═══════════════════════════════════════════════════════════ */
+.modal-wide {
+    max-width: 460px;
+}
+
+.user-list {
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.selected-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+.selected-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    border-radius: 16px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.selected-chip:hover {
+    background: var(--accent-glow);
+}
+
+.modal-btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUDIO PLAYER
+   ═══════════════════════════════════════════════════════════ */
+.audio-player {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 200px;
+    padding: 2px 0;
+}
+
+.audio-play-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    transition: background .15s, transform .1s;
+}
+
+.audio-play-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.06);
+}
+
+.audio-play-btn:active {
+    transform: scale(.94);
+}
+
+.audio-track {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, .15);
+    position: relative;
+    cursor: pointer;
+    min-width: 100px;
+}
+
+.msg:not(.own) .audio-track {
+    background: rgba(0, 0, 0, .1);
+}
+
+.light .msg:not(.own) .audio-track {
+    background: rgba(0, 0, 0, .12);
+}
+
+.audio-track-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.7;
+    transition: width .1s linear;
+}
+
+.audio-track-thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: currentColor;
+    transition: left .1s linear;
+}
+
+.audio-time {
+    font-size: 12px;
+    opacity: 0.6;
+    min-width: 32px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.voice-bubble {
+    min-width: 240px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VOICE RECORDING
+   ═══════════════════════════════════════════════════════════ */
+.recording-bar {
+    background: rgba(239, 68, 68, .08) !important;
+}
+
+.rec-indicator {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+}
+
+.rec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: recPulse 1s ease infinite;
+}
+
+.rec-timer {
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.cancel-rec-btn {
+    color: var(--red) !important;
+}
+
+@keyframes recPulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.4;
+        transform: scale(0.85);
+    }
+}
+
+
+================================================================================
+FILE PATH: ./client/src/app.rs
+================================================================================
+pub fn app_name() -> &'static str {
+    "messenger client"
+}
+
+pub fn default_window_title() -> &'static str {
+    "Messenger"
+}
+
+
+
+================================================================================
+FILE PATH: ./client/src/App.tsx
+================================================================================
+import React from 'react';
+import type { Tab } from './types';
+import { useAuth } from './hooks/useAuth';
+import { useChats } from './hooks/useChats';
+import { useToast } from './hooks/useToast';
+import './App.css';
+
+import { ToastContainer } from './components/ui/Toast';
+import { AuthScreen } from './components/auth/AuthScreen';
+import { NavRail } from './components/nav/NavRail';
+import { ChatListPanel } from './components/chat/ChatListPanel';
+import { ChatView } from './components/chat/ChatView';
+import { EmptyState } from './components/chat/EmptyState';
+import { NewChatModal } from './components/chat/NewChatModal';
+import { CallsView } from './components/calls/CallsView';
+import { SettingsView } from './components/settings/SettingsView';
+
+function loadDark(): boolean {
+    try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; }
+}
+function saveDark(v: boolean) {
+    try { localStorage.setItem('dark_mode', String(v)); } catch { /* */ }
+}
+
+export default function App() {
+    const [tab, setTab] = React.useState<Tab>('chats');
+    const [dark, setDark] = React.useState(loadDark);
+    const [search, setSearch] = React.useState('');
+    const [newChatOpen, setNewChatOpen] = React.useState(false);
+    const { toasts, showToast } = useToast();
+
+    const { user, loading: authLoading, login, register, logout } = useAuth();
+    const {
+        chats, selectedId, selectedChat,
+        loadingChats, loadingMessages,
+        selectChat, sendMessage, sendVoiceMessage,
+        editMessage, deleteMessage, createChat,
+    } = useChats(user);
+
+    const toggleDark = React.useCallback(() => {
+        setDark(d => {
+            const next = !d;
+            saveDark(next);
+            return next;
+        });
+    }, []);
+
+    const theme = dark ? 'dark' : 'light';
+
+    // Загрузка
+    if (authLoading) {
+        return (
+            <div className={`root ${theme}`}>
+                <div className="auth-screen">
+                    <div className="auth-card" style={{ textAlign: 'center', padding: 40 }}>
+                        <p>Загрузка...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Авторизация
+    if (!user) {
+        return (
+            <div className={`root ${theme}`}>
+                <AuthScreen onLogin={login} onRegister={register} />
+                <ToastContainer toasts={toasts} />
+            </div>
+        );
+    }
+
+    // Основное приложение
+    return (
+        <div className={`root ${theme}`}>
+            <div className="layout">
+                <NavRail
+                    tab={tab}
+                    onTab={setTab}
+                    darkMode={dark}
+                    onToggleTheme={toggleDark}
+                    onLogout={logout}
+                />
+
+                {tab === 'chats' && (
+                    <>
+                        <ChatListPanel
+                            chats={chats}
+                            selectedId={selectedId}
+                            onSelect={selectChat}
+                            search={search}
+                            onSearch={setSearch}
+                            onNewChat={() => setNewChatOpen(true)}
+                            loading={loadingChats}
+                        />
+                        {selectedChat ? (
+                            <ChatView
+                                chat={selectedChat}
+                                loadingMessages={loadingMessages}
+                                onSendMessage={sendMessage}
+                                onSendVoice={sendVoiceMessage}
+                                onDeleteMessage={deleteMessage}
+                                onEditMessage={editMessage}
+                                showToast={showToast}
+                            />
+                        ) : (
+                            <EmptyState />
+                        )}
+                    </>
+                )}
+
+                {tab === 'calls' && <CallsView />}
+                {tab === 'settings' && (
+                    <SettingsView
+                        darkMode={dark}
+                        onToggleTheme={toggleDark}
+                        showToast={showToast}
+                        user={user}
+                    />
+                )}
+            </div>
+
+            <NewChatModal
+                open={newChatOpen}
+                onClose={() => setNewChatOpen(false)}
+                onCreate={createChat}
+                showToast={showToast}
+            />
+            <ToastContainer toasts={toasts} />
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/auth/AuthScreen.tsx
+================================================================================
+import React, { useState } from 'react';
+import type { AuthTab } from '../../types';
+import { Icon } from '../../icons';
+
+interface Props {
+    onLogin: (username: string, password: string) => Promise<void>;
+    onRegister: (username: string, password: string, displayName: string, inviteCode?: string) => Promise<void>;
+}
+
+export function AuthScreen({ onLogin, onRegister }: Props) {
+    const [mode, setMode] = useState<AuthTab>('login');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [displayName, setDisplayName] = useState('');
+    const [invite, setInvite] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+            if (mode === 'login') {
+                await onLogin(username, password);
+            } else {
+                await onRegister(
+                    username,
+                    password,
+                    displayName || username,
+                    invite || undefined,
+                );
+            }
+        } catch (err: any) {
+            setError(err.message || 'Произошла ошибка');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="auth-screen">
+            <div className="auth-card">
+                <div className="auth-logo">
+                    <div className="auth-icon-wrap">{Icon.shield(32)}</div>
+                    <h1>Messenger</h1>
+                    <p>Encrypted · Private · Yours</p>
+                </div>
+
+                <div className="auth-tabs">
+                    <button
+                        className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
+                        onClick={() => { setMode('login'); setError(''); }}
+                    >
+                        Вход
+                    </button>
+                    <button
+                        className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
+                        onClick={() => { setMode('register'); setError(''); }}
+                    >
+                        Регистрация
+                    </button>
+                </div>
+
+                {error && (
+                    <div className="auth-error">{error}</div>
+                )}
+
+                <form className="auth-form" onSubmit={handleSubmit}>
+                    <div className="field">
+                        <label>Имя пользователя</label>
+                        <input
+                            type="text"
+                            placeholder="Введите имя..."
+                            value={username}
+                            onChange={e => setUsername(e.target.value)}
+                            autoFocus
+                            required
+                            minLength={3}
+                        />
+                    </div>
+
+                    {mode === 'register' && (
+                        <div className="field fade-in">
+                            <label>Отображаемое имя</label>
+                            <input
+                                type="text"
+                                placeholder="Как вас называть..."
+                                value={displayName}
+                                onChange={e => setDisplayName(e.target.value)}
+                            />
+                        </div>
+                    )}
+
+                    <div className="field">
+                        <label>Пароль</label>
+                        <input
+                            type="password"
+                            placeholder="Введите пароль..."
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            required
+                            minLength={6}
+                        />
+                    </div>
+
+                    {mode === 'register' && (
+                        <div className="field fade-in">
+                            <label>Инвайт-код</label>
+                            <input
+                                type="text"
+                                placeholder="Код приглашения (если есть)..."
+                                value={invite}
+                                onChange={e => setInvite(e.target.value)}
+                            />
+                        </div>
+                    )}
+
+                    <button type="submit" className="auth-btn" disabled={loading}>
+                        {loading ? 'Подождите...' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+                    </button>
+                </form>
+
+                <div className="auth-features">
+                    <div className="auth-feat">{Icon.lock(15)}<span>E2E шифрование</span></div>
+                    <div className="auth-feat">{Icon.shield(15)}<span>Без сбора данных</span></div>
+                    <div className="auth-feat">{Icon.users(15)}<span>По приглашениям</span></div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/calls/CallsView.tsx
+================================================================================
+import React from 'react';
+import { Icon } from '../../icons';
+
+export function CallsView() {
+    return (
+        <section className="placeholder-view">
+            <div className="placeholder-icon">{Icon.phone(56)}</div>
+            <h2>Голосовые звонки</h2>
+            <p>Зашифрованные звонки через WebRTC скоро будут доступны</p>
+            <div className="placeholder-pills">
+                <span className="pill">{Icon.shield(14)} End-to-end</span>
+                <span className="pill">{Icon.mic(14)} Opus HD</span>
+            </div>
+        </section>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/AudioPlayer.tsx
+================================================================================
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Icon } from '../../icons';
+
+interface Props {
+    src: string;
+}
+
+export function AudioPlayer({ src }: Props) {
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const [playing, setPlaying] = useState(false);
+    const [duration, setDuration] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        const onLoaded = () => setDuration(audio.duration || 0);
+        const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+        const onEnded = () => { setPlaying(false); setCurrentTime(0); };
+
+        audio.addEventListener('loadedmetadata', onLoaded);
+        audio.addEventListener('timeupdate', onTimeUpdate);
+        audio.addEventListener('ended', onEnded);
+
+        return () => {
+            audio.removeEventListener('loadedmetadata', onLoaded);
+            audio.removeEventListener('timeupdate', onTimeUpdate);
+            audio.removeEventListener('ended', onEnded);
+        };
+    }, [src]);
+
+    const toggle = useCallback(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (playing) {
+            audio.pause();
+        } else {
+            audio.play().catch(() => { });
+        }
+        setPlaying(!playing);
+    }, [playing]);
+
+    const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+        const audio = audioRef.current;
+        if (!audio || !duration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pct = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = pct * duration;
+    };
+
+    const fmt = (s: number) => {
+        if (!s || !isFinite(s)) return '0:00';
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${String(sec).padStart(2, '0')}`;
+    };
+
+    const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    return (
+        <div className="audio-player">
+            <audio ref={audioRef} src={src} preload="metadata" />
+
+            <button className="audio-play-btn" onClick={toggle}>
+                {playing ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                    </svg>
+                ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5,3 19,12 5,21" />
+                    </svg>
+                )}
+            </button>
+
+            <div className="audio-track" onClick={seek}>
+                <div className="audio-track-fill" style={{ width: `${pct}%` }} />
+                <div className="audio-track-thumb" style={{ left: `${pct}%` }} />
+            </div>
+
+            <span className="audio-time">
+                {playing ? fmt(currentTime) : fmt(duration)}
+            </span>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/ChatListPanel.tsx
+================================================================================
+import React from 'react';
+import type { LocalChat } from '../../types';
+import { getChatPreview } from '../../utils';
+import { Icon } from '../../icons';
+import { Avatar } from '../ui/Avatar';
+import { Badge } from '../ui/Badge';
+
+interface Props {
+    chats: LocalChat[];
+    selectedId: string | null;
+    onSelect: (id: string) => void;
+    search: string;
+    onSearch: (q: string) => void;
+    onNewChat: () => void;
+    loading?: boolean;
+}
+
+export function ChatListPanel({
+    chats, selectedId, onSelect, search, onSearch, onNewChat, loading,
+}: Props) {
+    const filtered = chats.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <aside className="chat-list-panel">
+            <div className="panel-header">
+                <h2>Чаты</h2>
+                <button className="icon-btn" onClick={onNewChat} title="Новый чат">
+                    {Icon.plus(20)}
+                </button>
+            </div>
+
+            <div className="search-wrap">
+                <span className="search-ico">{Icon.search(16)}</span>
+                <input
+                    type="text"
+                    placeholder="Поиск..."
+                    value={search}
+                    onChange={e => onSearch(e.target.value)}
+                />
+            </div>
+
+            <div className="chat-list">
+                {loading && chats.length === 0 && (
+                    <div className="chat-list-empty">Загрузка чатов...</div>
+                )}
+
+                {filtered.map(chat => {
+                    const preview = getChatPreview(chat);
+                    return (
+                        <button
+                            key={chat.id}
+                            className={`chat-item ${selectedId === chat.id ? 'active' : ''}`}
+                            onClick={() => onSelect(chat.id)}
+                        >
+                            <Avatar
+                                name={chat.name}
+                                size={46}
+                                online={chat.is_group ? undefined : chat.online}
+                            />
+                            <div className="chat-item-body">
+                                <div className="chat-item-row">
+                                    <span className="chat-item-name">
+                                        {chat.is_group && <span className="group-badge">{Icon.users(13)}</span>}
+                                        {chat.name}
+                                    </span>
+                                    <span className="chat-item-time">{preview.time}</span>
+                                </div>
+                                <div className="chat-item-row">
+                                    <span className="chat-item-preview">{preview.text || 'Нет сообщений'}</span>
+                                    <Badge count={chat.unread_count} />
+                                </div>
+                            </div>
+                        </button>
+                    );
+                })}
+
+                {!loading && filtered.length === 0 && chats.length > 0 && (
+                    <div className="chat-list-empty">Ничего не найдено</div>
+                )}
+
+                {!loading && chats.length === 0 && (
+                    <div className="chat-list-empty">
+                        Нет чатов. Нажмите + чтобы начать переписку
+                    </div>
+                )}
+            </div>
+        </aside>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/ChatView.tsx
+================================================================================
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { LocalChat, LocalMessage, ContextMenuItem } from '../../types';
+import { formatTime } from '../../utils';
+import { Icon } from '../../icons';
+import { Avatar } from '../ui/Avatar';
+import { ContextMenu } from '../ui/ContextMenu';
+import { MessageBubble } from './MessageBubble';
+import { InputBar } from './InputBar';
+import * as api from '../../api';
+
+interface Props {
+    chat: LocalChat;
+    loadingMessages?: boolean;
+    onSendMessage: (text: string) => void;
+    onSendVoice: (chatId: string, attachmentId: string) => void;
+    onDeleteMessage: (msgId: string) => void;
+    onEditMessage: (msgId: string, newText: string) => void;
+    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
+}
+
+export function ChatView({
+    chat, loadingMessages, onSendMessage, onSendVoice,
+    onDeleteMessage, onEditMessage, showToast,
+}: Props) {
+    const [inputText, setInputText] = useState('');
+    const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
+    const bottomRef = useRef<HTMLDivElement>(null);
+
+    // Скролл вниз при новых сообщениях
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chat.messages.length, chat.id]);
+
+    // Сброс при смене чата
+    useEffect(() => {
+        setInputText('');
+        setEditingMsg(null);
+        setCtxMenu(null);
+    }, [chat.id]);
+
+    // Escape
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (ctxMenu) setCtxMenu(null);
+                else if (editingMsg) { setEditingMsg(null); setInputText(''); }
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [ctxMenu, editingMsg]);
+
+    // Отправка текста / сохранение редактирования
+    const handleSend = useCallback(() => {
+        const text = inputText.trim();
+        if (!text) return;
+
+        if (editingMsg) {
+            if (text !== editingMsg.content) {
+                onEditMessage(editingMsg.id, text);
+            }
+            setEditingMsg(null);
+        } else {
+            onSendMessage(text);
+        }
+        setInputText('');
+    }, [inputText, editingMsg, onSendMessage, onEditMessage]);
+
+    // Отправка голосового
+    const handleSendVoice = useCallback(async (blob: Blob) => {
+        try {
+            const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
+            const attachment = await api.uploadFile(blob, `voice.${ext}`);
+            onSendVoice(chat.id, attachment.id);
+        } catch (e: any) {
+            showToast('Ошибка загрузки голосового', 'error');
+            console.error('Voice upload error:', e);
+        }
+    }, [chat.id, onSendVoice, showToast]);
+
+    // Контекстное меню
+    const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
+        e.preventDefault();
+        setCtxMenu({ x: e.clientX, y: e.clientY, message: msg });
+    };
+
+    const ctxItems = (msg: LocalMessage): ContextMenuItem[] => {
+        const items: ContextMenuItem[] = [];
+        if (msg.own && msg.status !== 'pending') {
+            items.push({
+                label: 'Редактировать',
+                icon: Icon.edit(16),
+                onClick: () => { setEditingMsg(msg); setInputText(msg.content); },
+            });
+        }
+        items.push({
+            label: 'Копировать',
+            icon: Icon.copy(16),
+            onClick: () => {
+                navigator.clipboard.writeText(msg.content);
+                showToast('Скопировано в буфер обмена');
+            },
+        });
+        if (msg.own) {
+            items.push({
+                label: 'Удалить',
+                icon: Icon.trash(16),
+                danger: true,
+                onClick: () => onDeleteMessage(msg.id),
+            });
+        }
+        return items;
+    };
+
+    return (
+        <section className="chat-view">
+            {/* Шапка */}
+            <div className="chat-header">
+                <div className="chat-header-left">
+                    <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} />
+                    <div className="chat-header-info">
+                        <h3>{chat.name}</h3>
+                        <span className="chat-header-sub">
+                            {chat.is_group
+                                ? `${chat.members.length} участников`
+                                : chat.online ? 'в сети' : 'был(а) недавно'}
+                        </span>
+                    </div>
+                </div>
+                <div className="chat-header-actions">
+                    <button className="icon-btn" title="Позвонить"
+                        onClick={() => showToast('Звонки будут доступны позже')}>
+                        {Icon.phone(20)}
+                    </button>
+                    <button className="icon-btn" title="Поиск">
+                        {Icon.search(20)}
+                    </button>
+                </div>
+            </div>
+
+            {/* Сообщения */}
+            <div className="messages-scroll">
+                <div className="messages-inner">
+                    <div className="encryption-notice">
+                        {Icon.lock(14)}
+                        <span>Сообщения защищены сквозным шифрованием</span>
+                    </div>
+
+                    {loadingMessages && chat.messages.length === 0 && (
+                        <div className="messages-loading">Загрузка сообщений...</div>
+                    )}
+
+                    {!loadingMessages && chat.messagesLoaded && chat.messages.length === 0 && (
+                        <div className="messages-loading">Нет сообщений. Напишите первое!</div>
+                    )}
+
+                    {chat.messages.map((msg, i) => {
+                        const prev = chat.messages[i - 1];
+                        const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
+                        return (
+                            <MessageBubble
+                                key={msg.id}
+                                message={msg}
+                                isFirst={isFirst}
+                                isGroup={chat.is_group}
+                                onContextMenu={e => handleContextMenu(e, msg)}
+                            />
+                        );
+                    })}
+                    <div ref={bottomRef} />
+                </div>
+            </div>
+
+            {/* Ввод */}
+            <InputBar
+                value={inputText}
+                onChange={setInputText}
+                onSend={handleSend}
+                onSendVoice={handleSendVoice}
+                editingMessage={editingMsg ? {
+                    id: editingMsg.id,
+                    text: editingMsg.content,
+                    author: editingMsg.sender_name,
+                    time: formatTime(editingMsg.created_at),
+                    own: editingMsg.own,
+                } : null}
+                onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
+                onAttach={() => showToast('Файлы будут доступны после обновления')}
+            />
+
+            {/* Контекстное меню */}
+            {ctxMenu && (
+                <ContextMenu
+                    x={ctxMenu.x}
+                    y={ctxMenu.y}
+                    items={ctxItems(ctxMenu.message)}
+                    onClose={() => setCtxMenu(null)}
+                />
+            )}
+        </section>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/EmptyState.tsx
+================================================================================
+import React from 'react';
+import { Icon } from '../../icons';
+
+export function EmptyState() {
+    return (
+        <section className="empty-state">
+            <div className="empty-icon">{Icon.chat(56)}</div>
+            <h2>Выберите чат</h2>
+            <p>Нажмите на диалог слева, чтобы начать переписку</p>
+        </section>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/InputBar.tsx
+================================================================================
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Icon } from '../../icons';
+
+interface EditableMessage {
+    id: string;
+    text: string;
+    author: string;
+    time: string;
+    own: boolean;
+}
+
+interface Props {
+    value: string;
+    onChange: (v: string) => void;
+    onSend: () => void;
+    onSendVoice: (blob: Blob) => void;
+    editingMessage: EditableMessage | null;
+    onCancelEdit: () => void;
+    onAttach: () => void;
+}
+
+export function InputBar({
+    value, onChange, onSend, onSendVoice,
+    editingMessage, onCancelEdit, onAttach,
+}: Props) {
+    const [recording, setRecording] = useState(false);
+    const [recTime, setRecTime] = useState(0);
+    const mediaRecorder = useRef<MediaRecorder | null>(null);
+    const chunks = useRef<Blob[]>([]);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+
+    // Таймер записи
+    useEffect(() => {
+        if (recording) {
+            setRecTime(0);
+            timerRef.current = setInterval(() => setRecTime(t => t + 1), 1000);
+        } else {
+            if (timerRef.current) clearInterval(timerRef.current);
+        }
+        return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    }, [recording]);
+
+    const startRecording = useCallback(async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : 'audio/ogg;codecs=opus';
+
+            const recorder = new MediaRecorder(stream, { mimeType });
+            chunks.current = [];
+
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.current.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                const blob = new Blob(chunks.current, { type: mimeType });
+                if (blob.size > 0) {
+                    onSendVoice(blob);
+                }
+                // Останавливаем микрофон
+                stream.getTracks().forEach(t => t.stop());
+                streamRef.current = null;
+            };
+
+            recorder.start();
+            mediaRecorder.current = recorder;
+            setRecording(true);
+        } catch (e) {
+            console.error('Mic access denied', e);
+        }
+    }, [onSendVoice]);
+
+    const stopRecording = useCallback(() => {
+        if (mediaRecorder.current?.state === 'recording') {
+            mediaRecorder.current.stop();
+        }
+        setRecording(false);
+    }, []);
+
+    const cancelRecording = useCallback(() => {
+        if (mediaRecorder.current?.state === 'recording') {
+            mediaRecorder.current.ondataavailable = null;
+            mediaRecorder.current.onstop = null;
+            mediaRecorder.current.stop();
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        }
+        chunks.current = [];
+        setRecording(false);
+    }, []);
+
+    const onKey = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
+        if (e.key === 'Escape') {
+            if (recording) cancelRecording();
+            else if (editingMessage) onCancelEdit();
+        }
+    };
+
+    const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+    // ── UI записи ──────────────────────────────────────
+    if (recording) {
+        return (
+            <div className="input-area">
+                <div className="input-bar recording-bar">
+                    <button className="icon-btn cancel-rec-btn" onClick={cancelRecording} title="Отменить">
+                        {Icon.x(20)}
+                    </button>
+
+                    <div className="rec-indicator">
+                        <span className="rec-dot" />
+                        <span className="rec-timer">{fmtTime(recTime)}</span>
+                    </div>
+
+                    <button className="send-btn" onClick={stopRecording} title="Отправить">
+                        {Icon.send(20)}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ── Обычный UI ─────────────────────────────────────
+    return (
+        <div className="input-area">
+            {editingMessage && (
+                <div className="edit-bar">
+                    <span className="edit-bar-icon">{Icon.edit(15)}</span>
+                    <div className="edit-bar-body">
+                        <span className="edit-bar-label">Редактирование</span>
+                        <span className="edit-bar-text">{editingMessage.text}</span>
+                    </div>
+                    <button className="icon-btn edit-bar-close" onClick={onCancelEdit}>
+                        {Icon.x(16)}
+                    </button>
+                </div>
+            )}
+
+            <div className="input-bar">
+                <button className="icon-btn attach-btn" onClick={onAttach} title="Прикрепить файл">
+                    {Icon.paperclip(21)}
+                </button>
+                <input
+                    className="msg-input"
+                    type="text"
+                    placeholder={editingMessage ? 'Редактировать сообщение...' : 'Написать сообщение...'}
+                    value={value}
+                    onChange={e => onChange(e.target.value)}
+                    onKeyDown={onKey}
+                    autoFocus
+                />
+                {value.trim() ? (
+                    <button className="send-btn" onClick={onSend} title="Отправить">
+                        {editingMessage ? Icon.check(20) : Icon.send(20)}
+                    </button>
+                ) : (
+                    <button className="icon-btn mic-btn" onClick={startRecording} title="Голосовое сообщение">
+                        {Icon.mic(21)}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/MessageBubble.tsx
+================================================================================
+import React from 'react';
+import type { LocalMessage } from '../../types';
+import { getAvatarColor, formatTime } from '../../utils';
+import { getFileUrl } from '../../api';
+import { MsgStatus } from '../ui/MsgStatus';
+import { AudioPlayer } from './AudioPlayer';
+
+interface Props {
+    message: LocalMessage;
+    isFirst: boolean;
+    isGroup: boolean;
+    onContextMenu: (e: React.MouseEvent) => void;
+}
+
+export function MessageBubble({ message, isFirst, isGroup, onContextMenu }: Props) {
+    const showAuthor = isGroup && !message.own && isFirst;
+    const isPending = message.status === 'pending';
+    const isVoice = message.attachment?.mime_type?.startsWith('audio/');
+    const hasText = message.content && message.content !== '🎤 Голосовое сообщение';
+
+    return (
+        <div
+            className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`}
+            onContextMenu={onContextMenu}
+        >
+            {showAuthor && (
+                <span className="msg-author" style={{ color: getAvatarColor(message.sender_name) }}>
+                    {message.sender_name}
+                </span>
+            )}
+            <div className={`msg-bubble ${isVoice && !hasText ? 'voice-bubble' : ''}`}>
+                {/* Текст (не показываем дефолтный текст голосовых) */}
+                {hasText && <span className="msg-text">{message.content}</span>}
+
+                {/* Аудиоплеер */}
+                {isVoice && message.attachment && (
+                    <AudioPlayer src={getFileUrl(message.attachment.id)} />
+                )}
+
+                <div className="msg-meta">
+                    {message.edited && <span className="msg-edited">ред.</span>}
+                    <span className="msg-time">{formatTime(message.created_at)}</span>
+                    {message.own && <MsgStatus status={message.status} />}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/NewChatModal.tsx
+================================================================================
+import React, { useState, useEffect } from 'react';
+import { Icon } from '../../icons';
+import { Avatar } from '../ui/Avatar';
+import type { UserDto } from '../../types';
+import { useUsers } from '../../hooks/useUsers';
+
+interface Props {
+    open: boolean;
+    onClose: () => void;
+    onCreate: (memberIds: string[], isGroup: boolean, name?: string) => Promise<any>;
+    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
+}
+
+export function NewChatModal({ open, onClose, onCreate, showToast }: Props) {
+    const [search, setSearch] = useState('');
+    const [selected, setSelected] = useState<UserDto[]>([]);
+    const [groupName, setGroupName] = useState('');
+    const [isGroup, setIsGroup] = useState(false);
+    const { users, loading, search: searchUsers } = useUsers();
+
+    useEffect(() => {
+        if (open) {
+            searchUsers();
+            setSearch('');
+            setSelected([]);
+            setGroupName('');
+            setIsGroup(false);
+        }
+    }, [open, searchUsers]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (search) searchUsers(search);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [search, searchUsers]);
+
+    if (!open) return null;
+
+    const toggleUser = (user: UserDto) => {
+        setSelected(prev =>
+            prev.some(u => u.id === user.id)
+                ? prev.filter(u => u.id !== user.id)
+                : [...prev, user]
+        );
+    };
+
+    const handleCreate = async () => {
+        if (selected.length === 0) return;
+        try {
+            await onCreate(
+                selected.map(u => u.id),
+                isGroup || selected.length > 1,
+                isGroup ? groupName || undefined : undefined,
+            );
+            onClose();
+            showToast('Чат создан', 'success');
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка создания чата', 'error');
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onMouseDown={onClose}>
+            <div className="modal-card modal-wide" onMouseDown={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>Новый чат</h3>
+                    <button className="icon-btn" onClick={onClose}>{Icon.x(18)}</button>
+                </div>
+
+                {/* Поиск */}
+                <div className="search-wrap" style={{ padding: '12px 0' }}>
+                    <span className="search-ico">{Icon.search(16)}</span>
+                    <input
+                        type="text"
+                        placeholder="Найти пользователя..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        autoFocus
+                    />
+                </div>
+
+                {/* Выбранные */}
+                {selected.length > 0 && (
+                    <div className="selected-users">
+                        {selected.map(u => (
+                            <div key={u.id} className="selected-chip" onClick={() => toggleUser(u)}>
+                                {u.display_name}
+                                <span style={{ marginLeft: 4, opacity: 0.6 }}>×</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Групповой чат */}
+                {selected.length > 1 && (
+                    <div className="field fade-in" style={{ margin: '8px 0' }}>
+                        <label>Название группы</label>
+                        <input
+                            type="text"
+                            placeholder="Название группы..."
+                            value={groupName}
+                            onChange={e => setGroupName(e.target.value)}
+                        />
+                    </div>
+                )}
+
+                {/* Список юзеров */}
+                <div className="user-list">
+                    {loading && <div className="chat-list-empty">Загрузка...</div>}
+                    {!loading && users.length === 0 && (
+                        <div className="chat-list-empty">Пользователи не найдены</div>
+                    )}
+                    {users.map(user => (
+                        <button
+                            key={user.id}
+                            className={`chat-item ${selected.some(u => u.id === user.id) ? 'active' : ''}`}
+                            onClick={() => toggleUser(user)}
+                        >
+                            <Avatar name={user.display_name} size={40} online={user.online} />
+                            <div className="chat-item-body">
+                                <span className="chat-item-name">{user.display_name}</span>
+                                <span className="chat-item-preview">@{user.username}</span>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="modal-actions">
+                    <button className="modal-btn-secondary" onClick={onClose}>Отмена</button>
+                    <button
+                        className="modal-btn-primary"
+                        onClick={handleCreate}
+                        disabled={selected.length === 0}
+                    >
+                        {selected.length > 1 ? 'Создать группу' : 'Начать чат'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/nav/NavRail.tsx
+================================================================================
+import React from 'react';
+import type { Tab } from '../../types';
+import { Icon } from '../../icons';
+
+interface Props {
+    tab: Tab;
+    onTab: (t: Tab) => void;
+    darkMode: boolean;
+    onToggleTheme: () => void;
+    onLogout: () => void;
+}
+
+const NAV_ITEMS: { id: Tab; icon: (s?: number) => JSX.Element }[] = [
+    { id: 'chats', icon: Icon.chat },
+    { id: 'calls', icon: Icon.phone },
+    { id: 'settings', icon: Icon.settings },
+];
+
+export function NavRail({ tab, onTab, darkMode, onToggleTheme, onLogout }: Props) {
+    return (
+        <nav className="nav-rail">
+            <div className="nav-rail-group">
+                {NAV_ITEMS.map(item => (
+                    <button
+                        key={item.id}
+                        className={`nav-btn ${tab === item.id ? 'active' : ''}`}
+                        onClick={() => onTab(item.id)}
+                        title={item.id}
+                    >
+                        <span className="nav-btn-indicator" />
+                        {item.icon(22)}
+                    </button>
+                ))}
+            </div>
+            <div className="nav-rail-group">
+                <button className="nav-btn" onClick={onToggleTheme} title="Тема">
+                    {darkMode ? Icon.sun(22) : Icon.moon(22)}
+                </button>
+                <button className="nav-btn" onClick={onLogout} title="Выйти">
+                    {Icon.logout(22)}
+                </button>
+            </div>
+        </nav>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/settings/SettingsView.tsx
+================================================================================
+import React, { useState } from 'react';
+import { Icon } from '../../icons';
+import { Avatar } from '../ui/Avatar';
+import * as api from '../../api';
+import type { UserDto } from '../../types';
+
+interface Props {
+    darkMode: boolean;
+    onToggleTheme: () => void;
+    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
+    user: UserDto | null;
+}
+
+export function SettingsView({ darkMode, onToggleTheme, showToast, user }: Props) {
+    const [inviteCode, setInviteCode] = useState<string | null>(null);
+    const [creatingInvite, setCreatingInvite] = useState(false);
+
+    const handleCreateInvite = async () => {
+        setCreatingInvite(true);
+        try {
+            const invite = await api.createInvite(48); // 48 часов
+            setInviteCode(invite.code);
+            showToast('Инвайт-код создан!', 'success');
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка создания инвайта', 'error');
+        } finally {
+            setCreatingInvite(false);
+        }
+    };
+
+    const copyInvite = () => {
+        if (inviteCode) {
+            navigator.clipboard.writeText(inviteCode);
+            showToast('Код скопирован в буфер обмена', 'success');
+        }
+    };
+
+    return (
+        <section className="settings-view">
+            <div className="settings-inner">
+                <h2 className="settings-title">Настройки</h2>
+
+                {/* Профиль */}
+                <div className="s-group">
+                    <div className="s-group-label">Профиль</div>
+                    <div className="s-profile">
+                        <Avatar name={user?.display_name || 'User'} size={56} />
+                        <div>
+                            <strong>{user?.display_name || 'User'}</strong>
+                            <span className="s-sub">@{user?.username || 'username'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Инвайты */}
+                <div className="s-group">
+                    <div className="s-group-label">Пригласить друга</div>
+
+                    {inviteCode ? (
+                        <div className="invite-result">
+                            <div className="invite-code">{inviteCode}</div>
+                            <button className="invite-copy-btn" onClick={copyInvite}>
+                                {Icon.copy(16)} Копировать
+                            </button>
+                            <button className="invite-new-btn" onClick={handleCreateInvite}>
+                                Создать новый
+                            </button>
+                            <p className="invite-hint">Действителен 48 часов. Одноразовый.</p>
+                        </div>
+                    ) : (
+                        <button className="s-row invite-create-btn" onClick={handleCreateInvite} disabled={creatingInvite}>
+                            <span className="s-row-left">
+                                {Icon.plus(19)} {creatingInvite ? 'Создаётся...' : 'Создать инвайт-код'}
+                            </span>
+                            <span className="s-arrow">→</span>
+                        </button>
+                    )}
+                </div>
+
+                {/* Внешний вид */}
+                <div className="s-group">
+                    <div className="s-group-label">Внешний вид</div>
+                    <button className="s-row" onClick={onToggleTheme}>
+                        <span className="s-row-left">
+                            {darkMode ? Icon.moon(19) : Icon.sun(19)}
+                            Тёмная тема
+                        </span>
+                        <span className={`toggle ${darkMode ? 'on' : ''}`}>
+                            <span className="toggle-dot" />
+                        </span>
+                    </button>
+                </div>
+
+                {/* Безопасность */}
+                <div className="s-group">
+                    <div className="s-group-label">Безопасность</div>
+                    <button className="s-row" onClick={() => showToast('Ключи шифрования — в разработке')}>
+                        <span className="s-row-left">{Icon.lock(19)} Ключи шифрования</span>
+                        <span className="s-arrow">→</span>
+                    </button>
+                    <button className="s-row" onClick={() => showToast('Верификация контактов — в разработке')}>
+                        <span className="s-row-left">{Icon.shield(19)} Верификация контактов</span>
+                        <span className="s-arrow">→</span>
+                    </button>
+                </div>
+
+                {/* О приложении */}
+                <div className="s-group">
+                    <div className="s-group-label">О приложении</div>
+                    <div className="s-row">
+                        <span className="s-row-left">Версия</span>
+                        <span className="s-sub">0.1.0-alpha</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/Avatar.tsx
+================================================================================
+import React from 'react';
+import { getInitials, getAvatarColor } from '../../utils';
+
+interface Props {
+    name: string;
+    size?: number;
+    online?: boolean;
+}
+
+export function Avatar({ name, size = 40, online }: Props) {
+    return (
+        <div
+            className="avatar"
+            style={{
+                width: size,
+                height: size,
+                minWidth: size,
+                backgroundColor: getAvatarColor(name),
+                fontSize: size * 0.36,
+                lineHeight: `${size}px`,
+            }}
+        >
+            {getInitials(name)}
+            {online !== undefined && (
+                <span
+                    className={`status-dot ${online ? 'online' : ''}`}
+                    style={{ width: size * 0.3, height: size * 0.3, borderWidth: size * 0.06 }}
+                />
+            )}
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/Badge.tsx
+================================================================================
+import React from 'react';
+
+export function Badge({ count }: { count: number }) {
+    if (!count) return null;
+    return <span className="badge">{count > 99 ? '99+' : count}</span>;
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/ContextMenu.tsx
+================================================================================
+import React from 'react';
+import type { ContextMenuItem } from '../../types';
+
+interface Props {
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+    onClose: () => void;
+}
+
+export function ContextMenu({ x, y, items, onClose }: Props) {
+    /* Сдвигаем если меню вылезает за экран */
+    const adjustedX = x + 180 > window.innerWidth ? x - 180 : x;
+    const adjustedY = y + items.length * 40 > window.innerHeight ? y - items.length * 40 : y;
+
+    return (
+        <>
+            <div className="context-backdrop" onMouseDown={onClose} />
+            <div
+                className="context-menu"
+                style={{ top: adjustedY, left: adjustedX }}
+            >
+                {items.map((item, i) => (
+                    <button
+                        key={i}
+                        className={`context-item ${item.danger ? 'danger' : ''}`}
+                        onClick={() => { item.onClick(); onClose(); }}
+                    >
+                        {item.icon && <span className="context-item-icon">{item.icon}</span>}
+                        {item.label}
+                    </button>
+                ))}
+            </div>
+        </>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/MsgStatus.tsx
+================================================================================
+import React from 'react';
+import { Icon } from '../../icons';
+
+export function MsgStatus({ status }: { status?: string }) {
+    if (!status) return null;
+    return (
+        <span className={`msg-status ${status === 'read' ? 'read' : ''}`}>
+            {status === 'sent' ? Icon.check(12) : Icon.checkDouble(12)}
+        </span>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/Toast.tsx
+================================================================================
+import React from 'react';
+import type { ToastData } from '../../types';
+
+export function ToastContainer({ toasts }: { toasts: ToastData[] }) {
+    if (!toasts.length) return null;
+
+    return (
+        <div className="toast-container">
+            {toasts.map(t => (
+                <div key={t.id} className={`toast toast-${t.type || 'info'}`}>
+                    {t.text}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/data.ts
+================================================================================
+import type { Chat } from './types';
+
+export const MOCK_CHATS: Chat[] = [
+    {
+        id: '1', name: 'Миша', group: false, online: true, unread: 2,
+        messages: [
+            { id: 'm1', author: 'Миша', text: 'Привет! Как мессенджер продвигается?', time: '14:32', own: false },
+            { id: 'm2', author: 'Ты', text: 'Потихоньку, UI рисую сейчас', time: '14:33', own: true, status: 'read' },
+            { id: 'm3', author: 'Миша', text: 'Красиво получается?', time: '14:33', own: false },
+            { id: 'm4', author: 'Ты', text: 'Сейчас переделываю, старый был страшный 😅', time: '14:35', own: true, status: 'delivered' },
+            { id: 'm5', author: 'Миша', text: 'Хахах, покажешь когда будет готово', time: '15:01', own: false },
+            { id: 'm6', author: 'Миша', text: 'Кстати, когда звонки будут?', time: '15:02', own: false },
+        ],
+    },
+    {
+        id: '2', name: 'Лёша', group: false, online: false, unread: 0,
+        messages: [
+            { id: 'l1', author: 'Лёша', text: 'Сделай тестовый билд когда будет готово', time: '12:15', own: false },
+            { id: 'l2', author: 'Ты', text: 'Окей, скину ссылку на скачивание', time: '12:20', own: true, status: 'read' },
+            { id: 'l3', author: 'Лёша', text: 'Супер, жду!', time: '12:21', own: false },
+        ],
+    },
+    {
+        id: '3', name: 'Группа курса', group: true, online: false, unread: 5,
+        messages: [
+            { id: 'g1', author: 'Аня', text: 'Кто идёт на пару завтра?', time: '09:45', own: false },
+            { id: 'g2', author: 'Дима', text: 'Я буду', time: '09:50', own: false },
+            { id: 'g3', author: 'Ты', text: 'Тоже приду наверное', time: '10:00', own: true, status: 'sent' },
+            { id: 'g4', author: 'Аня', text: 'Отлично! Захватите конспекты пожалуйста', time: '10:05', own: false },
+            { id: 'g5', author: 'Петя', text: 'Кто-нибудь делал домашку по матану?', time: '11:30', own: false },
+        ],
+    },
+    {
+        id: '4', name: 'Дима', group: false, online: true, unread: 0,
+        messages: [
+            { id: 'd1', author: 'Дима', text: 'Йо, приветствую в мессенджере!', time: 'Вчера', own: false },
+        ],
+    },
+];
+
+
+================================================================================
+FILE PATH: ./client/src/hooks/useAuth.ts
+================================================================================
+import { useState, useCallback, useEffect } from 'react';
+import type { UserDto } from '../types';
+import * as api from '../api';
+import { wsManager } from '../websocket';
+
+export function useAuth() {
+    const [user, setUser] = useState<UserDto | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // При старте — проверяем есть ли сохранённый токен
+    useEffect(() => {
+        const token = api.getToken();
+        if (token) {
+            api.getMe()
+                .then(u => {
+                    setUser(u);
+                    wsManager.connect();
+                })
+                .catch(() => {
+                    api.setToken(null);
+                })
+                .finally(() => setLoading(false));
+        } else {
+            setLoading(false);
+        }
+    }, []);
+
+    const login = useCallback(async (username: string, password: string) => {
+        setError(null);
+        try {
+            const res = await api.login(username, password);
+            setUser(res.user);
+            wsManager.connect();
+        } catch (e: any) {
+            setError(e.message || 'Ошибка входа');
+            throw e;
+        }
+    }, []);
+
+    const register = useCallback(async (
+        username: string,
+        password: string,
+        display_name: string,
+        invite_code?: string,
+    ) => {
+        setError(null);
+        try {
+            const res = await api.register(username, password, display_name, invite_code);
+            setUser(res.user);
+            wsManager.connect();
+        } catch (e: any) {
+            setError(e.message || 'Ошибка регистрации');
+            throw e;
+        }
+    }, []);
+
+    const logout = useCallback(() => {
+        api.logout();
+        wsManager.disconnect();
+        setUser(null);
+    }, []);
+
+    return { user, loading, error, login, register, logout };
+}
+
+
+================================================================================
+FILE PATH: ./client/src/hooks/useChats.ts
+================================================================================
+import { useState, useCallback, useEffect, useRef } from 'react';
+import type { LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto, UserDto } from '../types';
+import { formatTime, uid } from '../utils';
+import * as api from '../api';
+import { wsManager } from '../websocket';
+
+// ═══════════════════════════════════════════════════════════
+//  Конверторы
+// ═══════════════════════════════════════════════════════════
+
+function serverMsgToLocal(msg: MessageDto, currentUserId: string): LocalMessage {
+    return {
+        id: msg.id,
+        chat_id: msg.chat_id,
+        sender_id: msg.sender_id,
+        sender_name: msg.sender_name,
+        content: msg.content,
+        edited: msg.edited,
+        created_at: msg.created_at,
+        own: msg.sender_id === currentUserId,
+        status: 'delivered',
+        attachment: msg.attachment,
+    };
+}
+
+function buildPreview(dto: ChatDto, currentUserId: string): { text: string; time: string } {
+    const lm = dto.last_message;
+    if (!lm) return { text: '', time: '' };
+
+    const isOwn = lm.sender_id === currentUserId;
+    const prefix = dto.is_group && !isOwn
+        ? `${lm.sender_name}: `
+        : isOwn ? 'Вы: ' : '';
+
+    return {
+        text: prefix + lm.content,
+        time: formatTime(lm.created_at),
+    };
+}
+
+function chatDtoToLocal(dto: ChatDto, currentUserId: string): LocalChat {
+    const otherMembers = dto.members.filter(m => m.user_id !== currentUserId);
+    const name = dto.is_group
+        ? (dto.name || 'Групповой чат')
+        : (otherMembers[0]?.display_name || 'Чат');
+    const online = dto.is_group ? false : (otherMembers[0]?.online || false);
+    const preview = buildPreview(dto, currentUserId);
+
+    return {
+        id: dto.id,
+        is_group: dto.is_group,
+        name,
+        members: dto.members,
+        messages: [],
+        messagesLoaded: false,
+        unread_count: dto.unread_count,
+        online,
+        created_at: dto.created_at,
+        lastMessageText: preview.text,
+        lastMessageTime: preview.time,
+    };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  localStorage helpers
+// ═══════════════════════════════════════════════════════════
+
+function loadSelectedId(): string | null {
+    try { return localStorage.getItem('selected_chat_id'); } catch { return null; }
+}
+
+function saveSelectedId(id: string | null) {
+    try {
+        if (id) localStorage.setItem('selected_chat_id', id);
+        else localStorage.removeItem('selected_chat_id');
+    } catch { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Hook
+// ═══════════════════════════════════════════════════════════
+
+export function useChats(user: UserDto | null) {
+    const [chats, setChats] = useState<LocalChat[]>([]);
+    const [selectedId, setSelectedId] = useState<string | null>(loadSelectedId);
+    const [loadingChats, setLoadingChats] = useState(false);
+    const [loadingMessages, setLoadingMessages] = useState(false);
+
+    const loadingRef = useRef(false);
+    const currentUserId = user?.id || '';
+    const selectedIdRef = useRef(selectedId);
+    selectedIdRef.current = selectedId;
+
+    // ── Загрузка списка чатов ──────────────────────────────
+    const loadChats = useCallback(async () => {
+        if (!user || loadingRef.current) return;
+        loadingRef.current = true;
+        setLoadingChats(true);
+
+        try {
+            const serverChats = await api.getChats();
+            setChats(prev => {
+                const existingMap = new Map(prev.map(c => [c.id, c]));
+
+                return serverChats.map(dto => {
+                    const existing = existingMap.get(dto.id);
+                    const fresh = chatDtoToLocal(dto, currentUserId);
+
+                    if (existing && existing.messagesLoaded) {
+                        return {
+                            ...fresh,
+                            messages: existing.messages,
+                            messagesLoaded: true,
+                        };
+                    }
+                    return fresh;
+                });
+            });
+        } catch (e) {
+            console.error('Failed to load chats', e);
+        } finally {
+            setLoadingChats(false);
+            loadingRef.current = false;
+        }
+    }, [user, currentUserId]);
+
+    // ── Загрузка сообщений при выборе чата ──────────────────
+    const selectChat = useCallback(async (chatId: string) => {
+        setSelectedId(chatId);
+        saveSelectedId(chatId);
+
+        setChats(prev => prev.map(c =>
+            c.id !== chatId ? c : { ...c, unread_count: 0 }
+        ));
+
+        const chat = chats.find(c => c.id === chatId);
+        if (chat?.messagesLoaded) return;
+
+        setLoadingMessages(true);
+        try {
+            const msgs = await api.getMessages(chatId);
+            const localMsgs = msgs.map(m => serverMsgToLocal(m, currentUserId));
+
+            setChats(prev => prev.map(c =>
+                c.id !== chatId ? c : {
+                    ...c,
+                    messages: localMsgs,
+                    messagesLoaded: true,
+                    unread_count: 0,
+                }
+            ));
+        } catch (e) {
+            console.error('Failed to load messages', e);
+        } finally {
+            setLoadingMessages(false);
+        }
+    }, [currentUserId, chats]);
+
+    // ── Отправка текстового сообщения ───────────────────────
+    const sendMessage = useCallback((text: string) => {
+        if (!selectedId || !text.trim() || !user) return;
+
+        const trimmed = text.trim();
+        const clientId = uid();
+        const now = new Date().toISOString();
+
+        const pendingMsg: LocalMessage = {
+            id: clientId,
+            client_id: clientId,
+            chat_id: selectedId,
+            sender_id: user.id,
+            sender_name: user.display_name,
+            content: trimmed,
+            edited: false,
+            created_at: now,
+            own: true,
+            status: 'pending',
+        };
+
+        setChats(prev => prev.map(c =>
+            c.id !== selectedId ? c : {
+                ...c,
+                messages: [...c.messages, pendingMsg],
+                lastMessageText: 'Вы: ' + trimmed,
+                lastMessageTime: formatTime(now),
+            }
+        ));
+
+        const sent = wsManager.send({
+            type: 'send_message',
+            payload: { chat_id: selectedId, content: trimmed, client_id: clientId },
+        });
+
+        if (!sent) {
+            setChats(prev => prev.map(c =>
+                c.id !== selectedId ? c : {
+                    ...c,
+                    messages: c.messages.map(m =>
+                        m.client_id === clientId ? { ...m, status: 'sent' as const } : m
+                    ),
+                }
+            ));
+        }
+    }, [selectedId, user]);
+
+    // ── Отправка голосового сообщения ───────────────────────
+    const sendVoiceMessage = useCallback((chatId: string, attachmentId: string) => {
+        if (!user) return;
+
+        const clientId = uid();
+        const now = new Date().toISOString();
+
+        const pendingMsg: LocalMessage = {
+            id: clientId,
+            client_id: clientId,
+            chat_id: chatId,
+            sender_id: user.id,
+            sender_name: user.display_name,
+            content: '🎤 Голосовое сообщение',
+            edited: false,
+            created_at: now,
+            own: true,
+            status: 'pending',
+            attachment: {
+                id: attachmentId,
+                filename: 'voice',
+                mime_type: 'audio/webm',
+                size_bytes: 0,
+            },
+        };
+
+        setChats(prev => prev.map(c =>
+            c.id !== chatId ? c : {
+                ...c,
+                messages: [...c.messages, pendingMsg],
+                lastMessageText: 'Вы: 🎤 Голосовое сообщение',
+                lastMessageTime: formatTime(now),
+            }
+        ));
+
+        wsManager.send({
+            type: 'send_message',
+            payload: {
+                chat_id: chatId,
+                content: '🎤 Голосовое сообщение',
+                client_id: clientId,
+                attachment_id: attachmentId,
+            },
+        });
+    }, [user]);
+
+    // ── Редактирование ──────────────────────────────────────
+    const editMessage = useCallback((messageId: string, newText: string) => {
+        if (!newText.trim()) return;
+
+        setChats(prev => prev.map(c => ({
+            ...c,
+            messages: c.messages.map(m =>
+                m.id !== messageId ? m : { ...m, content: newText.trim(), edited: true }
+            ),
+        })));
+
+        wsManager.send({
+            type: 'edit_message',
+            payload: { message_id: messageId, new_content: newText.trim() },
+        });
+    }, []);
+
+    // ── Удаление ────────────────────────────────────────────
+    const deleteMessage = useCallback((messageId: string) => {
+        setChats(prev => prev.map(c => ({
+            ...c,
+            messages: c.messages.filter(m => m.id !== messageId),
+        })));
+
+        wsManager.send({
+            type: 'delete_message',
+            payload: { message_id: messageId },
+        });
+    }, []);
+
+    // ── Создание чата (с защитой от дубликатов) ─────────────
+    const createChat = useCallback(async (
+        memberIds: string[],
+        isGroup: boolean,
+        name?: string,
+    ) => {
+        try {
+            const newChat = await api.createChat(memberIds, isGroup, name);
+
+            setChats(prev => {
+                const exists = prev.find(c => c.id === newChat.id);
+                if (exists) return prev;
+                return [chatDtoToLocal(newChat, currentUserId), ...prev];
+            });
+
+            setSelectedId(newChat.id);
+            saveSelectedId(newChat.id);
+            return newChat;
+        } catch (e) {
+            console.error('Failed to create chat', e);
+            throw e;
+        }
+    }, [currentUserId]);
+
+    // ── WebSocket events ───────────────────────────────────
+    useEffect(() => {
+        if (!user) return;
+
+        const unsubscribe = wsManager.subscribe((msg: WsServerMsg) => {
+            switch (msg.type) {
+                case 'message_sent': {
+                    const { client_id, message } = msg.payload;
+                    setChats(prev => prev.map(c =>
+                        c.id !== message.chat_id ? c : {
+                            ...c,
+                            messages: c.messages.map(m =>
+                                m.client_id === client_id
+                                    ? { ...serverMsgToLocal(message, currentUserId), status: 'sent' as const }
+                                    : m
+                            ),
+                            lastMessageText: 'Вы: ' + message.content,
+                            lastMessageTime: formatTime(message.created_at),
+                        }
+                    ));
+                    break;
+                }
+
+                case 'new_message': {
+                    const { message } = msg.payload;
+
+                    setChats(prev => {
+                        const chatExists = prev.some(c => c.id === message.chat_id);
+                        if (!chatExists) {
+                            loadChats();
+                            return prev;
+                        }
+
+                        return prev.map(c => {
+                            if (c.id !== message.chat_id) return c;
+                            if (c.messages.some(m => m.id === message.id)) return c;
+
+                            const localMsg = serverMsgToLocal(message, currentUserId);
+                            const isSelected = selectedIdRef.current === c.id;
+                            const senderPrefix = c.is_group ? `${message.sender_name}: ` : '';
+
+                            return {
+                                ...c,
+                                messages: c.messagesLoaded ? [...c.messages, localMsg] : c.messages,
+                                unread_count: isSelected ? 0 : c.unread_count + 1,
+                                lastMessageText: senderPrefix + message.content,
+                                lastMessageTime: formatTime(message.created_at),
+                            };
+                        });
+                    });
+                    break;
+                }
+
+                case 'message_edited': {
+                    const { chat_id, message_id, new_content } = msg.payload;
+                    setChats(prev => prev.map(c =>
+                        c.id !== chat_id ? c : {
+                            ...c,
+                            messages: c.messages.map(m =>
+                                m.id !== message_id ? m : { ...m, content: new_content, edited: true }
+                            ),
+                        }
+                    ));
+                    break;
+                }
+
+                case 'message_deleted': {
+                    const { chat_id, message_id } = msg.payload;
+                    setChats(prev => prev.map(c =>
+                        c.id !== chat_id ? c : {
+                            ...c,
+                            messages: c.messages.filter(m => m.id !== message_id),
+                        }
+                    ));
+                    break;
+                }
+
+                case 'user_online': {
+                    const { user_id } = msg.payload;
+                    setChats(prev => prev.map(c => {
+                        if (c.is_group) return c;
+                        const isMember = c.members.some(m => m.user_id === user_id);
+                        return isMember ? { ...c, online: true } : c;
+                    }));
+                    break;
+                }
+
+                case 'user_offline': {
+                    const { user_id } = msg.payload;
+                    setChats(prev => prev.map(c => {
+                        if (c.is_group) return c;
+                        const isMember = c.members.some(m => m.user_id === user_id);
+                        return isMember ? { ...c, online: false } : c;
+                    }));
+                    break;
+                }
+
+                case 'error': {
+                    console.error('[WS] server error:', msg.payload.message);
+                    break;
+                }
+            }
+        });
+
+        return unsubscribe;
+    }, [user, currentUserId, loadChats]);
+
+    // ── При реконнекте WS — перезагружаем чаты ─────────────
+    useEffect(() => {
+        if (!user) return;
+
+        const unsubscribe = wsManager.onStatusChange((connected) => {
+            if (connected) {
+                console.log('[Chat] WS reconnected, reloading chats...');
+                loadChats();
+            }
+        });
+
+        return unsubscribe;
+    }, [user, loadChats]);
+
+    // ── Начальная загрузка ─────────────────────────────────
+    useEffect(() => {
+        if (user) {
+            loadChats();
+        } else {
+            setChats([]);
+            setSelectedId(null);
+        }
+    }, [user, loadChats]);
+
+    // ── Авто-выбор сохранённого чата ───────────────────────
+    useEffect(() => {
+        if (chats.length > 0 && selectedId) {
+            const exists = chats.some(c => c.id === selectedId);
+            if (exists) {
+                const chat = chats.find(c => c.id === selectedId);
+                if (chat && !chat.messagesLoaded) {
+                    selectChat(selectedId);
+                }
+            } else {
+                setSelectedId(null);
+                saveSelectedId(null);
+            }
+        }
+    }, [chats.length]);
+
+    const selectedChat = chats.find(c => c.id === selectedId) ?? null;
+
+    return {
+        chats,
+        selectedId,
+        selectedChat,
+        loadingChats,
+        loadingMessages,
+        selectChat,
+        sendMessage,
+        sendVoiceMessage,
+        editMessage,
+        deleteMessage,
+        createChat,
+        loadChats,
+    };
+}
+
+
+================================================================================
+FILE PATH: ./client/src/hooks/useToast.ts
+================================================================================
+import { useState, useCallback } from 'react';
+import type { ToastData } from '../types';
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+export function useToast() {
+    const [toasts, setToasts] = useState<ToastData[]>([]);
+
+    const showToast = useCallback((text: string, type: ToastData['type'] = 'info') => {
+        const id = uid();
+        setToasts(prev => [...prev, { id, text, type }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+    }, []);
+
+    return { toasts, showToast };
+}
+
+
+================================================================================
+FILE PATH: ./client/src/hooks/useUsers.ts
+================================================================================
+import { useState, useCallback } from 'react';
+import type { UserDto } from '../types';
+import * as api from '../api';
+
+export function useUsers() {
+    const [users, setUsers] = useState<UserDto[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    const search = useCallback(async (query?: string) => {
+        setLoading(true);
+        try {
+            const result = await api.searchUsers(query);
+            setUsers(result);
+        } catch (e) {
+            console.error('Failed to search users', e);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    return { users, loading, search };
+}
+
+
+================================================================================
+FILE PATH: ./client/src/icons.tsx
+================================================================================
+import React from 'react';
+
+/* Каждая иконка — функция, принимающая размер */
+
+export const Icon = {
+    chat: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+    ),
+
+    phone: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5
+        19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1
+        2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0
+        6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+        </svg>
+    ),
+
+    settings: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2
+        0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1
+        1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65
+        1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65
+        1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1
+        2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1
+        0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0
+        1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65
+        1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65
+        1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65
+        1.65 0 0 0-1.51 1z" />
+        </svg>
+    ),
+
+    send: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+        </svg>
+    ),
+
+    paperclip: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1
+        5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
+    ),
+
+    mic: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+    ),
+
+    search: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+    ),
+
+    shield: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+    ),
+
+    lock: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+    ),
+
+    check: (s = 13) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+        </svg>
+    ),
+
+    checkDouble: (s = 13) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="18 6 7 17 2 12" /><polyline points="22 10 13 19" />
+        </svg>
+    ),
+
+    moon: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+    ),
+
+    sun: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+    ),
+
+    users: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+    ),
+
+    plus: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    ),
+
+    logout: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+    ),
+
+    edit: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </svg>
+    ),
+
+    trash: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2
+        2 0 0 1 2 2v2" />
+        </svg>
+    ),
+
+    copy: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+    ),
+
+    x: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+    ),
+};
+
+
+================================================================================
+FILE PATH: ./client/src/main.rs
+================================================================================
+mod app;
+mod state;
+
+fn main() {
+    let options = eframe::NativeOptions::default();
+    let _ = eframe::run_native(
+        "Messenger",
+        options,
+        Box::new(|_cc| Box::new(app::MessengerApp::new())),
+    );
+}
+
+
+
+================================================================================
+FILE PATH: ./client/src/main.tsx
+================================================================================
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+
+
+================================================================================
+FILE PATH: ./client/src/state.rs
+================================================================================
+#[derive(Default)]
+pub struct AppState;
+
+
+
+================================================================================
+FILE PATH: ./client/src/types.ts
+================================================================================
+// ═══════════════════════════════════════════════════════════
+//  Серверные типы
+// ═══════════════════════════════════════════════════════════
+
+export interface UserDto {
+    id: string;
+    username: string;
+    display_name: string;
+    online: boolean;
+    last_seen: string;
+}
+
+export interface MessageDto {
+    id: string;
+    chat_id: string;
+    sender_id: string;
+    sender_name: string;
+    content: string;
+    edited: boolean;
+    created_at: string;
+    attachment?: AttachmentDto;
+}
+
+export interface ChatMemberDto {
+    user_id: string;
+    username: string;
+    display_name: string;
+    role: string;
+    online: boolean;
+}
+
+export interface ChatDto {
+    id: string;
+    is_group: boolean;
+    name: string | null;
+    members: ChatMemberDto[];
+    last_message: MessageDto | null;
+    unread_count: number;
+    created_at: string;
+}
+
+export interface InviteDto {
+    code: string;
+    created_at: string;
+    expires_at: string | null;
+    used: boolean;
+}
+
+export interface AuthRes {
+    token: string;
+    user: UserDto;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WebSocket типы
+// ═══════════════════════════════════════════════════════════
+
+export type WsServerMsg =
+    | { type: 'new_message'; payload: { message: MessageDto } }
+    | { type: 'message_sent'; payload: { client_id: string; message: MessageDto } }
+    | { type: 'message_edited'; payload: { chat_id: string; message_id: string; new_content: string } }
+    | { type: 'message_deleted'; payload: { chat_id: string; message_id: string } }
+    | { type: 'typing'; payload: { chat_id: string; user_id: string } }
+    | { type: 'stop_typing'; payload: { chat_id: string; user_id: string } }
+    | { type: 'messages_read'; payload: { chat_id: string; user_id: string; message_id: string } }
+    | { type: 'user_online'; payload: { user_id: string } }
+    | { type: 'user_offline'; payload: { user_id: string } }
+    | { type: 'error'; payload: { message: string } };
+
+export type WsClientMsg =
+    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string } }
+    | { type: 'edit_message'; payload: { message_id: string; new_content: string } }
+    | { type: 'delete_message'; payload: { message_id: string } }
+    | { type: 'typing'; payload: { chat_id: string } }
+    | { type: 'stop_typing'; payload: { chat_id: string } }
+    | { type: 'mark_read'; payload: { chat_id: string; message_id: string } };
+
+// ═══════════════════════════════════════════════════════════
+//  Локальные UI типы
+// ═══════════════════════════════════════════════════════════
+
+export type View = 'auth' | 'main';
+export type Tab = 'chats' | 'calls' | 'settings';
+export type AuthTab = 'login' | 'register';
+
+export interface LocalMessage {
+    id: string;
+    client_id?: string;
+    chat_id: string;
+    sender_id: string;
+    sender_name: string;
+    content: string;
+    edited: boolean;
+    created_at: string;
+    own: boolean;
+    status: 'pending' | 'sent' | 'delivered' | 'read';
+    attachment?: AttachmentDto;
+}
+
+export interface LocalChat {
+    id: string;
+    is_group: boolean;
+    name: string;
+    members: ChatMemberDto[];
+    messages: LocalMessage[];
+    messagesLoaded: boolean;           // ← НОВОЕ: загружены ли сообщения
+    unread_count: number;
+    online: boolean;
+    created_at: string;
+    // Превью для списка чатов (до загрузки сообщений)
+    lastMessageText: string;           // ← НОВОЕ
+    lastMessageTime: string;           // ← НОВОЕ
+}
+
+export interface ToastData {
+    id: string;
+    text: string;
+    type?: 'info' | 'success' | 'error';
+}
+
+export interface ContextMenuItem {
+    label: string;
+    icon?: JSX.Element;
+    danger?: boolean;
+    onClick: () => void;
+}
+
+export interface AttachmentDto {
+    id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+}
+
+
+================================================================================
+FILE PATH: ./client/src/utils.ts
+================================================================================
+import type { LocalChat, LocalMessage } from './types';
+
+export const uid = () => Math.random().toString(36).slice(2, 10);
+
+const AVATAR_COLORS = [
+    '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71',
+    '#1abc9c', '#3498db', '#9b59b6', '#e91e8a',
+];
+
+export const getInitials = (name: string) =>
+    name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+export const getAvatarColor = (name: string) => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+    return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+};
+
+export const getNow = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+export function formatTime(iso: string): string {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        if (isToday) {
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (d.toDateString() === yesterday.toDateString()) {
+            return 'Вчера';
+        }
+        return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+    } catch {
+        return '';
+    }
+}
+
+/** Получить превью последнего сообщения для списка чатов */
+export function getChatPreview(chat: LocalChat): { text: string; time: string } {
+    // Если сообщения загружены — берём из них
+    if (chat.messages.length > 0) {
+        const m = chat.messages[chat.messages.length - 1];
+        const prefix = chat.is_group && !m.own
+            ? `${m.sender_name}: `
+            : m.own ? 'Вы: ' : '';
+        const full = prefix + m.content;
+        return {
+            text: full.length > 42 ? full.slice(0, 42) + '…' : full,
+            time: formatTime(m.created_at),
+        };
+    }
+
+    // Иначе — из серверного превью
+    if (chat.lastMessageText) {
+        return {
+            text: chat.lastMessageText.length > 42
+                ? chat.lastMessageText.slice(0, 42) + '…'
+                : chat.lastMessageText,
+            time: chat.lastMessageTime,
+        };
+    }
+
+    return { text: 'Нет сообщений', time: '' };
+}
+
+
+================================================================================
+FILE PATH: ./client/src/websocket.ts
+================================================================================
+import type { WsClientMsg, WsServerMsg } from './types';
+import { getToken, WS_URL } from './api';
+
+type WsListener = (msg: WsServerMsg) => void;
+type StatusListener = (connected: boolean) => void;
+
+class WebSocketManager {
+    private ws: WebSocket | null = null;
+    private listeners: Set<WsListener> = new Set();
+    private statusListeners: Set<StatusListener> = new Set();
+    private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private reconnectDelay = 1000;
+    private maxReconnectDelay = 30000;
+    private shouldReconnect = false;
+    private _connected = false;
+
+    connect() {
+        const token = getToken();
+        if (!token) return;
+
+        this.shouldReconnect = true;
+        this.cleanup();
+
+        const url = `${WS_URL}?token=${encodeURIComponent(token)}`;
+        console.log('[WS] connecting...');
+
+        try {
+            this.ws = new WebSocket(url);
+        } catch (e) {
+            console.error('[WS] failed to create', e);
+            this.scheduleReconnect();
+            return;
+        }
+
+        this.ws.onopen = () => {
+            console.log('[WS] connected');
+            this.reconnectDelay = 1000;
+            this._connected = true;
+            this.notifyStatus(true);
+        };
+
+        this.ws.onmessage = (event) => {
+            try {
+                const msg: WsServerMsg = JSON.parse(event.data);
+                this.listeners.forEach(fn => fn(msg));
+            } catch (e) {
+                console.error('[WS] parse error', e);
+            }
+        };
+
+        this.ws.onclose = (event) => {
+            console.log('[WS] closed', event.code, event.reason);
+            this._connected = false;
+            this.notifyStatus(false);
+            if (this.shouldReconnect) {
+                this.scheduleReconnect();
+            }
+        };
+
+        this.ws.onerror = () => {
+            console.error('[WS] error');
+        };
+    }
+
+    disconnect() {
+        this.shouldReconnect = false;
+        this._connected = false;
+        this.cleanup();
+        this.notifyStatus(false);
+    }
+
+    send(msg: WsClientMsg): boolean {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(msg));
+            return true;
+        }
+        console.warn('[WS] not connected, message dropped');
+        return false;
+    }
+
+    subscribe(fn: WsListener): () => void {
+        this.listeners.add(fn);
+        return () => this.listeners.delete(fn);
+    }
+
+    /** Подписка на изменение статуса соединения */
+    onStatusChange(fn: StatusListener): () => void {
+        this.statusListeners.add(fn);
+        return () => this.statusListeners.delete(fn);
+    }
+
+    get connected(): boolean {
+        return this._connected;
+    }
+
+    private notifyStatus(connected: boolean) {
+        this.statusListeners.forEach(fn => fn(connected));
+    }
+
+    private cleanup() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.onopen = null;
+            this.ws.onmessage = null;
+            this.ws.onclose = null;
+            this.ws.onerror = null;
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                this.ws.close();
+            }
+            this.ws = null;
+        }
+    }
+
+    private scheduleReconnect() {
+        if (this.reconnectTimer) return;
+        console.log(`[WS] reconnecting in ${this.reconnectDelay}ms...`);
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.connect();
+        }, this.reconnectDelay);
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+    }
+}
+
+export const wsManager = new WebSocketManager();
+
+
+================================================================================
+FILE PATH: ./client/src-tauri/build.rs
+================================================================================
+fn main() {
+    tauri_build::build();
+}
+
+
+
+================================================================================
+FILE PATH: ./client/src-tauri/Cargo.toml
+================================================================================
+[workspace]
+
+[package]
+name = "client-ui"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = []
+
+
+
+================================================================================
+FILE PATH: ./client/src-tauri/src/main.rs
+================================================================================
+fn main() {
+    tauri::Builder::default()
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+
+
+================================================================================
+FILE PATH: ./client/vite.config.ts
+================================================================================
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    strictPort: true,
+    port: 5173,
+  },
+});
+
+
+
+================================================================================
+FILE PATH: ./server/Cargo.toml
+================================================================================
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared = { path = "../shared" }
+
+axum = { version = "0.7", features = ["ws", "multipart"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "fs"] }
+tower-http = { version = "0.5", features = ["cors"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+sqlx = { version = "0.7", features = [
+    "runtime-tokio-rustls", "postgres",
+    "uuid", "chrono", "json", "migrate"
+] }
+
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand = "0.8"
+
+uuid = { version = "1", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+futures = "0.3"
+dotenvy = "0.15"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+
+================================================================================
+FILE PATH: ./server/migrations/0001_init.sql
+================================================================================
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ═══ Пользователи ═══
+CREATE TABLE users (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username      VARCHAR(32) UNIQUE NOT NULL,
+    display_name  VARCHAR(64) NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ═══ Инвайты ═══
+CREATE TABLE invites (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code        VARCHAR(32) UNIQUE NOT NULL,
+    created_by  UUID NOT NULL REFERENCES users(id),
+    used_by     UUID REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at  TIMESTAMPTZ,
+    used        BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- ═══ Чаты ═══
+CREATE TABLE chats (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    is_group    BOOLEAN NOT NULL DEFAULT FALSE,
+    name        VARCHAR(64),
+    created_by  UUID NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ═══ Участники чатов ═══
+CREATE TABLE chat_members (
+    chat_id   UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role      VARCHAR(16) NOT NULL DEFAULT 'member',
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (chat_id, user_id)
+);
+
+-- ═══ Сообщения ═══
+CREATE TABLE messages (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id    UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    sender_id  UUID NOT NULL REFERENCES users(id),
+    content    TEXT NOT NULL,
+    edited     BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ═══ Индексы ═══
+CREATE INDEX idx_messages_chat       ON messages(chat_id, created_at DESC);
+CREATE INDEX idx_chat_members_user   ON chat_members(user_id);
+CREATE INDEX idx_invites_code        ON invites(code) WHERE NOT used;
+
+
+================================================================================
+FILE PATH: ./server/migrations/0002_attachments.sql
+================================================================================
+CREATE TABLE attachments (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    uploader_id UUID NOT NULL REFERENCES users(id),
+    filename    TEXT NOT NULL,
+    mime_type   VARCHAR(128) NOT NULL,
+    size_bytes  BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE messages ADD COLUMN attachment_id UUID REFERENCES attachments(id);
+
+
+================================================================================
+FILE PATH: ./server/src/api/auth.rs
+================================================================================
+use axum::{extract::State, Json};
+use chrono::Utc;
+use shared::{AuthRes, LoginReq, RegisterReq, UserDto};
+use uuid::Uuid;
+
+use crate::{
+    api::AuthUser,
+    crypto::{jwt, password},
+    error::AppError,
+    models,
+    state::AppState,
+};
+
+/// POST /api/auth/register
+pub async fn register(
+    State(state): State<AppState>,
+    Json(req): Json<RegisterReq>,
+) -> Result<Json<AuthRes>, AppError> {
+    // ── Валидация ─────────────────────────────────────────
+    if req.username.len() < 3 || req.username.len() > 32 {
+        return Err(AppError::BadRequest("username: 3‑32 символов".into()));
+    }
+    if req.password.len() < 6 {
+        return Err(AppError::BadRequest("пароль: минимум 6 символов".into()));
+    }
+    if req.display_name.is_empty() || req.display_name.len() > 64 {
+        return Err(AppError::BadRequest("display_name: 1‑64 символов".into()));
+    }
+
+    // ── Первый юзер — не нужен инвайт ─────────────────────
+    let (user_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM users")
+            .fetch_one(&state.db)
+            .await?;
+
+    if user_count > 0 {
+        let code = req
+            .invite_code
+            .as_deref()
+            .ok_or_else(|| AppError::BadRequest("нужен инвайт‑код".into()))?;
+
+        let inv: Option<models::Invite> =
+            sqlx::query_as("SELECT * FROM invites WHERE code = $1")
+                .bind(code)
+                .fetch_optional(&state.db)
+                .await?;
+
+        let inv = inv.ok_or_else(|| AppError::BadRequest("неверный инвайт‑код".into()))?;
+
+        if inv.used {
+            return Err(AppError::BadRequest("инвайт уже использован".into()));
+        }
+        if inv.expires_at.map_or(false, |exp| exp < Utc::now()) {
+            return Err(AppError::BadRequest("инвайт истёк".into()));
+        }
+    }
+
+    // ── Уникальность username ─────────────────────────────
+    let (exists,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM users WHERE username = $1")
+            .bind(&req.username)
+            .fetch_one(&state.db)
+            .await?;
+
+    if exists > 0 {
+        return Err(AppError::Conflict("username уже занят".into()));
+    }
+
+    // ── Создание юзера ────────────────────────────────────
+    let user_id = Uuid::new_v4();
+    let hash = password::hash(&req.password)?;
+    let now = Utc::now();
+
+    sqlx::query(
+        "INSERT INTO users (id, username, display_name, password_hash, created_at, last_seen)
+         VALUES ($1, $2, $3, $4, $5, $5)",
+    )
+    .bind(user_id)
+    .bind(&req.username)
+    .bind(&req.display_name)
+    .bind(&hash)
+    .bind(now)
+    .execute(&state.db)
+    .await?;
+
+    // ── Пометить инвайт как использованный ────────────────
+    if let Some(code) = &req.invite_code {
+        sqlx::query("UPDATE invites SET used = TRUE, used_by = $1 WHERE code = $2")
+            .bind(user_id)
+            .bind(code)
+            .execute(&state.db)
+            .await?;
+    }
+
+    // ── JWT ───────────────────────────────────────────────
+    let token = jwt::create_token(
+        user_id,
+        &req.username,
+        &state.config.jwt_secret,
+        state.config.jwt_expiry_hours,
+    )?;
+
+    Ok(Json(AuthRes {
+        token,
+        user: UserDto {
+            id: user_id,
+            username: req.username,
+            display_name: req.display_name,
+            online: true,
+            last_seen: now,
+        },
+    }))
+}
+
+/// POST /api/auth/login
+pub async fn login(
+    State(state): State<AppState>,
+    Json(req): Json<LoginReq>,
+) -> Result<Json<AuthRes>, AppError> {
+    let user: models::User =
+        sqlx::query_as("SELECT * FROM users WHERE username = $1")
+            .bind(&req.username)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("неверные данные".into()))?;
+
+    if !password::verify(&req.password, &user.password_hash)? {
+        return Err(AppError::Unauthorized("неверные данные".into()));
+    }
+
+    sqlx::query("UPDATE users SET last_seen = NOW() WHERE id = $1")
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+
+    let token = jwt::create_token(
+        user.id,
+        &user.username,
+        &state.config.jwt_secret,
+        state.config.jwt_expiry_hours,
+    )?;
+
+    Ok(Json(AuthRes {
+        token,
+        user: UserDto {
+            id: user.id,
+            username: user.username,
+            display_name: user.display_name,
+            online: true,
+            last_seen: Utc::now(),
+        },
+    }))
+}
+
+/// GET /api/auth/me
+pub async fn me(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<UserDto>, AppError> {
+    let user: models::User =
+        sqlx::query_as("SELECT * FROM users WHERE id = $1")
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    Ok(Json(UserDto {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        online: state.is_online(&user.id).await,
+        last_seen: user.last_seen,
+    }))
+}
+
+
+================================================================================
+FILE PATH: ./server/src/api/chats.rs
+================================================================================
+use axum::{
+    extract::{Path, State},
+    Json,
+};
+use shared::{AttachmentDto, ChatDto, ChatMemberDto, MessageDto};
+use uuid::Uuid;
+
+use crate::{api::AuthUser, error::AppError, models, state::AppState};
+
+/// POST /api/chats
+pub async fn create(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<shared::CreateChatReq>,
+) -> Result<Json<ChatDto>, AppError> {
+    if req.member_ids.is_empty() {
+        return Err(AppError::BadRequest("нужен хотя бы 1 участник".into()));
+    }
+
+    if !req.is_group && req.member_ids.len() == 1 {
+        let other = req.member_ids[0];
+        let existing: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT c.id FROM chats c
+             JOIN chat_members a ON a.chat_id = c.id AND a.user_id = $1
+             JOIN chat_members b ON b.chat_id = c.id AND b.user_id = $2
+             WHERE c.is_group = FALSE LIMIT 1",
+        )
+        .bind(auth.user_id)
+        .bind(other)
+        .fetch_optional(&state.db)
+        .await?;
+
+        if let Some((chat_id,)) = existing {
+            return chat_dto(&state, chat_id).await.map(Json);
+        }
+    }
+
+    let chat_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO chats (id, is_group, name, created_by) VALUES ($1,$2,$3,$4)")
+        .bind(chat_id)
+        .bind(req.is_group)
+        .bind(&req.name)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    sqlx::query("INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'owner')")
+        .bind(chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    for &uid in &req.member_ids {
+        if uid != auth.user_id {
+            sqlx::query(
+                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member') ON CONFLICT DO NOTHING",
+            )
+            .bind(chat_id)
+            .bind(uid)
+            .execute(&state.db)
+            .await?;
+        }
+    }
+
+    chat_dto(&state, chat_id).await.map(Json)
+}
+
+pub async fn list(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<ChatDto>>, AppError> {
+    let ids: Vec<(Uuid,)> = sqlx::query_as("SELECT chat_id FROM chat_members WHERE user_id = $1")
+        .bind(auth.user_id)
+        .fetch_all(&state.db)
+        .await?;
+
+    let mut chats = Vec::new();
+    for (cid,) in ids {
+        chats.push(chat_dto(&state, cid).await?);
+    }
+
+    chats.sort_by(|a, b| {
+        let ta = a.last_message.as_ref().map(|m| m.created_at);
+        let tb = b.last_message.as_ref().map(|m| m.created_at);
+        tb.cmp(&ta)
+    });
+
+    Ok(Json(chats))
+}
+
+pub async fn get(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<ChatDto>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+    chat_dto(&state, chat_id).await.map(Json)
+}
+
+async fn ensure_member(state: &AppState, chat_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
+            .bind(chat_id)
+            .bind(user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if n == 0 {
+        Err(AppError::Forbidden("не участник чата".into()))
+    } else {
+        Ok(())
+    }
+}
+
+async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> {
+    let chat: models::Chat = sqlx::query_as("SELECT * FROM chats WHERE id = $1")
+        .bind(chat_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    let rows: Vec<(Uuid, String, String, String)> = sqlx::query_as(
+        "SELECT u.id, u.username, u.display_name, cm.role
+         FROM chat_members cm JOIN users u ON u.id = cm.user_id
+         WHERE cm.chat_id = $1",
+    )
+    .bind(chat_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut members = Vec::new();
+    for (uid, uname, dname, role) in &rows {
+        members.push(ChatMemberDto {
+            user_id: *uid,
+            username: uname.clone(),
+            display_name: dname.clone(),
+            role: role.clone(),
+            online: state.is_online(uid).await,
+        });
+    }
+
+    // Последнее сообщение с аттачментом
+    type LastRow = (
+        Uuid,
+        Uuid,
+        String,
+        String,
+        bool,
+        chrono::DateTime<chrono::Utc>,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+    );
+
+    let last: Option<LastRow> = sqlx::query_as(
+        "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
+                a.id, a.filename, a.mime_type, a.size_bytes
+         FROM messages m
+         JOIN users u ON u.id = m.sender_id
+         LEFT JOIN attachments a ON a.id = m.attachment_id
+         WHERE m.chat_id = $1
+         ORDER BY m.created_at DESC LIMIT 1",
+    )
+    .bind(chat_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let last_message = last.map(
+        |(id, sid, sname, content, edited, at, att_id, att_fn, att_mime, att_size)| {
+            let attachment = att_id.map(|aid| AttachmentDto {
+                id: aid,
+                filename: att_fn.unwrap_or_default(),
+                mime_type: att_mime.unwrap_or_default(),
+                size_bytes: att_size.unwrap_or(0),
+            });
+            MessageDto {
+                id,
+                chat_id,
+                sender_id: sid,
+                sender_name: sname,
+                content,
+                edited,
+                created_at: at,
+                attachment,
+            }
+        },
+    );
+
+    Ok(ChatDto {
+        id: chat.id,
+        is_group: chat.is_group,
+        name: chat.name,
+        members,
+        last_message,
+        unread_count: 0,
+        created_at: chat.created_at,
+    })
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/api/files.rs
+================================================================================
+use axum::{
+    body::Body,
+    extract::{Multipart, Path, State},
+    http::header,
+    response::Response,
+    Json,
+};
+use shared::AttachmentDto;
+use uuid::Uuid;
+
+use crate::{api::AuthUser, error::AppError, state::AppState};
+
+const MAX_FILE_SIZE: usize = 25 * 1024 * 1024; // 25MB
+
+/// POST /api/upload
+pub async fn upload(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    mut multipart: Multipart,
+) -> Result<Json<AttachmentDto>, AppError> {
+    while let Some(field) = multipart.next_field().await? {
+        if field.name() != Some("file") {
+            continue;
+        }
+
+        let filename = field.file_name().unwrap_or("file").to_string();
+        let mime = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let data = field.bytes().await?;
+
+        if data.len() > MAX_FILE_SIZE {
+            return Err(AppError::BadRequest(
+                "файл слишком большой (макс 25MB)".into(),
+            ));
+        }
+
+        if data.is_empty() {
+            return Err(AppError::BadRequest("пустой файл".into()));
+        }
+
+        let att_id = Uuid::new_v4();
+        let path = format!("{}/{}", state.config.upload_dir, att_id);
+
+        tokio::fs::write(&path, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("write file: {e}")))?;
+
+        let size = data.len() as i64;
+
+        sqlx::query(
+            "INSERT INTO attachments (id, uploader_id, filename, mime_type, size_bytes)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(att_id)
+        .bind(auth.user_id)
+        .bind(&filename)
+        .bind(&mime)
+        .bind(size)
+        .execute(&state.db)
+        .await?;
+
+        tracing::info!(%att_id, %filename, size, "file uploaded");
+
+        return Ok(Json(AttachmentDto {
+            id: att_id,
+            filename,
+            mime_type: mime,
+            size_bytes: size,
+        }));
+    }
+
+    Err(AppError::BadRequest("no file in request".into()))
+}
+
+/// GET /api/files/:file_id — без авторизации (UUID = capability token)
+pub async fn download(
+    State(state): State<AppState>,
+    Path(file_id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    let row: Option<(String, i64)> =
+        sqlx::query_as("SELECT mime_type, size_bytes FROM attachments WHERE id = $1")
+            .bind(file_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let (mime, size) = row.ok_or_else(|| AppError::NotFound("file not found".into()))?;
+
+    let path = format!("{}/{}", state.config.upload_dir, file_id);
+    let data = tokio::fs::read(&path)
+        .await
+        .map_err(|e| AppError::NotFound(format!("file missing: {e}")))?;
+
+    Response::builder()
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::CONTENT_LENGTH, size)
+        .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
+        .body(Body::from(data))
+        .map_err(|e| AppError::Internal(format!("response: {e}")))
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/api/invites.rs
+================================================================================
+use axum::{extract::State, Json};
+use chrono::{Duration, Utc};
+use rand::Rng;
+use shared::{CreateInviteReq, InviteDto};
+
+use crate::{api::AuthUser, error::AppError, models, state::AppState};
+
+fn gen_code() -> String {
+    const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut rng = rand::thread_rng();
+    (0..8)
+        .map(|_| CHARS[rng.gen_range(0..CHARS.len())] as char)
+        .collect()
+}
+
+/// POST /api/invites
+pub async fn create(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<CreateInviteReq>,
+) -> Result<Json<InviteDto>, AppError> {
+    let code = gen_code();
+    let expires_at = req
+        .expires_in_hours
+        .map(|h| Utc::now() + Duration::hours(h));
+
+    sqlx::query(
+        "INSERT INTO invites (code, created_by, expires_at) VALUES ($1,$2,$3)",
+    )
+    .bind(&code)
+    .bind(auth.user_id)
+    .bind(expires_at)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(InviteDto {
+        code,
+        created_at: Utc::now(),
+        expires_at,
+        used: false,
+    }))
+}
+
+/// GET /api/invites
+pub async fn list(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<InviteDto>>, AppError> {
+    let rows: Vec<models::Invite> = sqlx::query_as(
+        "SELECT * FROM invites WHERE created_by = $1 ORDER BY created_at DESC",
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|i| InviteDto {
+                code: i.code,
+                created_at: i.created_at,
+                expires_at: i.expires_at,
+                used: i.used,
+            })
+            .collect(),
+    ))
+}
+
+
+================================================================================
+FILE PATH: ./server/src/api/messages.rs
+================================================================================
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use serde::Deserialize;
+use shared::{AttachmentDto, MessageDto};
+use uuid::Uuid;
+
+use crate::{api::AuthUser, error::AppError, state::AppState};
+
+#[derive(Deserialize)]
+pub struct Params {
+    pub limit: Option<i64>,
+    pub before: Option<Uuid>,
+}
+
+/// GET /api/chats/:chat_id/messages
+pub async fn list(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    Query(p): Query<Params>,
+) -> Result<Json<Vec<MessageDto>>, AppError> {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if n == 0 {
+        return Err(AppError::Forbidden("не участник чата".into()));
+    }
+
+    let limit = p.limit.unwrap_or(50).min(200);
+
+    type Row = (
+        Uuid,
+        Uuid,
+        String,
+        String,
+        bool,
+        chrono::DateTime<chrono::Utc>,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+    );
+
+    let rows: Vec<Row> = if let Some(before_id) = p.before {
+        sqlx::query_as(
+            "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
+                    a.id, a.filename, a.mime_type, a.size_bytes
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             LEFT JOIN attachments a ON a.id = m.attachment_id
+             WHERE m.chat_id = $1
+               AND m.created_at < (SELECT created_at FROM messages WHERE id = $2)
+             ORDER BY m.created_at DESC
+             LIMIT $3",
+        )
+        .bind(chat_id)
+        .bind(before_id)
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
+                    a.id, a.filename, a.mime_type, a.size_bytes
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             LEFT JOIN attachments a ON a.id = m.attachment_id
+             WHERE m.chat_id = $1
+             ORDER BY m.created_at DESC
+             LIMIT $2",
+        )
+        .bind(chat_id)
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    let mut msgs: Vec<MessageDto> = rows
+        .into_iter()
+        .map(
+            |(id, sid, sname, content, edited, at, att_id, att_fn, att_mime, att_size)| {
+                let attachment = att_id.map(|aid| AttachmentDto {
+                    id: aid,
+                    filename: att_fn.unwrap_or_default(),
+                    mime_type: att_mime.unwrap_or_default(),
+                    size_bytes: att_size.unwrap_or(0),
+                });
+                MessageDto {
+                    id,
+                    chat_id,
+                    sender_id: sid,
+                    sender_name: sname,
+                    content,
+                    edited,
+                    created_at: at,
+                    attachment,
+                }
+            },
+        )
+        .collect();
+
+    msgs.reverse();
+    Ok(Json(msgs))
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/api/mod.rs
+================================================================================
+pub mod auth;
+pub mod chats;
+pub mod files;
+pub mod invites;
+pub mod messages;
+pub mod users;
+
+use axum::{
+    extract::FromRequestParts,
+    http::{header::AUTHORIZATION, request::Parts},
+};
+use uuid::Uuid;
+
+use crate::{crypto::jwt, error::AppError, state::AppState};
+
+pub struct AuthUser {
+    pub user_id: Uuid,
+    #[allow(dead_code)]
+    pub username: String,
+}
+
+#[axum::async_trait]
+impl FromRequestParts<AppState> for AuthUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let header = parts
+            .headers
+            .get(AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| AppError::Unauthorized("missing authorization".into()))?;
+
+        let token = header
+            .strip_prefix("Bearer ")
+            .ok_or_else(|| AppError::Unauthorized("invalid auth format".into()))?;
+
+        let claims = jwt::validate_token(token, &state.config.jwt_secret)?;
+
+        Ok(Self {
+            user_id: claims.sub,
+            username: claims.username,
+        })
+    }
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/api/users.rs
+================================================================================
+use axum::{extract::{Query, State}, Json};
+use serde::Deserialize;
+use shared::UserDto;
+
+use crate::{api::AuthUser, error::AppError, models, state::AppState};
+
+#[derive(Deserialize)]
+pub struct SearchParams {
+    pub q: Option<String>,
+}
+
+/// GET /api/users?q=...
+pub async fn search(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(params): Query<SearchParams>,
+) -> Result<Json<Vec<UserDto>>, AppError> {
+    let users: Vec<models::User> = if let Some(ref q) = params.q {
+        let pattern = format!("%{}%", q.to_lowercase());
+        sqlx::query_as(
+            "SELECT * FROM users
+             WHERE (LOWER(username) LIKE $1 OR LOWER(display_name) LIKE $1)
+               AND id != $2
+             ORDER BY username LIMIT 50",
+        )
+        .bind(&pattern)
+        .bind(auth.user_id)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT * FROM users WHERE id != $1 ORDER BY username LIMIT 50",
+        )
+        .bind(auth.user_id)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    let mut out = Vec::with_capacity(users.len());
+    for u in users {
+        out.push(UserDto {
+            id: u.id,
+            username: u.username,
+            display_name: u.display_name,
+            online: state.is_online(&u.id).await,
+            last_seen: u.last_seen,
+        });
+    }
+    Ok(Json(out))
+}
+
+
+================================================================================
+FILE PATH: ./server/src/app.rs
+================================================================================
+use axum::http::{HeaderName, Method};
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use tower_http::cors::{Any, CorsLayer};
+
+use crate::{api, state::AppState, ws};
+
+pub fn create_app(state: AppState) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            HeaderName::from_static("content-type"),
+            HeaderName::from_static("authorization"),
+        ]);
+
+    let api = Router::new()
+        .route("/auth/register", post(api::auth::register))
+        .route("/auth/login", post(api::auth::login))
+        .route("/auth/me", get(api::auth::me))
+        .route("/users", get(api::users::search))
+        .route("/chats", get(api::chats::list).post(api::chats::create))
+        .route("/chats/:chat_id", get(api::chats::get))
+        .route("/chats/:chat_id/messages", get(api::messages::list))
+        .route(
+            "/invites",
+            get(api::invites::list).post(api::invites::create),
+        )
+        // Files
+        .route("/upload", post(api::files::upload))
+        .route("/files/:file_id", get(api::files::download));
+
+    Router::new()
+        .route("/health", get(health))
+        .route("/ws", get(ws::upgrade))
+        .nest("/api", api)
+        .layer(cors)
+        .with_state(state)
+}
+
+async fn health() -> &'static str {
+    "ok"
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/config.rs
+================================================================================
+use std::env;
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub bind_addr: String,
+    pub database_url: String,
+    pub jwt_secret: String,
+    pub jwt_expiry_hours: i64,
+    #[allow(dead_code)]
+    pub upload_dir: String,
+}
+
+impl Config {
+    pub fn from_env() -> Self {
+        Self {
+            bind_addr: env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
+            database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+            jwt_secret: env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
+            jwt_expiry_hours: env::var("JWT_EXPIRY_HOURS")
+                .unwrap_or_else(|_| "24".into())
+                .parse()
+                .unwrap_or(24),
+            upload_dir: env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".into()),
+        }
+    }
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/crypto/jwt.rs
+================================================================================
+use chrono::{Duration, Utc};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::error::AppError;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: Uuid,
+    pub username: String,
+    pub exp: usize,
+    pub iat: usize,
+}
+
+pub fn create_token(
+    user_id: Uuid,
+    username: &str,
+    secret: &str,
+    expiry_hours: i64,
+) -> Result<String, AppError> {
+    let now = Utc::now();
+    let claims = Claims {
+        sub: user_id,
+        username: username.to_string(),
+        exp: (now + Duration::hours(expiry_hours)).timestamp() as usize,
+        iat: now.timestamp() as usize,
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| AppError::Internal(format!("jwt encode: {e}")))
+}
+
+pub fn validate_token(token: &str, secret: &str) -> Result<Claims, AppError> {
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map(|data| data.claims)
+    .map_err(|e| AppError::Unauthorized(format!("invalid token: {e}")))
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/crypto/mod.rs
+================================================================================
+pub mod jwt;
+pub mod password;
+
+
+
+================================================================================
+FILE PATH: ./server/src/crypto/password.rs
+================================================================================
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
+
+use crate::error::AppError;
+
+pub fn hash(password: &str) -> Result<String, AppError> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| AppError::Internal(format!("hash error: {e}")))
+}
+
+pub fn verify(password: &str, hash: &str) -> Result<bool, AppError> {
+    let parsed =
+        PasswordHash::new(hash).map_err(|e| AppError::Internal(format!("invalid hash: {e}")))?;
+    Ok(Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok())
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/db.rs
+================================================================================
+use sqlx::{postgres::PgPoolOptions, PgPool};
+
+pub async fn connect(url: &str) -> PgPool {
+    PgPoolOptions::new()
+        .max_connections(20)
+        .connect(url)
+        .await
+        .expect("failed to connect to database")
+}
+
+pub async fn run_migrations(pool: &PgPool) {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .expect("failed to run migrations");
+}
+
+
+================================================================================
+FILE PATH: ./server/src/error.rs
+================================================================================
+use axum::{
+    extract::multipart::MultipartError,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde_json::json;
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum AppError {
+    BadRequest(String),
+    Unauthorized(String),
+    Forbidden(String),
+    NotFound(String),
+    Conflict(String),
+    Internal(String),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, msg) = match self {
+            Self::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m),
+            Self::Forbidden(m) => (StatusCode::FORBIDDEN, m),
+            Self::NotFound(m) => (StatusCode::NOT_FOUND, m),
+            Self::Conflict(m) => (StatusCode::CONFLICT, m),
+            Self::Internal(m) => {
+                tracing::error!("internal: {m}");
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal error".into())
+            }
+        };
+        (status, Json(json!({ "error": msg }))).into_response()
+    }
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(e: sqlx::Error) -> Self {
+        tracing::error!("db error: {e}");
+        Self::Internal(e.to_string())
+    }
+}
+
+impl From<jsonwebtoken::errors::Error> for AppError {
+    fn from(e: jsonwebtoken::errors::Error) -> Self {
+        Self::Unauthorized(format!("token error: {e}"))
+    }
+}
+
+impl From<MultipartError> for AppError {
+    fn from(e: MultipartError) -> Self {
+        Self::BadRequest(format!("upload error: {e}"))
+    }
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/main.rs
+================================================================================
+mod app;
+mod config;
+mod db;
+mod error;
+mod state;
+
+mod api;
+mod crypto;
+mod models;
+mod ws;
+
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+#[tokio::main]
+async fn main() {
+    dotenvy::dotenv().ok();
+    init_tracing();
+
+    let config = config::Config::from_env();
+
+    // Создаём директорию для файлов
+    tokio::fs::create_dir_all(&config.upload_dir)
+        .await
+        .expect("failed to create upload dir");
+
+    let pool = db::connect(&config.database_url).await;
+    db::run_migrations(&pool).await;
+    tracing::info!("database connected, migrations applied");
+
+    let state = state::AppState::new(pool, config.clone());
+    let app = app::create_app(state);
+
+    let listener = tokio::net::TcpListener::bind(&config.bind_addr)
+        .await
+        .expect("failed to bind");
+
+    tracing::info!(addr = %config.bind_addr, "server starting");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("server error");
+}
+
+fn init_tracing() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info,server=debug".into());
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+}
+
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c().await.ok();
+    tracing::info!("shutdown signal received");
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/models/attachment.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct Attachment {
+    pub id: Uuid,
+    pub uploader_id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/models/chat.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct Chat {
+    pub id: Uuid,
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct ChatMember {
+    pub chat_id: Uuid,
+    pub user_id: Uuid,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/models/invite.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct Invite {
+    pub id: Uuid,
+    pub code: String,
+    pub created_by: Uuid,
+    pub used_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub used: bool,
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/models/message.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct Message {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub sender_id: Uuid,
+    pub content: String,
+    pub edited: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/models/mod.rs
+================================================================================
+pub mod attachment;
+pub mod chat;
+pub mod invite;
+pub mod message;
+pub mod user;
+
+#[allow(unused_imports)]
+pub use attachment::Attachment;
+#[allow(unused_imports)]
+pub use chat::{Chat, ChatMember};
+#[allow(unused_imports)]
+pub use invite::Invite;
+#[allow(unused_imports)]
+pub use message::Message;
+pub use user::User;
+
+
+
+================================================================================
+FILE PATH: ./server/src/models/user.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct User {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub password_hash: String,
+    pub created_at: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+}
+
+
+
+================================================================================
+FILE PATH: ./server/src/state.rs
+================================================================================
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use shared::WsServerMsg;
+use sqlx::PgPool;
+use tokio::sync::{mpsc, RwLock};
+use uuid::Uuid;
+
+use crate::config::Config;
+
+/// Канал для отправки сообщений в WebSocket конкретного юзера
+pub type WsTx = mpsc::UnboundedSender<WsServerMsg>;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub db: PgPool,
+    pub config: Config,
+    /// user_id → WsTx (только онлайн юзеры)
+    connections: Arc<RwLock<HashMap<Uuid, WsTx>>>,
+}
+
+impl AppState {
+    pub fn new(db: PgPool, config: Config) -> Self {
+        Self {
+            db,
+            config,
+            connections: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub async fn register_connection(&self, user_id: Uuid, tx: WsTx) {
+        self.connections.write().await.insert(user_id, tx);
+    }
+
+    pub async fn remove_connection(&self, user_id: &Uuid) {
+        self.connections.write().await.remove(user_id);
+    }
+
+    /// Отправить сообщение конкретному юзеру (если он онлайн)
+    pub async fn send_to_user(&self, user_id: &Uuid, msg: WsServerMsg) -> bool {
+        let conns = self.connections.read().await;
+        if let Some(tx) = conns.get(user_id) {
+            tx.send(msg).is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub async fn is_online(&self, user_id: &Uuid) -> bool {
+        self.connections.read().await.contains_key(user_id)
+    }
+}
+
+
+================================================================================
+FILE PATH: ./server/src/ws/mod.rs
+================================================================================
+use axum::{
+    extract::{
+        ws::{Message as WsMsg, WebSocket, WebSocketUpgrade},
+        Query, State,
+    },
+    response::Response,
+};
+use futures::{SinkExt, StreamExt};
+use serde::Deserialize;
+use shared::{AttachmentDto, MessageDto, WsClientMsg, WsServerMsg};
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+use crate::{crypto::jwt, error::AppError, state::AppState};
+
+#[derive(Deserialize)]
+pub struct WsParams {
+    token: String,
+}
+
+pub async fn upgrade(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Query(params): Query<WsParams>,
+) -> Result<Response, AppError> {
+    let claims = jwt::validate_token(&params.token, &state.config.jwt_secret)?;
+    Ok(ws.on_upgrade(move |socket| run(socket, state, claims.sub, claims.username)))
+}
+
+async fn run(socket: WebSocket, state: AppState, user_id: Uuid, username: String) {
+    let (mut sink, mut stream) = socket.split();
+    let (tx, mut rx) = mpsc::unbounded_channel::<WsServerMsg>();
+    state.register_connection(user_id, tx).await;
+
+    tracing::info!(%user_id, %username, "ws connected");
+    broadcast_presence(&state, user_id, true).await;
+
+    let _ = sqlx::query("UPDATE users SET last_seen = NOW() WHERE id = $1")
+        .bind(user_id)
+        .execute(&state.db)
+        .await;
+
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if let Ok(json) = serde_json::to_string(&msg) {
+                if sink.send(WsMsg::Text(json.into())).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    let state2 = state.clone();
+    let uname = username.clone();
+    let recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = stream.next().await {
+            match msg {
+                WsMsg::Text(ref text) => match serde_json::from_str::<WsClientMsg>(text) {
+                    Ok(parsed) => process(&state2, user_id, &uname, parsed).await,
+                    Err(e) => {
+                        tracing::warn!(%user_id, "ws parse error: {e}");
+                        state2
+                            .send_to_user(
+                                &user_id,
+                                WsServerMsg::Error {
+                                    message: format!("invalid message: {e}"),
+                                },
+                            )
+                            .await;
+                    }
+                },
+                WsMsg::Close(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    tokio::select! { _ = send_task => {}, _ = recv_task => {} }
+
+    state.remove_connection(&user_id).await;
+    broadcast_presence(&state, user_id, false).await;
+    let _ = sqlx::query("UPDATE users SET last_seen = NOW() WHERE id = $1")
+        .bind(user_id)
+        .execute(&state.db)
+        .await;
+    tracing::info!(%user_id, "ws disconnected");
+}
+
+async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
+    match msg {
+        WsClientMsg::SendMessage {
+            chat_id,
+            content,
+            client_id,
+            attachment_id,
+        } => {
+            on_send(
+                state,
+                uid,
+                uname,
+                chat_id,
+                content,
+                client_id,
+                attachment_id,
+            )
+            .await
+        }
+        WsClientMsg::EditMessage {
+            message_id,
+            new_content,
+        } => on_edit(state, uid, message_id, new_content).await,
+        WsClientMsg::DeleteMessage { message_id } => on_delete(state, uid, message_id).await,
+        WsClientMsg::Typing { chat_id } => {
+            broadcast_to_chat(
+                state,
+                chat_id,
+                uid,
+                WsServerMsg::Typing {
+                    chat_id,
+                    user_id: uid,
+                },
+            )
+            .await
+        }
+        WsClientMsg::StopTyping { chat_id } => {
+            broadcast_to_chat(
+                state,
+                chat_id,
+                uid,
+                WsServerMsg::StopTyping {
+                    chat_id,
+                    user_id: uid,
+                },
+            )
+            .await
+        }
+        WsClientMsg::MarkRead {
+            chat_id,
+            message_id,
+        } => {
+            broadcast_to_chat(
+                state,
+                chat_id,
+                uid,
+                WsServerMsg::MessagesRead {
+                    chat_id,
+                    user_id: uid,
+                    message_id,
+                },
+            )
+            .await
+        }
+    }
+}
+
+async fn on_send(
+    state: &AppState,
+    uid: Uuid,
+    uname: &str,
+    chat_id: Uuid,
+    content: String,
+    client_id: String,
+    attachment_id: Option<Uuid>,
+) {
+    // Проверяем членство
+    let check: Option<(i64,)> =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
+            .bind(chat_id)
+            .bind(uid)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+
+    if check.map_or(true, |r| r.0 == 0) {
+        state
+            .send_to_user(
+                &uid,
+                WsServerMsg::Error {
+                    message: "не участник чата".into(),
+                },
+            )
+            .await;
+        return;
+    }
+
+    // Нужен контент или аттачмент
+    if content.trim().is_empty() && attachment_id.is_none() {
+        state
+            .send_to_user(
+                &uid,
+                WsServerMsg::Error {
+                    message: "пустое сообщение".into(),
+                },
+            )
+            .await;
+        return;
+    }
+
+    let display_name: String =
+        sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
+            .bind(uid)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.0)
+            .unwrap_or_else(|| uname.to_string());
+
+    // Получаем инфу об аттачменте
+    let attachment = if let Some(att_id) = attachment_id {
+        let row: Option<(String, String, i64)> =
+            sqlx::query_as("SELECT filename, mime_type, size_bytes FROM attachments WHERE id=$1")
+                .bind(att_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten();
+
+        row.map(|(filename, mime_type, size_bytes)| AttachmentDto {
+            id: att_id,
+            filename,
+            mime_type,
+            size_bytes,
+        })
+    } else {
+        None
+    };
+
+    let msg_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    if sqlx::query(
+        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6)",
+    )
+    .bind(msg_id)
+    .bind(chat_id)
+    .bind(uid)
+    .bind(&content)
+    .bind(attachment_id)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .is_err()
+    {
+        state
+            .send_to_user(
+                &uid,
+                WsServerMsg::Error {
+                    message: "ошибка сохранения".into(),
+                },
+            )
+            .await;
+        return;
+    }
+
+    let dto = MessageDto {
+        id: msg_id,
+        chat_id,
+        sender_id: uid,
+        sender_name: display_name,
+        content,
+        edited: false,
+        created_at: now,
+        attachment,
+    };
+
+    state
+        .send_to_user(
+            &uid,
+            WsServerMsg::MessageSent {
+                client_id,
+                message: dto.clone(),
+            },
+        )
+        .await;
+
+    let members: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id=$1 AND user_id!=$2")
+            .bind(chat_id)
+            .bind(uid)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+
+    for (mid,) in &members {
+        state
+            .send_to_user(
+                mid,
+                WsServerMsg::NewMessage {
+                    message: dto.clone(),
+                },
+            )
+            .await;
+    }
+}
+
+async fn on_edit(state: &AppState, uid: Uuid, msg_id: Uuid, new_text: String) {
+    let row: Option<(Uuid, Uuid)> =
+        sqlx::query_as("SELECT chat_id, sender_id FROM messages WHERE id=$1")
+            .bind(msg_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    let Some((chat_id, sender_id)) = row else {
+        return;
+    };
+    if sender_id != uid {
+        return;
+    }
+    let _ = sqlx::query("UPDATE messages SET content=$1, edited=TRUE WHERE id=$2")
+        .bind(&new_text)
+        .bind(msg_id)
+        .execute(&state.db)
+        .await;
+    broadcast_to_chat_all(
+        state,
+        chat_id,
+        WsServerMsg::MessageEdited {
+            chat_id,
+            message_id: msg_id,
+            new_content: new_text,
+        },
+    )
+    .await;
+}
+
+async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
+    let row: Option<(Uuid, Uuid)> =
+        sqlx::query_as("SELECT chat_id, sender_id FROM messages WHERE id=$1")
+            .bind(msg_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    let Some((chat_id, sender_id)) = row else {
+        return;
+    };
+    if sender_id != uid {
+        return;
+    }
+    let _ = sqlx::query("DELETE FROM messages WHERE id=$1")
+        .bind(msg_id)
+        .execute(&state.db)
+        .await;
+    broadcast_to_chat_all(
+        state,
+        chat_id,
+        WsServerMsg::MessageDeleted {
+            chat_id,
+            message_id: msg_id,
+        },
+    )
+    .await;
+}
+
+async fn broadcast_to_chat(state: &AppState, chat_id: Uuid, exclude: Uuid, msg: WsServerMsg) {
+    let m: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id=$1 AND user_id!=$2")
+            .bind(chat_id)
+            .bind(exclude)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    for (uid,) in m {
+        state.send_to_user(&uid, msg.clone()).await;
+    }
+}
+
+async fn broadcast_to_chat_all(state: &AppState, chat_id: Uuid, msg: WsServerMsg) {
+    let m: Vec<(Uuid,)> = sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id=$1")
+        .bind(chat_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    for (uid,) in m {
+        state.send_to_user(&uid, msg.clone()).await;
+    }
+}
+
+async fn broadcast_presence(state: &AppState, user_id: Uuid, online: bool) {
+    let contacts: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT DISTINCT cm2.user_id FROM chat_members cm1
+         JOIN chat_members cm2 ON cm2.chat_id = cm1.chat_id AND cm2.user_id != $1
+         WHERE cm1.user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    let msg = if online {
+        WsServerMsg::UserOnline { user_id }
+    } else {
+        WsServerMsg::UserOffline { user_id }
+    };
+    for (uid,) in contacts {
+        state.send_to_user(&uid, msg.clone()).await;
+    }
+}
+
+
+
+================================================================================
+FILE PATH: ./shared/Cargo.toml
+================================================================================
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+
+================================================================================
+FILE PATH: ./shared/src/lib.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+// ═══════════════════════════════════════════════════════════
+//  WS: клиент → сервер
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+#[serde(rename_all = "snake_case")]
+pub enum WsClientMsg {
+    SendMessage {
+        chat_id: Uuid,
+        content: String,
+        client_id: String,
+        #[serde(default)]
+        attachment_id: Option<Uuid>,
+    },
+    EditMessage {
+        message_id: Uuid,
+        new_content: String,
+    },
+    DeleteMessage {
+        message_id: Uuid,
+    },
+    Typing {
+        chat_id: Uuid,
+    },
+    StopTyping {
+        chat_id: Uuid,
+    },
+    MarkRead {
+        chat_id: Uuid,
+        message_id: Uuid,
+    },
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WS: сервер → клиент
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", content = "payload")]
+#[serde(rename_all = "snake_case")]
+pub enum WsServerMsg {
+    NewMessage {
+        message: MessageDto,
+    },
+    MessageSent {
+        client_id: String,
+        message: MessageDto,
+    },
+    MessageEdited {
+        chat_id: Uuid,
+        message_id: Uuid,
+        new_content: String,
+    },
+    MessageDeleted {
+        chat_id: Uuid,
+        message_id: Uuid,
+    },
+    Typing {
+        chat_id: Uuid,
+        user_id: Uuid,
+    },
+    StopTyping {
+        chat_id: Uuid,
+        user_id: Uuid,
+    },
+    MessagesRead {
+        chat_id: Uuid,
+        user_id: Uuid,
+        message_id: Uuid,
+    },
+    UserOnline {
+        user_id: Uuid,
+    },
+    UserOffline {
+        user_id: Uuid,
+    },
+    Error {
+        message: String,
+    },
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DTOs
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AttachmentDto {
+    pub id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MessageDto {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub content: String,
+    pub edited: bool,
+    pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<AttachmentDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserDto {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub online: bool,
+    pub last_seen: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatDto {
+    pub id: Uuid,
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub members: Vec<ChatMemberDto>,
+    pub last_message: Option<MessageDto>,
+    pub unread_count: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChatMemberDto {
+    pub user_id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub role: String,
+    pub online: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InviteDto {
+    pub code: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub used: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterReq {
+    pub username: String,
+    pub password: String,
+    pub display_name: String,
+    pub invite_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginReq {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthRes {
+    pub token: String,
+    pub user: UserDto,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateChatReq {
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub member_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateInviteReq {
+    pub expires_in_hours: Option<i64>,
+}
+
+
+
