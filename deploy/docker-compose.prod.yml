@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: messenger
+      POSTGRES_USER: messenger
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U messenger" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - BIND_ADDR=0.0.0.0:3000
+      - DATABASE_URL=postgres://messenger:${POSTGRES_PASSWORD}@postgres:5432/messenger
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRY_HOURS=24
+      - UPLOAD_DIR=/uploads
+    volumes:
+      - uploads:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  uploads:
