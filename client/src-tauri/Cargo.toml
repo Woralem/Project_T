@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "client-ui"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,5 +13,3 @@ serde_json = "1"
 
 [features]
 default = []
-
-[workspace]
