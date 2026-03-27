@@ -7,15 +7,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Копируем workspace файлы
 COPY Cargo.toml Cargo.lock ./
 COPY shared/ ./shared/
 COPY server/ ./server/
 
-# Собираем только server
 RUN cargo build --release -p server
 
-# ── Runtime образ ──────────────────────────────────────────
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
