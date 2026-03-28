@@ -6,48 +6,36 @@ import { Avatar } from '../ui/Avatar';
 import { ContextMenu } from '../ui/ContextMenu';
 import { MessageBubble } from './MessageBubble';
 import { InputBar } from './InputBar';
-import * as api from '../../api';
+import { ChatSecurityBanner } from './ChatSecurityBanner';
 
 interface Props {
     chat: LocalChat;
     currentUserId: string;
     loadingMessages?: boolean;
     onSendMessage: (text: string) => void;
-    onSendVoice: (chatId: string, attachmentId: string) => void;
+    onSendVoice: (chatId: string, blob: Blob) => void;
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
+    onRefreshChat: (chatId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, showToast,
+    onDeleteMessage, onEditMessage, onRefreshChat, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
 
-    // Получаем аватарку собеседника для шапки
     const getChatAvatar = (): string | undefined => {
         if (chat.is_group) return undefined;
-        const other = chat.members.find(m => m.user_id !== currentUserId);
-        return other?.avatar_url || undefined;
+        return chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
     };
 
-    // Скролл вниз при новых сообщениях
-    useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chat.messages.length, chat.id]);
-
-    // Сброс при смене чата
-    useEffect(() => {
-        setInputText('');
-        setEditingMsg(null);
-        setCtxMenu(null);
-    }, [chat.id]);
-
-    // Escape
+    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
+    useEffect(() => { setInputText(''); setEditingMsg(null); setCtxMenu(null); }, [chat.id]);
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -59,35 +47,22 @@ export function ChatView({
         return () => window.removeEventListener('keydown', onKey);
     }, [ctxMenu, editingMsg]);
 
-    // Отправка текста / сохранение редактирования
     const handleSend = useCallback(() => {
-        const text = inputText.trim();
-        if (!text) return;
-
+        const t = inputText.trim();
+        if (!t) return;
         if (editingMsg) {
-            if (text !== editingMsg.content) {
-                onEditMessage(editingMsg.id, text);
-            }
+            if (t !== editingMsg.content) onEditMessage(editingMsg.id, t);
             setEditingMsg(null);
         } else {
-            onSendMessage(text);
+            onSendMessage(t);
         }
         setInputText('');
     }, [inputText, editingMsg, onSendMessage, onEditMessage]);
 
-    // Отправка голосового
-    const handleSendVoice = useCallback(async (blob: Blob) => {
-        try {
-            const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
-            const attachment = await api.uploadFile(blob, `voice.${ext}`);
-            onSendVoice(chat.id, attachment.id);
-        } catch (e: any) {
-            showToast('Ошибка загрузки голосового', 'error');
-            console.error('Voice upload error:', e);
-        }
-    }, [chat.id, onSendVoice, showToast]);
+    const handleSendVoice = useCallback((blob: Blob) => {
+        onSendVoice(chat.id, blob);
+    }, [chat.id, onSendVoice]);
 
-    // Контекстное меню
     const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
         e.preventDefault();
         setCtxMenu({ x: e.clientX, y: e.clientY, message: msg });
@@ -97,76 +72,57 @@ export function ChatView({
         const items: ContextMenuItem[] = [];
         if (msg.own && msg.status !== 'pending') {
             items.push({
-                label: 'Редактировать',
-                icon: Icon.edit(16),
+                label: 'Редактировать', icon: Icon.edit(16),
                 onClick: () => { setEditingMsg(msg); setInputText(msg.content); },
             });
         }
         items.push({
-            label: 'Копировать',
-            icon: Icon.copy(16),
-            onClick: () => {
-                navigator.clipboard.writeText(msg.content);
-                showToast('Скопировано в буфер обмена');
-            },
+            label: 'Копировать', icon: Icon.copy(16),
+            onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); },
         });
         if (msg.own) {
             items.push({
-                label: 'Удалить',
-                icon: Icon.trash(16),
-                danger: true,
+                label: 'Удалить', icon: Icon.trash(16), danger: true,
                 onClick: () => onDeleteMessage(msg.id),
             });
         }
         return items;
     };
 
+    const handleRefresh = useCallback(() => {
+        onRefreshChat(chat.id);
+    }, [onRefreshChat, chat.id]);
+
     return (
         <section className="chat-view">
-            {/* Шапка */}
             <div className="chat-header">
                 <div className="chat-header-left">
-                    <Avatar
-                        name={chat.name}
-                        size={38}
-                        online={chat.is_group ? undefined : chat.online}
-                        avatarUrl={getChatAvatar()}
-                    />
+                    <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar()} />
                     <div className="chat-header-info">
                         <h3>{chat.name}</h3>
                         <span className="chat-header-sub">
-                            {chat.is_group
-                                ? `${chat.members.length} участников`
-                                : chat.online ? 'в сети' : 'был(а) недавно'}
+                            {chat.is_group ? `${chat.members.length} участников` : chat.online ? 'в сети' : 'был(а) недавно'}
                         </span>
                     </div>
                 </div>
                 <div className="chat-header-actions">
-                    <button className="icon-btn" title="Позвонить"
-                        onClick={() => showToast('Звонки будут доступны позже')}>
-                        {Icon.phone(20)}
-                    </button>
-                    <button className="icon-btn" title="Поиск">
-                        {Icon.search(20)}
-                    </button>
+                    <button className="icon-btn" title="Позвонить" onClick={() => showToast('Звонки будут доступны позже')}>{Icon.phone(20)}</button>
+                    <button className="icon-btn" title="Поиск">{Icon.search(20)}</button>
                 </div>
             </div>
 
-            {/* Сообщения */}
+            <ChatSecurityBanner
+                chat={chat}
+                currentUserId={currentUserId}
+                onRefresh={handleRefresh}
+                showToast={showToast}
+            />
+
             <div className="messages-scroll">
                 <div className="messages-inner">
-                    <div className="encryption-notice">
-                        {Icon.lock(14)}
-                        <span>Сообщения защищены сквозным шифрованием</span>
-                    </div>
-
-                    {loadingMessages && chat.messages.length === 0 && (
-                        <div className="messages-loading">Загрузка сообщений...</div>
-                    )}
-
-                    {!loadingMessages && chat.messagesLoaded && chat.messages.length === 0 && (
-                        <div className="messages-loading">Нет сообщений. Напишите первое!</div>
-                    )}
+                    <div className="encryption-notice">{Icon.lock(14)}<span>Сообщения защищены сквозным шифрованием</span></div>
+                    {loadingMessages && chat.messages.length === 0 && <div className="messages-loading">Загрузка сообщений...</div>}
+                    {!loadingMessages && chat.messagesLoaded && chat.messages.length === 0 && <div className="messages-loading">Нет сообщений. Напишите первое!</div>}
 
                     {chat.messages.map((msg, i) => {
                         const prev = chat.messages[i - 1];
@@ -177,6 +133,7 @@ export function ChatView({
                                 message={msg}
                                 isFirst={isFirst}
                                 isGroup={chat.is_group}
+                                chatId={chat.id}
                                 onContextMenu={e => handleContextMenu(e, msg)}
                             />
                         );
@@ -185,32 +142,14 @@ export function ChatView({
                 </div>
             </div>
 
-            {/* Ввод */}
             <InputBar
-                value={inputText}
-                onChange={setInputText}
-                onSend={handleSend}
-                onSendVoice={handleSendVoice}
-                editingMessage={editingMsg ? {
-                    id: editingMsg.id,
-                    text: editingMsg.content,
-                    author: editingMsg.sender_name,
-                    time: formatTime(editingMsg.created_at),
-                    own: editingMsg.own,
-                } : null}
+                value={inputText} onChange={setInputText} onSend={handleSend} onSendVoice={handleSendVoice}
+                editingMessage={editingMsg ? { id: editingMsg.id, text: editingMsg.content, author: editingMsg.sender_name, time: formatTime(editingMsg.created_at), own: editingMsg.own } : null}
                 onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
                 onAttach={() => showToast('Файлы будут доступны после обновления')}
             />
 
-            {/* Контекстное меню */}
-            {ctxMenu && (
-                <ContextMenu
-                    x={ctxMenu.x}
-                    y={ctxMenu.y}
-                    items={ctxItems(ctxMenu.message)}
-                    onClose={() => setCtxMenu(null)}
-                />
-            )}
+            {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
         </section>
     );
 }

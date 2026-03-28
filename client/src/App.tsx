@@ -35,7 +35,7 @@ export default function App() {
         chats, selectedId, selectedChat,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage,
-        editMessage, deleteMessage, createChat,
+        editMessage, deleteMessage, createChat, refreshChat,
     } = useChats(user);
 
     React.useEffect(() => {
@@ -116,6 +116,7 @@ export default function App() {
                                 onSendVoice={sendVoiceMessage}
                                 onDeleteMessage={deleteMessage}
                                 onEditMessage={editMessage}
+                                onRefreshChat={refreshChat}
                                 showToast={showToast}
                             />
                         ) : (

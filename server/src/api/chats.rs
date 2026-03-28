@@ -2,7 +2,10 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use shared::{AttachmentDto, ChatDto, ChatMemberDto, MessageDto, PublicKeyBundle};
+use shared::{
+    AttachmentDto, ChatDto, ChatMemberDto, EncryptedChatKey, MessageDto, PublicKeyBundle,
+    UpdateChatKeysReq,
+};
 use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
@@ -66,6 +69,7 @@ pub async fn create(
     chat_dto(&state, chat_id).await.map(Json)
 }
 
+/// GET /api/chats
 pub async fn list(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -89,6 +93,7 @@ pub async fn list(
     Ok(Json(chats))
 }
 
+/// GET /api/chats/:chat_id
 pub async fn get(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -96,6 +101,42 @@ pub async fn get(
 ) -> Result<Json<ChatDto>, AppError> {
     ensure_member(&state, chat_id, auth.user_id).await?;
     chat_dto(&state, chat_id).await.map(Json)
+}
+
+/// PUT /api/chats/:chat_id/keys
+pub async fn update_keys(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    Json(req): Json<UpdateChatKeysReq>,
+) -> Result<Json<()>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    for (uid, enc_key) in req.encrypted_keys {
+        let enc_key_json =
+            serde_json::to_value(&enc_key).map_err(|e| AppError::Internal(format!("json: {e}")))?;
+
+        let user_key_id: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT key_id FROM users WHERE id = $1")
+                .bind(uid)
+                .fetch_optional(&state.db)
+                .await?;
+
+        let key_id = user_key_id.and_then(|r| r.0);
+
+        sqlx::query(
+            "UPDATE chat_members SET encrypted_chat_key = $1, member_key_id = $2
+             WHERE chat_id = $3 AND user_id = $4",
+        )
+        .bind(&enc_key_json)
+        .bind(&key_id)
+        .bind(chat_id)
+        .bind(uid)
+        .execute(&state.db)
+        .await?;
+    }
+
+    Ok(Json(()))
 }
 
 async fn ensure_member(state: &AppState, chat_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
@@ -129,11 +170,14 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         Option<String>,
         Option<String>,
         Option<String>,
+        Option<serde_json::Value>,
+        Option<String>,
     );
 
     let rows: Vec<MemberRow> = sqlx::query_as(
         "SELECT u.id, u.username, u.display_name, cm.role,
-                u.avatar_id, u.identity_key, u.signing_key, u.key_signature, u.key_id
+                u.avatar_id, u.identity_key, u.signing_key, u.key_signature, u.key_id,
+                cm.encrypted_chat_key, cm.member_key_id
          FROM chat_members cm JOIN users u ON u.id = cm.user_id
          WHERE cm.chat_id = $1",
     )
@@ -142,7 +186,20 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
     .await?;
 
     let mut members = Vec::new();
-    for (uid, uname, dname, role, avatar_id, identity_key, signing_key, key_sig, key_id) in &rows {
+    for (
+        uid,
+        uname,
+        dname,
+        role,
+        avatar_id,
+        identity_key,
+        signing_key,
+        key_sig,
+        key_id,
+        enc_chat_key_json,
+        member_key_id,
+    ) in &rows
+    {
         let avatar_url = avatar_id.map(|id| format!("/api/files/{}", id));
 
         let public_keys = if identity_key.is_some() {
@@ -156,6 +213,10 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
             None
         };
 
+        let encrypted_chat_key: Option<EncryptedChatKey> = enc_chat_key_json
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+
         members.push(ChatMemberDto {
             user_id: *uid,
             username: uname.clone(),
@@ -164,6 +225,8 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
             online: state.is_online(uid).await,
             avatar_url,
             public_keys,
+            encrypted_chat_key,
+            member_key_id: member_key_id.clone(),
         });
     }
 

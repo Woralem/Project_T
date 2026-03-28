@@ -1,5 +1,3 @@
-// server/src/api/profile.rs
-
 use axum::{
     body::Body,
     extract::{Multipart, Path, State},
@@ -12,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
 
-const MAX_AVATAR_SIZE: usize = 5 * 1024 * 1024; // 5MB
+const MAX_AVATAR_SIZE: usize = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 /// PUT /api/users/me
@@ -21,7 +19,6 @@ pub async fn update_profile(
     auth: AuthUser,
     Json(req): Json<UpdateProfileReq>,
 ) -> Result<Json<UserDto>, AppError> {
-    // Обновляем display_name если передан
     if let Some(ref name) = req.display_name {
         if name.is_empty() || name.len() > 64 {
             return Err(AppError::BadRequest("display_name: 1-64 символов".into()));
@@ -33,13 +30,11 @@ pub async fn update_profile(
             .await?;
     }
 
-    // Обновляем публичные ключи если переданы
     if let Some(ref keys) = req.public_keys {
-        // Валидация ключей
         validate_public_keys(keys)?;
 
         sqlx::query(
-            "UPDATE users SET identity_key = $1, signing_key = $2, key_signature = $3, key_id = $4 WHERE id = $5"
+            "UPDATE users SET identity_key = $1, signing_key = $2, key_signature = $3, key_id = $4 WHERE id = $5",
         )
         .bind(&keys.identity_key)
         .bind(&keys.signing_key)
@@ -50,8 +45,13 @@ pub async fn update_profile(
         .await?;
     }
 
-    // Возвращаем обновлённый профиль
-    get_user_dto(&state, auth.user_id).await.map(Json)
+    let user = get_user_dto(&state, auth.user_id).await?;
+
+    if req.public_keys.is_some() || req.display_name.is_some() {
+        broadcast_user_update(&state, auth.user_id, user.clone()).await;
+    }
+
+    Ok(Json(user))
 }
 
 /// POST /api/users/me/avatar
@@ -70,7 +70,6 @@ pub async fn upload_avatar(
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        // Проверяем тип файла
         if !ALLOWED_AVATAR_TYPES.contains(&mime.as_str()) {
             return Err(AppError::BadRequest(
                 "Разрешены только изображения (JPEG, PNG, WebP, GIF)".into(),
@@ -89,7 +88,6 @@ pub async fn upload_avatar(
             return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
-        // Удаляем старую аватарку если есть
         let old_avatar: Option<(Uuid,)> =
             sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
                 .bind(auth.user_id)
@@ -97,17 +95,14 @@ pub async fn upload_avatar(
                 .await?;
 
         if let Some((old_id,)) = old_avatar {
-            // Удаляем файл
             let old_path = format!("{}/{}", state.config.upload_dir, old_id);
             let _ = tokio::fs::remove_file(&old_path).await;
-            // Удаляем запись
             sqlx::query("DELETE FROM attachments WHERE id = $1")
                 .bind(old_id)
                 .execute(&state.db)
                 .await?;
         }
 
-        // Создаём новую аватарку
         let att_id = Uuid::new_v4();
         let filename = format!("avatar_{}.{}", auth.user_id, get_extension(&mime));
         let path = format!("{}/{}", state.config.upload_dir, att_id);
@@ -130,7 +125,6 @@ pub async fn upload_avatar(
         .execute(&state.db)
         .await?;
 
-        // Обновляем avatar_id пользователя
         sqlx::query("UPDATE users SET avatar_id = $1 WHERE id = $2")
             .bind(att_id)
             .bind(auth.user_id)
@@ -141,9 +135,8 @@ pub async fn upload_avatar(
 
         tracing::info!(user_id = %auth.user_id, %att_id, "avatar uploaded");
 
-        // Уведомляем контакты об обновлении профиля
         let user = get_user_dto(&state, auth.user_id).await?;
-        broadcast_user_update(&state, auth.user_id, user.clone()).await;
+        broadcast_user_update(&state, auth.user_id, user).await;
 
         return Ok(Json(UpdateAvatarRes { avatar_url }));
     }
@@ -164,17 +157,14 @@ pub async fn delete_avatar(
         .await?;
 
     if let Some((avatar_id,)) = avatar {
-        // Удаляем файл
         let path = format!("{}/{}", state.config.upload_dir, avatar_id);
         let _ = tokio::fs::remove_file(&path).await;
 
-        // Удаляем запись аттачмента
         sqlx::query("DELETE FROM attachments WHERE id = $1")
             .bind(avatar_id)
             .execute(&state.db)
             .await?;
 
-        // Очищаем avatar_id пользователя
         sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
             .bind(auth.user_id)
             .execute(&state.db)
@@ -207,7 +197,7 @@ pub async fn get_avatar(
 
     Response::builder()
         .header(header::CONTENT_TYPE, mime)
-        .header(header::CACHE_CONTROL, "public, max-age=86400") // 24 часа кэш
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
         .body(Body::from(data))
         .map_err(|e| AppError::Internal(format!("response: {e}")))
 }
@@ -227,35 +217,35 @@ fn get_extension(mime: &str) -> &str {
 }
 
 fn validate_public_keys(keys: &PublicKeyBundle) -> Result<(), AppError> {
-    // Проверяем что все поля заполнены и валидный base64
     use base64::{engine::general_purpose::STANDARD, Engine};
 
     let identity = STANDARD
         .decode(&keys.identity_key)
-        .map_err(|_| AppError::BadRequest("Невалидный identity_key".into()))?;
+        .map_err(|_| AppError::BadRequest("Невалидный identity_key base64".into()))?;
 
-    let signing = STANDARD
-        .decode(&keys.signing_key)
-        .map_err(|_| AppError::BadRequest("Невалидный signing_key".into()))?;
-
-    STANDARD
-        .decode(&keys.signature)
-        .map_err(|_| AppError::BadRequest("Невалидная signature".into()))?;
-
-    // Проверяем длину ключей (X25519 = 32 байта, Ed25519 = 32 байта)
-    if identity.len() != 32 {
+    if identity.is_empty() || identity.len() > 200 {
         return Err(AppError::BadRequest(
-            "identity_key должен быть 32 байта".into(),
-        ));
-    }
-    if signing.len() != 32 {
-        return Err(AppError::BadRequest(
-            "signing_key должен быть 32 байта".into(),
+            "identity_key: невалидная длина".into(),
         ));
     }
 
-    if keys.key_id.len() > 64 {
-        return Err(AppError::BadRequest("key_id слишком длинный".into()));
+    if keys.signing_key != "NA" {
+        let signing = STANDARD
+            .decode(&keys.signing_key)
+            .map_err(|_| AppError::BadRequest("Невалидный signing_key base64".into()))?;
+        if signing.is_empty() || signing.len() > 200 {
+            return Err(AppError::BadRequest("signing_key: невалидная длина".into()));
+        }
+    }
+
+    if keys.signature != "NA" {
+        STANDARD
+            .decode(&keys.signature)
+            .map_err(|_| AppError::BadRequest("Невалидная signature base64".into()))?;
+    }
+
+    if keys.key_id.is_empty() || keys.key_id.len() > 64 {
+        return Err(AppError::BadRequest("key_id: 1-64 символов".into()));
     }
 
     Ok(())
@@ -294,7 +284,6 @@ pub async fn get_user_dto(state: &AppState, user_id: Uuid) -> Result<UserDto, Ap
 async fn broadcast_user_update(state: &AppState, user_id: Uuid, user: UserDto) {
     use shared::WsServerMsg;
 
-    // Находим всех контактов (участников общих чатов)
     let contacts: Vec<(Uuid,)> = sqlx::query_as(
         "SELECT DISTINCT cm2.user_id FROM chat_members cm1
          JOIN chat_members cm2 ON cm2.chat_id = cm1.chat_id AND cm2.user_id != $1

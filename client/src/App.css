@@ -1932,3 +1932,71 @@ input {
         opacity: 0.4;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   ENCRYPTED BADGE
+   ═══════════════════════════════════════════════════════════ */
+.msg-encrypted-badge {
+    font-size: 10px;
+    opacity: 0.5;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECURITY BANNER
+   ═══════════════════════════════════════════════════════════ */
+.security-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.security-banner.warning {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+.security-banner.error {
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--red);
+}
+
+.security-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.security-banner-content span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.security-banner-btn {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 12px;
+    transition: background .15s, transform .1s;
+}
+
+.security-banner-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.security-banner-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}

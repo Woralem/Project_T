@@ -1,16 +1,8 @@
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto } from './types';
-
-// ═══════════════════════════════════════════════════════════
-//  Конфигурация
-// ═══════════════════════════════════════════════════════════
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey } from './types';
 
 const SERVER_URL = 'http://163.5.180.138:3000';
 const API_URL = `${SERVER_URL}/api`;
 export const WS_URL = 'ws://163.5.180.138:3000/ws';
-
-// ═══════════════════════════════════════════════════════════
-//  Token storage
-// ═══════════════════════════════════════════════════════════
 
 let token: string | null = localStorage.getItem('auth_token');
 
@@ -26,10 +18,6 @@ export function setToken(t: string | null) {
         localStorage.removeItem('auth_token');
     }
 }
-
-// ═══════════════════════════════════════════════════════════
-//  Base fetch
-// ═══════════════════════════════════════════════════════════
 
 async function request<T>(
     path: string,
@@ -174,6 +162,16 @@ export async function createChat(
     return request<ChatDto>('/chats', {
         method: 'POST',
         body: JSON.stringify({ member_ids, is_group, name }),
+    });
+}
+
+export async function updateChatKeys(
+    chatId: string,
+    encrypted_keys: Record<string, EncryptedChatKey>,
+): Promise<void> {
+    await request<void>(`/chats/${chatId}/keys`, {
+        method: 'PUT',
+        body: JSON.stringify({ encrypted_keys }),
     });
 }
 

@@ -1,16 +1,11 @@
+import { keystore } from './keystore';
+import type { EncryptedChatKey, EncryptedPayload } from '../types';
+
 const STORAGE_KEY = 'e2e_keys';
 const ALGORITHM = 'AES-GCM';
 
 export interface StoredKeys {
-    identityKeyPair: {
-        publicKey: string;
-        privateKey: string;
-    };
-    signingKeyPair: {
-        publicKey: string;
-        privateKey: string;
-    };
-    signature: string;
+    identityKeyPair: { publicKey: string; privateKey: string };
     keyId: string;
 }
 
@@ -21,40 +16,28 @@ export interface ExportedPublicKeys {
     key_id: string;
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Утилиты
-// ═══════════════════════════════════════════════════════════
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+function ab2b64(buffer: ArrayBuffer): string {
     const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
+    let bin = '';
+    for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
 }
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
+function b642ab(base64: string): ArrayBuffer {
+    const bin = atob(base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return bytes.buffer;
 }
 
-async function generateKeyId(publicKey: ArrayBuffer): Promise<string> {
-    const hash = await crypto.subtle.digest('SHA-256', publicKey);
-    return arrayBufferToBase64(hash).slice(0, 32);
+async function generateKeyId(pubKey: ArrayBuffer): Promise<string> {
+    const hash = await crypto.subtle.digest('SHA-256', pubKey);
+    return ab2b64(hash).slice(0, 32);
 }
-
-// ═══════════════════════════════════════════════════════════
-//  Менеджер ключей
-// ═══════════════════════════════════════════════════════════
 
 class E2ECryptoManager {
     private keys: StoredKeys | null = null;
-    private sessionKeys: Map<string, CryptoKey> = new Map();
+    private chatKeys: Map<string, CryptoKey> = new Map();
 
     async initialize(): Promise<ExportedPublicKeys | null> {
         const stored = localStorage.getItem(STORAGE_KEY);
@@ -63,7 +46,7 @@ class E2ECryptoManager {
                 this.keys = JSON.parse(stored);
                 return this.getPublicKeys();
             } catch (e) {
-                console.error('[E2E] Failed to load stored keys:', e);
+                console.error('[E2E] Load failed:', e);
                 localStorage.removeItem(STORAGE_KEY);
             }
         }
@@ -71,63 +54,33 @@ class E2ECryptoManager {
     }
 
     async generateKeys(): Promise<ExportedPublicKeys> {
-        // Генерация ECDH ключей для обмена
-        const identityKeyPair = await crypto.subtle.generateKey(
+        this.chatKeys.clear();
+        await keystore.clearSessionKeys();
+
+        const idKP = await crypto.subtle.generateKey(
             { name: 'ECDH', namedCurve: 'P-256' },
             true,
-            ['deriveBits']
+            ['deriveBits'],
         );
 
-        // Генерация ECDSA ключей для подписей
-        const signingKeyPair = await crypto.subtle.generateKey(
-            { name: 'ECDSA', namedCurve: 'P-256' },
-            true,
-            ['sign', 'verify']
-        );
+        const idPubExp = await crypto.subtle.exportKey('spki', idKP.publicKey);
+        const idPubB64 = ab2b64(idPubExp);
+        const kid = await generateKeyId(idPubExp);
+        const idPrivExp = await crypto.subtle.exportKey('pkcs8', idKP.privateKey);
 
-        // Экспорт публичных ключей
-        const identityPubExported = await crypto.subtle.exportKey('spki', identityKeyPair.publicKey);
-        const signingPubExported = await crypto.subtle.exportKey('spki', signingKeyPair.publicKey);
-        const identityPubBase64 = arrayBufferToBase64(identityPubExported);
-        const signingPubBase64 = arrayBufferToBase64(signingPubExported);
-
-        // Подписываем identity key
-        const signature = await crypto.subtle.sign(
-            { name: 'ECDSA', hash: 'SHA-256' },
-            signingKeyPair.privateKey,
-            identityPubExported
-        );
-        const signatureBase64 = arrayBufferToBase64(signature);
-
-        // Key ID
-        const keyId = await generateKeyId(identityPubExported);
-
-        // Экспорт приватных ключей
-        const identityPrivExported = await crypto.subtle.exportKey('pkcs8', identityKeyPair.privateKey);
-        const signingPrivExported = await crypto.subtle.exportKey('pkcs8', signingKeyPair.privateKey);
-
-        // Сохраняем
         this.keys = {
-            identityKeyPair: {
-                publicKey: identityPubBase64,
-                privateKey: arrayBufferToBase64(identityPrivExported),
-            },
-            signingKeyPair: {
-                publicKey: signingPubBase64,
-                privateKey: arrayBufferToBase64(signingPrivExported),
-            },
-            signature: signatureBase64,
-            keyId,
+            identityKeyPair: { publicKey: idPubB64, privateKey: ab2b64(idPrivExp) },
+            keyId: kid,
         };
 
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.keys));
-        console.log('[E2E] Keys generated, keyId:', keyId);
+        console.log('[E2E] Identity generated:', kid);
 
         return {
-            identity_key: identityPubBase64,
-            signing_key: signingPubBase64,
-            signature: signatureBase64,
-            key_id: keyId,
+            identity_key: idPubB64,
+            signing_key: idPubB64,
+            signature: 'NA',
+            key_id: kid,
         };
     }
 
@@ -135,8 +88,8 @@ class E2ECryptoManager {
         if (!this.keys) return null;
         return {
             identity_key: this.keys.identityKeyPair.publicKey,
-            signing_key: this.keys.signingKeyPair.publicKey,
-            signature: this.keys.signature,
+            signing_key: this.keys.identityKeyPair.publicKey,
+            signature: 'NA',
             key_id: this.keys.keyId,
         };
     }
@@ -149,102 +102,252 @@ class E2ECryptoManager {
         return this.keys !== null;
     }
 
-    async deriveSessionKey(recipientPublicKeyBase64: string, recipientId: string): Promise<void> {
-        if (!this.keys) throw new Error('Keys not initialized');
-        if (this.sessionKeys.has(recipientId)) return;
-
-        try {
-            const ourPrivateKey = await crypto.subtle.importKey(
-                'pkcs8',
-                base64ToArrayBuffer(this.keys.identityKeyPair.privateKey),
-                { name: 'ECDH', namedCurve: 'P-256' },
-                false,
-                ['deriveBits']
-            );
-
-            const theirPublicKey = await crypto.subtle.importKey(
-                'spki',
-                base64ToArrayBuffer(recipientPublicKeyBase64),
-                { name: 'ECDH', namedCurve: 'P-256' },
-                false,
-                []
-            );
-
-            const sharedBits = await crypto.subtle.deriveBits(
-                { name: 'ECDH', public: theirPublicKey },
-                ourPrivateKey,
-                256
-            );
-
-            const hkdfKey = await crypto.subtle.importKey(
-                'raw', sharedBits, { name: 'HKDF' }, false, ['deriveKey']
-            );
-
-            const aesKey = await crypto.subtle.deriveKey(
-                {
-                    name: 'HKDF',
-                    hash: 'SHA-256',
-                    salt: new Uint8Array(32),
-                    info: new TextEncoder().encode('e2e-messenger'),
-                },
-                hkdfKey,
-                { name: ALGORITHM, length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-
-            this.sessionKeys.set(recipientId, aesKey);
-            console.log('[E2E] Session key derived for', recipientId);
-        } catch (e) {
-            console.error('[E2E] deriveSessionKey failed:', e);
-            throw e;
-        }
+    hasChatKey(chatId: string): boolean {
+        return this.chatKeys.has(chatId);
     }
 
-    async encrypt(
-        recipientId: string,
-        plaintext: string,
-    ): Promise<{ ciphertext: string; nonce: string; sender_key_id: string }> {
-        const key = this.sessionKeys.get(recipientId);
-        if (!key) throw new Error(`No session key for ${recipientId}`);
+    getChatKey(chatId: string): CryptoKey | undefined {
+        return this.chatKeys.get(chatId);
+    }
 
-        const data = new TextEncoder().encode(plaintext);
+    setChatKey(chatId: string, key: CryptoKey) {
+        this.chatKeys.set(chatId, key);
+    }
+
+    // ── Генерация ключа чата ──────────────────────────────────
+
+    async generateChatKey(): Promise<CryptoKey> {
+        return await crypto.subtle.generateKey(
+            { name: ALGORITHM, length: 256 },
+            true,
+            ['encrypt', 'decrypt'],
+        );
+    }
+
+    // ── Обернуть ключ чата для получателя (ECIES) ─────────────
+
+    async wrapChatKey(chatKey: CryptoKey, recipientPubKeyB64: string): Promise<EncryptedChatKey> {
+        const rawChatKey = await crypto.subtle.exportKey('raw', chatKey);
+
+        const ephPair = await crypto.subtle.generateKey(
+            { name: 'ECDH', namedCurve: 'P-256' },
+            true,
+            ['deriveBits'],
+        );
+        const ephPubExp = await crypto.subtle.exportKey('spki', ephPair.publicKey);
+        const ephPubB64 = ab2b64(ephPubExp);
+
+        const recipientPub = await crypto.subtle.importKey(
+            'spki',
+            b642ab(recipientPubKeyB64),
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false,
+            [],
+        );
+
+        const sharedBits = await crypto.subtle.deriveBits(
+            { name: 'ECDH', public: recipientPub },
+            ephPair.privateKey,
+            256,
+        );
+
+        const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, { name: 'HKDF' }, false, ['deriveKey']);
+        const wrapKey = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode('chat-key-wrap') },
+            hkdfKey,
+            { name: ALGORITHM, length: 256 },
+            false,
+            ['encrypt'],
+        );
+
         const nonce = crypto.getRandomValues(new Uint8Array(12));
-
-        const encrypted = await crypto.subtle.encrypt(
+        const ciphertext = await crypto.subtle.encrypt(
             { name: ALGORITHM, iv: nonce },
-            key,
-            data
+            wrapKey,
+            rawChatKey,
         );
 
         return {
-            ciphertext: arrayBufferToBase64(encrypted),
-            nonce: arrayBufferToBase64(nonce.buffer),
-            sender_key_id: this.keys!.keyId,
+            ephemeral_pub: ephPubB64,
+            ciphertext: ab2b64(ciphertext),
+            nonce: ab2b64(nonce.buffer),
         };
     }
 
-    async decrypt(senderId: string, ciphertext: string, nonce: string): Promise<string> {
-        const key = this.sessionKeys.get(senderId);
-        if (!key) throw new Error(`No session key for ${senderId}`);
+    // ── Развернуть ключ чата, полученный с сервера ────────────
 
-        const nonceBuffer = base64ToArrayBuffer(nonce);
+    async unwrapChatKey(chatId: string, encChatKey: EncryptedChatKey): Promise<void> {
+        if (!this.keys) throw new Error('No identity keys');
 
-        const decrypted = await crypto.subtle.decrypt(
-            { name: ALGORITHM, iv: nonceBuffer },
-            key,
-            base64ToArrayBuffer(ciphertext)
+        const myPriv = await crypto.subtle.importKey(
+            'pkcs8',
+            b642ab(this.keys.identityKeyPair.privateKey),
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false,
+            ['deriveBits'],
         );
 
-        return new TextDecoder().decode(decrypted);
+        const ephPub = await crypto.subtle.importKey(
+            'spki',
+            b642ab(encChatKey.ephemeral_pub),
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false,
+            [],
+        );
+
+        const sharedBits = await crypto.subtle.deriveBits(
+            { name: 'ECDH', public: ephPub },
+            myPriv,
+            256,
+        );
+
+        const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, { name: 'HKDF' }, false, ['deriveKey']);
+        const unwrapKey = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode('chat-key-wrap') },
+            hkdfKey,
+            { name: ALGORITHM, length: 256 },
+            false,
+            ['decrypt'],
+        );
+
+        const rawChatKey = await crypto.subtle.decrypt(
+            { name: ALGORITHM, iv: b642ab(encChatKey.nonce) },
+            unwrapKey,
+            b642ab(encChatKey.ciphertext),
+        );
+
+        const chatKey = await crypto.subtle.importKey(
+            'raw',
+            rawChatKey,
+            { name: ALGORITHM, length: 256 },
+            true,
+            ['encrypt', 'decrypt'],
+        );
+
+        this.chatKeys.set(chatId, chatKey);
+
+        try {
+            await keystore.saveSessionKey(chatId, rawChatKey, this.keys.keyId);
+        } catch (e) {
+            console.warn('[E2E] Failed to cache chat key:', e);
+        }
+
+        console.log('[E2E] Unwrapped chat key for', chatId);
     }
 
-    clear(): void {
+    // ── Загрузка ключа чата из кэша ──────────────────────────
+
+    async loadChatKeyFromCache(chatId: string): Promise<boolean> {
+        if (this.chatKeys.has(chatId)) return true;
+        if (!this.keys) return false;
+
+        const cached = await keystore.getSessionKey(chatId);
+        if (cached && cached.peerPublicKey === this.keys.keyId) {
+            try {
+                const chatKey = await crypto.subtle.importKey(
+                    'raw',
+                    new Uint8Array(cached.key).buffer,
+                    { name: ALGORITHM, length: 256 },
+                    true,
+                    ['encrypt', 'decrypt'],
+                );
+                this.chatKeys.set(chatId, chatKey);
+                console.log('[E2E] Chat key loaded from cache:', chatId);
+                return true;
+            } catch (e) {
+                console.warn('[E2E] Cache restore failed:', e);
+                await keystore.deleteSessionKey(chatId);
+            }
+        }
+        return false;
+    }
+
+    // ── Сохранить ключ чата в кэш напрямую ───────────────────
+
+    async saveChatKeyToCache(chatId: string, chatKey: CryptoKey): Promise<void> {
+        if (!this.keys) return;
+        try {
+            const raw = await crypto.subtle.exportKey('raw', chatKey);
+            await keystore.saveSessionKey(chatId, raw, this.keys.keyId);
+        } catch (e) {
+            console.warn('[E2E] Failed to save chat key to cache:', e);
+        }
+    }
+
+    // ── Шифрование текста ────────────────────────────────────
+
+    async encrypt(chatId: string, plaintext: string): Promise<EncryptedPayload> {
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
+        const data = new TextEncoder().encode(plaintext);
+        const nonce = crypto.getRandomValues(new Uint8Array(12));
+        const enc = await crypto.subtle.encrypt({ name: ALGORITHM, iv: nonce }, key, data);
+        return { ciphertext: ab2b64(enc), nonce: ab2b64(nonce.buffer) };
+    }
+
+    // ── Расшифровка текста ───────────────────────────────────
+
+    async decrypt(chatId: string, ciphertext: string, nonce: string, messageId?: string): Promise<string> {
+        if (messageId) {
+            const cached = await keystore.getDecryptedMessage(messageId);
+            if (cached !== undefined) return cached;
+        }
+
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
+        const dec = await crypto.subtle.decrypt(
+            { name: ALGORITHM, iv: b642ab(nonce) },
+            key,
+            b642ab(ciphertext),
+        );
+        const plaintext = new TextDecoder().decode(dec);
+
+        if (messageId) {
+            await keystore.saveDecryptedMessage(messageId, plaintext);
+        }
+
+        return plaintext;
+    }
+
+    // ── Шифрование бинарных данных (голосовые) ───────────────
+
+    async encryptBuffer(chatId: string, data: ArrayBuffer): Promise<{ encryptedData: ArrayBuffer; nonce: string }> {
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
+        const nonce = crypto.getRandomValues(new Uint8Array(12));
+        const enc = await crypto.subtle.encrypt({ name: ALGORITHM, iv: nonce }, key, data);
+        return { encryptedData: enc, nonce: ab2b64(nonce.buffer) };
+    }
+
+    // ── Расшифровка бинарных данных ─────────────────────────
+
+    async decryptBuffer(chatId: string, data: ArrayBuffer, nonceB64: string, attachmentId?: string): Promise<ArrayBuffer> {
+        if (attachmentId) {
+            const cached = await keystore.getVoiceCache(attachmentId);
+            if (cached) return cached;
+        }
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
+        const dec = await crypto.subtle.decrypt(
+            { name: ALGORITHM, iv: b642ab(nonceB64) },
+            key,
+            data,
+        );
+        if (attachmentId) {
+            await keystore.saveVoiceCache(attachmentId, dec);
+        }
+        return dec;
+    }
+
+    // ── Очистка ─────────────────────────────────────────────
+
+    async clear(): Promise<void> {
         this.keys = null;
-        this.sessionKeys.clear();
+        this.chatKeys.clear();
         localStorage.removeItem(STORAGE_KEY);
-        console.log('[E2E] Keys cleared');
+        await keystore.clearAll();
     }
 }
 
 export const cryptoManager = new E2ECryptoManager();
+export { keystore };

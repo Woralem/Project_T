@@ -18,4 +18,6 @@ pub struct ChatMember {
     pub user_id: Uuid,
     pub role: String,
     pub joined_at: DateTime<Utc>,
+    pub encrypted_chat_key: Option<serde_json::Value>,
+    pub member_key_id: Option<String>,
 }

@@ -21,7 +21,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // ── Инвайты ────────────────────────────────────────────
     const handleCreateInvite = async () => {
         setCreatingInvite(true);
         try {
@@ -42,7 +41,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         }
     };
 
-    // ── Аватарка ───────────────────────────────────────────
     const handleAvatarClick = () => {
         fileInputRef.current?.click();
     };
@@ -88,20 +86,17 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         }
     };
 
-    // ── E2E Шифрование ─────────────────────────────────────
     const handleSetupE2E = async () => {
         setSettingUpE2E(true);
         try {
-            // 1. Генерируем ключи локально
             const publicKeys = await cryptoManager.generateKeys();
 
-            // 2. Отправляем публичные ключи на сервер
             const updatedUser = await api.updateProfile({
                 public_keys: publicKeys,
             });
 
             setE2eEnabled(true);
-            showToast('E2E шифрование настроено!', 'success');
+            showToast('E2E шифрование настроено! Откройте чаты чтобы включить шифрование.', 'success');
 
             if (onUserUpdate) {
                 onUserUpdate(updatedUser);
@@ -115,17 +110,16 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     };
 
     const handleResetE2E = async () => {
-        if (!confirm('Сбросить ключи шифрования? Зашифрованные сообщения станут недоступны.')) {
+        if (!confirm('Сбросить ключи шифрования?\n\nВы потеряете доступ к зашифрованным чатам до тех пор, пока собеседники не обновят ключи.')) {
             return;
         }
 
         try {
-            // Генерируем новые ключи
             const publicKeys = await cryptoManager.generateKeys();
             const updatedUser = await api.updateProfile({ public_keys: publicKeys });
 
             setE2eEnabled(true);
-            showToast('Ключи шифрования обновлены', 'success');
+            showToast('Ключи обновлены. Собеседники увидят уведомление.', 'success');
 
             if (onUserUpdate) {
                 onUserUpdate(updatedUser);
@@ -142,7 +136,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
             <div className="settings-inner">
                 <h2 className="settings-title">Настройки</h2>
 
-                {/* ═══ Профиль ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Профиль</div>
                     <div className="s-profile">
@@ -179,43 +172,38 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </div>
                 </div>
 
-                {/* ═══ E2E Шифрование ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Сквозное шифрование (E2E)</div>
 
                     {e2eEnabled ? (
-                        <>
-                            <div className="e2e-status-card">
-                                <div className="e2e-status-header">
-                                    <span className="e2e-badge active">{Icon.shield(16)} Включено</span>
-                                </div>
-                                {keyId && (
-                                    <div className="e2e-key-row">
-                                        <span className="e2e-key-label">Отпечаток ключа:</span>
-                                        <code className="e2e-key-value">{keyId}</code>
-                                    </div>
-                                )}
-                                <p className="e2e-hint">
-                                    Ваши сообщения в личных чатах шифруются на устройстве.
-                                    Сервер не может их прочитать.
-                                </p>
-                                <button className="e2e-reset-btn" onClick={handleResetE2E}>
-                                    Пересоздать ключи
-                                </button>
+                        <div className="e2e-status-card">
+                            <div className="e2e-status-header">
+                                <span className="e2e-badge active">{Icon.shield(16)} Включено</span>
                             </div>
-                        </>
+                            {keyId && (
+                                <div className="e2e-key-row">
+                                    <span className="e2e-key-label">Отпечаток ключа:</span>
+                                    <code className="e2e-key-value">{keyId}</code>
+                                </div>
+                            )}
+                            <p className="e2e-hint">
+                                Каждый чат шифруется своим ключом. Откройте чат для автоматической настройки шифрования. Если собеседник сменит устройство — вы увидите уведомление.
+                            </p>
+                            <button className="e2e-reset-btn" onClick={handleResetE2E}>
+                                Пересоздать ключи
+                            </button>
+                        </div>
                     ) : (
                         <div className="e2e-setup-card">
                             <div className="e2e-setup-icon">{Icon.lock(32)}</div>
                             <h3 className="e2e-setup-title">Шифрование не настроено</h3>
                             <p className="e2e-setup-desc">
-                                Настройте сквозное шифрование, чтобы ваши сообщения
-                                были защищены. Только вы и собеседник сможете их прочитать.
+                                Настройте сквозное шифрование. Для каждого чата будет создан свой ключ шифрования.
                             </p>
                             <ul className="e2e-features">
-                                <li>{Icon.check(14)} Шифрование на устройстве</li>
+                                <li>{Icon.check(14)} Отдельный ключ для каждого чата</li>
                                 <li>{Icon.check(14)} Сервер не видит содержимое</li>
-                                <li>{Icon.check(14)} ECDH + AES-256-GCM</li>
+                                <li>{Icon.check(14)} ECIES + AES-256-GCM</li>
                             </ul>
                             <button
                                 className="e2e-setup-btn"
@@ -232,7 +220,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </div>
 
-                {/* ═══ Инвайты ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Пригласить друга</div>
 
@@ -257,7 +244,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </div>
 
-                {/* ═══ Внешний вид ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Внешний вид</div>
                     <button className="s-row" onClick={onToggleTheme}>
@@ -271,12 +257,11 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </button>
                 </div>
 
-                {/* ═══ О приложении ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">О приложении</div>
                     <div className="s-row">
                         <span className="s-row-left">Версия</span>
-                        <span className="s-sub">0.2.0-alpha (E2E)</span>
+                        <span className="s-sub">0.3.0-alpha (Per-Chat E2E)</span>
                     </div>
                 </div>
             </div>

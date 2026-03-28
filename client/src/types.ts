@@ -12,7 +12,13 @@ export interface PublicKeyBundle {
 export interface EncryptedPayload {
     ciphertext: string;
     nonce: string;
-    sender_key_id: string;
+    sender_key_id?: string;
+}
+
+export interface EncryptedChatKey {
+    ephemeral_pub: string;
+    ciphertext: string;
+    nonce: string;
 }
 
 export interface AttachmentDto {
@@ -52,6 +58,8 @@ export interface ChatMemberDto {
     online: boolean;
     avatar_url?: string;
     public_keys?: PublicKeyBundle;
+    encrypted_chat_key?: EncryptedChatKey;
+    member_key_id?: string;
 }
 
 export interface ChatDto {
@@ -152,7 +160,6 @@ export interface ContextMenuItem {
     onClick: () => void;
 }
 
-// Legacy Chat type for compatibility
 export interface Chat {
     id: string;
     name: string;

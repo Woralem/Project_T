@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -10,7 +12,15 @@ use uuid::Uuid;
 pub struct EncryptedPayload {
     pub ciphertext: String,
     pub nonce: String,
-    pub sender_key_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender_key_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EncryptedChatKey {
+    pub ephemeral_pub: String,
+    pub ciphertext: String,
+    pub nonce: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -174,6 +184,10 @@ pub struct ChatMemberDto {
     pub avatar_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_keys: Option<PublicKeyBundle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_chat_key: Option<EncryptedChatKey>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub member_key_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -183,6 +197,10 @@ pub struct InviteDto {
     pub expires_at: Option<DateTime<Utc>>,
     pub used: bool,
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Request types
+// ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterReq {
@@ -226,4 +244,9 @@ pub struct UpdateProfileReq {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateAvatarRes {
     pub avatar_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateChatKeysReq {
+    pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
 }
