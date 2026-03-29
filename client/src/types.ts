@@ -105,6 +105,7 @@ export type WsServerMsg =
     | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
+    | { type: 'call_mute_changed'; payload: { chat_id: string; call_id: string; user_id: string; muted: boolean } }
     | { type: 'call_ended'; payload: { chat_id: string; call_id: string } };
 
 export type WsClientMsg =
@@ -119,6 +120,7 @@ export type WsClientMsg =
     | { type: 'call_answer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
+    | { type: 'call_mute'; payload: { chat_id: string; call_id: string; muted: boolean } }
     | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } };
 
 // ═══════════════════════════════════════════════════════════
@@ -203,7 +205,20 @@ export interface CallState {
     peerName: string | null;
     peerAvatarUrl?: string;
     isMuted: boolean;
+    peerMuted: boolean;
     duration: number;
     isEncrypted: boolean;
     endReason?: CallEndReason;
+    peerVolume: number;
+    micGain: number;
+}
+
+export interface NotificationData {
+    id: string;
+    chatId: string;
+    chatName: string;
+    senderName: string;
+    senderAvatarUrl?: string;
+    text: string;
+    isGroup: boolean;
 }

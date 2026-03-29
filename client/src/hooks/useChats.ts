@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto, UserDto, EncryptedPayload, ChatMemberDto } from '../types';
+import type {
+    LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto,
+    UserDto, EncryptedPayload, ChatMemberDto, NotificationData,
+} from '../types';
 import { formatTime, uid } from '../utils';
 import * as api from '../api';
 import { wsManager } from '../websocket';
@@ -41,19 +44,13 @@ function saveSelectedId(id: string | null) {
     try { if (id) localStorage.setItem('selected_chat_id', id); else localStorage.removeItem('selected_chat_id'); } catch { }
 }
 
-/**
- * Пытается загрузить ключ чата: сначала из памяти, потом из кэша, потом с сервера.
- * Возвращает true если ключ загружен.
- */
 async function ensureChatKey(chatId: string, currentUserId: string, members?: ChatMemberDto[]): Promise<boolean> {
     if (!cryptoManager.hasKeys()) return false;
     if (cryptoManager.hasChatKey(chatId)) return true;
 
-    // Пробуем из кэша IndexedDB
     const cached = await cryptoManager.loadChatKeyFromCache(chatId);
     if (cached) return true;
 
-    // Нужны актуальные данные с сервера
     let freshMembers = members;
     if (!freshMembers) {
         try {
@@ -68,7 +65,6 @@ async function ensureChatKey(chatId: string, currentUserId: string, members?: Ch
     const myMember = freshMembers.find(m => m.user_id === currentUserId);
     if (!myMember?.encrypted_chat_key) return false;
 
-    // Проверяем что ключ был обёрнут для нашей текущей личности
     if (myMember.member_key_id && myMember.member_key_id !== cryptoManager.getKeyId()) {
         console.warn('[E2E] Chat key wrapped for old identity:', chatId);
         return false;
@@ -107,14 +103,12 @@ async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): 
     if (!cryptoManager.hasKeys()) return;
     if (cryptoManager.hasChatKey(chatDto.id)) return;
 
-    // Если уже есть ключи — пробуем загрузить свой
     const anyHasKey = chatDto.members.some(m => m.encrypted_chat_key);
     if (anyHasKey) {
         await ensureChatKey(chatDto.id, currentUserId, chatDto.members);
         return;
     }
 
-    // Нет ключей — генерируем новый
     const membersWithKeys = chatDto.members.filter(m => m.public_keys?.identity_key);
     if (membersWithKeys.length < 2) return;
 
@@ -140,7 +134,12 @@ async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): 
     }
 }
 
-export function useChats(user: UserDto | null) {
+// ═══════════════════════════════════════════════════════════
+
+export function useChats(
+    user: UserDto | null,
+    onNewMessage?: (data: NotificationData) => void,
+) {
     const [chats, setChats] = useState<LocalChat[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(loadSelectedId);
     const [loadingChats, setLoadingChats] = useState(false);
@@ -152,6 +151,19 @@ export function useChats(user: UserDto | null) {
     selectedIdRef.current = selectedId;
     const chatsRef = useRef(chats);
     chatsRef.current = chats;
+    const onNewMessageRef = useRef(onNewMessage);
+    onNewMessageRef.current = onNewMessage;
+
+    // ── mark_read helper ─────────────────────────────────
+
+    const sendMarkRead = useCallback((chatId: string, messageId: string) => {
+        wsManager.send({
+            type: 'mark_read',
+            payload: { chat_id: chatId, message_id: messageId },
+        });
+    }, []);
+
+    // ── loadChats ────────────────────────────────────────
 
     const loadChats = useCallback(async () => {
         if (!user || loadingRef.current) return;
@@ -186,6 +198,8 @@ export function useChats(user: UserDto | null) {
         }
     }, [currentUserId]);
 
+    // ── selectChat ───────────────────────────────────────
+
     const selectChat = useCallback(async (chatId: string) => {
         setSelectedId(chatId);
         saveSelectedId(chatId);
@@ -194,19 +208,17 @@ export function useChats(user: UserDto | null) {
         let chat = chatsRef.current.find(c => c.id === chatId);
         if (!chat) return;
 
-        // Если E2E включено и нет ключа — всегда запрашиваем свежие данные с сервера
+        // Загрузка ключей E2E
         if (cryptoManager.hasKeys() && !cryptoManager.hasChatKey(chatId)) {
             const cached = await cryptoManager.loadChatKeyFromCache(chatId);
             if (!cached) {
                 try {
                     const freshDto = await api.getChat(chatId);
                     const freshLocal = chatDtoToLocal(freshDto, currentUserId);
-                    // Обновляем members в локальном стейте
                     setChats(prev => prev.map(c => c.id !== chatId ? c : {
                         ...c, members: freshLocal.members,
                     }));
                     chat = { ...chat, members: freshLocal.members };
-                    // Пробуем развернуть ключ
                     await ensureChatKey(chatId, currentUserId, freshLocal.members);
                 } catch (e) {
                     console.warn('[E2E] Failed to refresh chat for key:', e);
@@ -214,8 +226,15 @@ export function useChats(user: UserDto | null) {
             }
         }
 
-        if (chat.messagesLoaded) return;
+        // Если сообщения уже загружены — отправляем mark_read и выходим
+        if (chat.messagesLoaded) {
+            if (chat.messages.length > 0) {
+                sendMarkRead(chatId, chat.messages[chat.messages.length - 1].id);
+            }
+            return;
+        }
 
+        // Загружаем сообщения
         setLoadingMessages(true);
         try {
             const msgs = await api.getMessages(chatId);
@@ -225,9 +244,16 @@ export function useChats(user: UserDto | null) {
             setChats(prev => prev.map(c => c.id !== chatId ? c : {
                 ...c, messages: local, messagesLoaded: true, unread_count: 0,
             }));
+
+            // Отправляем mark_read для последнего сообщения
+            if (local.length > 0) {
+                sendMarkRead(chatId, local[local.length - 1].id);
+            }
         } catch (e) { console.error('Load messages failed', e); }
         finally { setLoadingMessages(false); }
-    }, [currentUserId]);
+    }, [currentUserId, sendMarkRead]);
+
+    // ── sendMessage ──────────────────────────────────────
 
     const sendMessage = useCallback(async (text: string) => {
         if (!selectedId || !text.trim() || !user) return;
@@ -263,6 +289,8 @@ export function useChats(user: UserDto | null) {
             },
         });
     }, [selectedId, user]);
+
+    // ── sendVoiceMessage ─────────────────────────────────
 
     const sendVoiceMessage = useCallback(async (chatId: string, blob: Blob) => {
         if (!user) return;
@@ -322,6 +350,8 @@ export function useChats(user: UserDto | null) {
         });
     }, [user]);
 
+    // ── editMessage ──────────────────────────────────────
+
     const editMessage = useCallback(async (messageId: string, newText: string) => {
         if (!newText.trim() || !user) return;
         const t = newText.trim();
@@ -352,12 +382,16 @@ export function useChats(user: UserDto | null) {
         });
     }, [user]);
 
+    // ── deleteMessage ────────────────────────────────────
+
     const deleteMessage = useCallback((messageId: string) => {
         setChats(prev => prev.map(c => ({
             ...c, messages: c.messages.filter(m => m.id !== messageId),
         })));
         wsManager.send({ type: 'delete_message', payload: { message_id: messageId } });
     }, []);
+
+    // ── createChat ───────────────────────────────────────
 
     const createChat = useCallback(async (memberIds: string[], isGroup: boolean, name?: string) => {
         const nc = await api.createChat(memberIds, isGroup, name);
@@ -373,7 +407,7 @@ export function useChats(user: UserDto | null) {
         return nc;
     }, [currentUserId]);
 
-    // ── WebSocket обработчик ──────────────────────────────────
+    // ── WebSocket обработчик ──────────────────────────────
 
     useEffect(() => {
         if (!user) return;
@@ -408,7 +442,6 @@ export function useChats(user: UserDto | null) {
                     let lm = serverMsgToLocal(message, currentUserId);
 
                     if (message.encrypted && cryptoManager.hasKeys() && !message.attachment) {
-                        // Пробуем загрузить ключ чата если его нет
                         if (!cryptoManager.hasChatKey(message.chat_id)) {
                             await ensureChatKey(message.chat_id, currentUserId);
                         }
@@ -430,22 +463,43 @@ export function useChats(user: UserDto | null) {
                         }
                     }
 
+                    const isSelected = selectedIdRef.current === message.chat_id;
+
                     setChats(prev => {
                         if (!prev.some(c => c.id === message.chat_id)) { loadChats(); return prev; }
                         return prev.map(c => {
                             if (c.id !== message.chat_id || c.messages.some(m => m.id === message.id)) return c;
-                            const isSel = selectedIdRef.current === c.id;
                             const display = lm.decrypted_content || lm.content;
                             const pref = c.is_group ? `${message.sender_name}: ` : '';
                             return {
                                 ...c,
                                 messages: c.messagesLoaded ? [...c.messages, lm] : c.messages,
-                                unread_count: isSel ? 0 : c.unread_count + 1,
+                                unread_count: isSelected ? 0 : c.unread_count + 1,
                                 lastMessageText: pref + display,
                                 lastMessageTime: formatTime(message.created_at),
                             };
                         });
                     });
+
+                    // Если чат открыт — сразу отправляем mark_read
+                    if (isSelected) {
+                        sendMarkRead(message.chat_id, message.id);
+                    } else {
+                        // Чат не открыт — показываем уведомление
+                        if (onNewMessageRef.current) {
+                            const chat = chatsRef.current.find(c => c.id === message.chat_id);
+                            const sender = chat?.members.find(m => m.user_id === message.sender_id);
+                            onNewMessageRef.current({
+                                id: message.id,
+                                chatId: message.chat_id,
+                                chatName: chat?.name || message.sender_name,
+                                senderName: message.sender_name,
+                                senderAvatarUrl: sender?.avatar_url,
+                                text: lm.content,
+                                isGroup: chat?.is_group || false,
+                            });
+                        }
+                    }
                     break;
                 }
                 case 'message_edited': {
@@ -465,6 +519,45 @@ export function useChats(user: UserDto | null) {
                     const { chat_id, message_id } = msg.payload;
                     setChats(prev => prev.map(c => c.id !== chat_id ? c : {
                         ...c, messages: c.messages.filter(m => m.id !== message_id),
+                    }));
+                    break;
+                }
+                // ── ПРОЧТЕНИЕ ─────────────────────────────────
+                case 'messages_read': {
+                    const { chat_id, user_id, message_id } = msg.payload;
+                    // Другой пользователь прочитал — обновляем статус наших сообщений
+                    if (user_id === currentUserId) break;
+
+                    setChats(prev => prev.map(c => {
+                        if (c.id !== chat_id) return c;
+
+                        const readIdx = c.messages.findIndex(m => m.id === message_id);
+                        if (readIdx === -1) {
+                            // Если message_id не найден — возможно прочитано ВСЁ,
+                            // пометим все наши sent/delivered как read
+                            const hasUnread = c.messages.some(
+                                m => m.own && (m.status === 'sent' || m.status === 'delivered')
+                            );
+                            if (!hasUnread) return c;
+                            return {
+                                ...c,
+                                messages: c.messages.map(m =>
+                                    m.own && (m.status === 'sent' || m.status === 'delivered')
+                                        ? { ...m, status: 'read' as const }
+                                        : m
+                                ),
+                            };
+                        }
+
+                        return {
+                            ...c,
+                            messages: c.messages.map((m, idx) => {
+                                if (m.own && idx <= readIdx && (m.status === 'sent' || m.status === 'delivered')) {
+                                    return { ...m, status: 'read' as const };
+                                }
+                                return m;
+                            }),
+                        };
                     }));
                     break;
                 }
@@ -504,7 +597,7 @@ export function useChats(user: UserDto | null) {
             }
         });
         return unsub;
-    }, [user, currentUserId, loadChats]);
+    }, [user, currentUserId, loadChats, sendMarkRead]);
 
     useEffect(() => {
         if (!user) return;

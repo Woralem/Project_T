@@ -190,7 +190,27 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
         WsClientMsg::CallHangup { chat_id, call_id } => {
             on_call_hangup(state, uid, chat_id, call_id).await
         }
+        WsClientMsg::CallMute {
+            chat_id,
+            call_id,
+            muted,
+        } => on_call_mute(state, uid, chat_id, call_id, muted).await,
     }
+}
+
+async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid, muted: bool) {
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallMuteChanged {
+            chat_id,
+            call_id,
+            user_id: uid,
+            muted,
+        },
+    )
+    .await;
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Tab, UserDto } from './types';
+import type { Tab, UserDto, NotificationData } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useCall } from './hooks/useCall';
@@ -26,6 +26,58 @@ function saveDark(v: boolean) {
     try { localStorage.setItem('dark_mode', String(v)); } catch { /* */ }
 }
 
+// ── Звук уведомления ─────────────────────────────────────
+
+let lastNotifSoundTime = 0;
+function playNotificationSound() {
+    const now = Date.now();
+    if (now - lastNotifSoundTime < 1500) return;
+    lastNotifSoundTime = now;
+    const audio = new Audio('/sounds/notification.mp3');
+    audio.volume = 0.5;
+    audio.play().catch(() => { });
+}
+
+// ── Десктопное уведомление ───────────────────────────────
+
+function showDesktopNotification(
+    data: NotificationData,
+    onClick: () => void,
+) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const title = data.isGroup ? data.chatName : data.senderName;
+    const body = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
+
+    let icon: string | undefined;
+    if (data.senderAvatarUrl) {
+        icon = data.senderAvatarUrl.startsWith('http')
+            ? data.senderAvatarUrl
+            : `http://163.5.180.138:3000${data.senderAvatarUrl}`;
+    }
+
+    try {
+        const n = new Notification(title, {
+            body: body.length > 100 ? body.slice(0, 100) + '…' : body,
+            icon,
+            silent: true,
+            tag: `msg-${data.chatId}`,
+        });
+
+        n.onclick = () => {
+            window.focus();
+            onClick();
+            n.close();
+        };
+
+        setTimeout(() => n.close(), 6000);
+    } catch (e) {
+        console.warn('[Notification] Failed:', e);
+    }
+}
+
+// ══════════════════════════════════════════════════════════
+
 export default function App() {
     const [tab, setTab] = React.useState<Tab>('chats');
     const [dark, setDark] = React.useState(loadDark);
@@ -34,16 +86,44 @@ export default function App() {
     const { toasts, showToast } = useToast();
 
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
+
+    // ── Запросить разрешение на уведомления ───────────────
+
+    React.useEffect(() => {
+        if (user && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().then(p => {
+                console.log('[Notification] Permission:', p);
+            });
+        }
+    }, [user]);
+
+    // ── Колбэк для нового сообщения ──────────────────────
+
+    const selectChatRef = React.useRef<(id: string) => void>(() => { });
+
+    const handleNewMessage = React.useCallback((data: NotificationData) => {
+        playNotificationSound();
+        showDesktopNotification(data, () => {
+            setTab('chats');
+            selectChatRef.current(data.chatId);
+        });
+    }, []);
+
+    // ── Хуки ─────────────────────────────────────────────
+
     const {
         chats, selectedId, selectedChat,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage,
         editMessage, deleteMessage, createChat, refreshChat,
-    } = useChats(user);
+    } = useChats(user, handleNewMessage);
+
+    // Обновляем ref после создания selectChat
+    selectChatRef.current = selectChat;
 
     const {
         callState, startCall, answerCall, rejectCall,
-        hangup, toggleMute, dismissCall,
+        hangup, toggleMute, setPeerVolume, setMicGain, dismissCall,
     } = useCall(user?.id || '', chats);
 
     React.useEffect(() => {
@@ -53,17 +133,11 @@ export default function App() {
     }, []);
 
     const toggleDark = React.useCallback(() => {
-        setDark(d => {
-            const next = !d;
-            saveDark(next);
-            return next;
-        });
+        setDark(d => { const next = !d; saveDark(next); return next; });
     }, []);
 
     const handleLogout = React.useCallback(() => {
-        if (callState.status !== 'idle' && callState.status !== 'ended') {
-            hangup();
-        }
+        if (callState.status !== 'idle' && callState.status !== 'ended') hangup();
         cryptoManager.clear();
         logout();
     }, [logout, callState.status, hangup]);
@@ -106,37 +180,23 @@ export default function App() {
     return (
         <div className={`root ${theme}`}>
             <div className="layout">
-                <NavRail
-                    tab={tab}
-                    onTab={setTab}
-                    darkMode={dark}
-                    onToggleTheme={toggleDark}
-                    onLogout={handleLogout}
-                />
+                <NavRail tab={tab} onTab={setTab} darkMode={dark} onToggleTheme={toggleDark} onLogout={handleLogout} />
 
                 {tab === 'chats' && (
                     <>
                         <ChatListPanel
-                            chats={chats}
-                            selectedId={selectedId}
-                            onSelect={selectChat}
-                            search={search}
-                            onSearch={setSearch}
+                            chats={chats} selectedId={selectedId} onSelect={selectChat}
+                            search={search} onSearch={setSearch}
                             onNewChat={() => setNewChatOpen(true)}
-                            loading={loadingChats}
-                            currentUserId={user.id}
+                            loading={loadingChats} currentUserId={user.id}
                         />
                         {selectedChat ? (
                             <ChatView
-                                chat={selectedChat}
-                                currentUserId={user.id}
+                                chat={selectedChat} currentUserId={user.id}
                                 loadingMessages={loadingMessages}
-                                onSendMessage={sendMessage}
-                                onSendVoice={sendVoiceMessage}
-                                onDeleteMessage={deleteMessage}
-                                onEditMessage={editMessage}
-                                onRefreshChat={refreshChat}
-                                onStartCall={handleStartCall}
+                                onSendMessage={sendMessage} onSendVoice={sendVoiceMessage}
+                                onDeleteMessage={deleteMessage} onEditMessage={editMessage}
+                                onRefreshChat={refreshChat} onStartCall={handleStartCall}
                                 showToast={showToast}
                             />
                         ) : (
@@ -144,37 +204,22 @@ export default function App() {
                         )}
                     </>
                 )}
-
                 {tab === 'calls' && <CallsView />}
                 {tab === 'settings' && (
-                    <SettingsView
-                        darkMode={dark}
-                        onToggleTheme={toggleDark}
-                        showToast={showToast}
-                        user={user}
-                        onUserUpdate={handleUserUpdate}
-                    />
+                    <SettingsView darkMode={dark} onToggleTheme={toggleDark} showToast={showToast} user={user} onUserUpdate={handleUserUpdate} />
                 )}
             </div>
 
-            {/* Модальные окна и оверлеи — поверх всего */}
-            <NewChatModal
-                open={newChatOpen}
-                onClose={() => setNewChatOpen(false)}
-                onCreate={createChat}
-                showToast={showToast}
-            />
+            <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} onCreate={createChat} showToast={showToast} />
 
-            <IncomingCallModal
-                callState={callState}
-                onAccept={answerCall}
-                onReject={rejectCall}
-            />
+            <IncomingCallModal callState={callState} onAccept={answerCall} onReject={rejectCall} />
 
             <CallOverlay
                 callState={callState}
                 onHangup={hangup}
                 onToggleMute={toggleMute}
+                onSetPeerVolume={setPeerVolume}
+                onSetMicGain={setMicGain}
                 onDismiss={dismissCall}
             />
 

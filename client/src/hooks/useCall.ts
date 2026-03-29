@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { CallState, CallStatus, LocalChat, WsServerMsg } from '../types';
+import type { CallState, LocalChat, WsServerMsg } from '../types';
 import { wsManager } from '../websocket';
 import { cryptoManager } from '../crypto';
 
@@ -7,10 +7,16 @@ const ICE_CONFIG: RTCConfiguration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:stun.stunprotocol.org:3478' },
     ],
+    iceCandidatePoolSize: 4,
 };
 
 const CALL_TIMEOUT_MS = 35_000;
+const CONNECTING_TIMEOUT_MS = 20_000;
 
 const INITIAL: CallState = {
     status: 'idle',
@@ -19,8 +25,11 @@ const INITIAL: CallState = {
     peerId: null,
     peerName: null,
     isMuted: false,
+    peerMuted: false,
     duration: 0,
     isEncrypted: false,
+    peerVolume: 100,
+    micGain: 100,
 };
 
 interface PendingOffer {
@@ -55,6 +64,32 @@ async function decryptSignaling(chatId: string, data: string, isEncrypted: boole
     }
 }
 
+// ── Рингтон ──────────────────────────────────────────────
+
+function createRingtonePlayer() {
+    let audio: HTMLAudioElement | null = null;
+
+    function start(type: 'incoming' | 'outgoing') {
+        stop();
+        const src = type === 'incoming' ? '/sounds/ringtone.mp3' : '/sounds/ringback.mp3';
+        audio = new Audio(src);
+        audio.loop = true;
+        audio.volume = type === 'incoming' ? 0.7 : 0.4;
+        audio.play().catch(() => { });
+    }
+
+    function stop() {
+        if (audio) {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+            audio = null;
+        }
+    }
+
+    return { start, stop };
+}
+
 // ══════════════════════════════════════════════════════════
 
 export function useCall(currentUserId: string, chats: LocalChat[]) {
@@ -64,80 +99,60 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
     const localStreamRef = useRef<MediaStream | null>(null);
     const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pendingOfferRef = useRef<PendingOffer | null>(null);
     const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
-    const ringtoneCtxRef = useRef<AudioContext | null>(null);
-    const ringtoneOscRef = useRef<OscillatorNode | null>(null);
-    const ringtoneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const ringtoneRef = useRef(createRingtonePlayer());
+    const connectedFiredRef = useRef(false);
+
+    // Audio processing
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
 
     const stateRef = useRef(callState);
     stateRef.current = callState;
     const chatsRef = useRef(chats);
     chatsRef.current = chats;
 
-    // ── Инициализация аудио-элемента ─────────────────────
+    // ── Remote audio ─────────────────────────────────────
 
     useEffect(() => {
         const audio = new Audio();
         audio.autoplay = true;
         remoteAudioRef.current = audio;
-        return () => {
-            audio.srcObject = null;
-        };
-    }, []);
-
-    // ── Рингтон ──────────────────────────────────────────
-
-    const startRingtone = useCallback(() => {
-        try {
-            const ctx = new AudioContext();
-            ringtoneCtxRef.current = ctx;
-            let on = false;
-            ringtoneIntervalRef.current = setInterval(() => {
-                if (on) {
-                    ringtoneOscRef.current?.stop();
-                    ringtoneOscRef.current = null;
-                    on = false;
-                } else {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.value = 440;
-                    gain.gain.value = 0.15;
-                    osc.connect(gain).connect(ctx.destination);
-                    osc.start();
-                    ringtoneOscRef.current = osc;
-                    on = true;
-                }
-            }, 500);
-        } catch { /* audio not available */ }
-    }, []);
-
-    const stopRingtone = useCallback(() => {
-        ringtoneOscRef.current?.stop();
-        ringtoneOscRef.current = null;
-        if (ringtoneIntervalRef.current) clearInterval(ringtoneIntervalRef.current);
-        ringtoneIntervalRef.current = null;
-        ringtoneCtxRef.current?.close();
-        ringtoneCtxRef.current = null;
+        return () => { audio.srcObject = null; };
     }, []);
 
     // ── Утилиты ──────────────────────────────────────────
 
+    const clearAllTimeouts = useCallback(() => {
+        if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+        if (connectingTimeoutRef.current) { clearTimeout(connectingTimeoutRef.current); connectingTimeoutRef.current = null; }
+    }, []);
+
     const cleanup = useCallback(() => {
         if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-        if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-        stopRingtone();
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
+        connectedFiredRef.current = false;
 
         pcRef.current?.close();
         pcRef.current = null;
+
         localStreamRef.current?.getTracks().forEach(t => t.stop());
         localStreamRef.current = null;
+
+        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+            audioCtxRef.current.close().catch(() => { });
+        }
+        audioCtxRef.current = null;
+        gainNodeRef.current = null;
+
         if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
         pendingOfferRef.current = null;
         pendingCandidatesRef.current = [];
-    }, [stopRingtone]);
+    }, [clearAllTimeouts]);
 
     const startTimer = useCallback(() => {
         if (timerRef.current) return;
@@ -156,6 +171,48 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         return { name: chat.name };
     }, [currentUserId]);
 
+    // ── Обработка подключения (вызывается один раз) ──────
+
+    const handleConnected = useCallback((chatId: string) => {
+        if (connectedFiredRef.current) return;
+        connectedFiredRef.current = true;
+
+        console.log('[Call] ✓ Connected!');
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
+
+        const isEnc = cryptoManager.hasChatKey(chatId);
+        setCallState(s => ({ ...s, status: 'connected', isEncrypted: isEnc }));
+        startTimer();
+    }, [clearAllTimeouts, startTimer]);
+
+    // ── Обработка отключения ─────────────────────────────
+
+    const handleDisconnected = useCallback(() => {
+        const st = stateRef.current.status;
+        if (st === 'idle' || st === 'ended') return;
+
+        console.log('[Call] ✗ Disconnected/Failed');
+        ringtoneRef.current.stop();
+        cleanup();
+        setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+    }, [cleanup]);
+
+    // ── Таймаут connecting ───────────────────────────────
+
+    const startConnectingTimeout = useCallback((chatId: string, callId: string) => {
+        if (connectingTimeoutRef.current) clearTimeout(connectingTimeoutRef.current);
+
+        connectingTimeoutRef.current = setTimeout(() => {
+            if (stateRef.current.status === 'connecting') {
+                console.warn('[Call] Connecting timeout');
+                wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
+                cleanup();
+                setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+            }
+        }, CONNECTING_TIMEOUT_MS);
+    }, [cleanup]);
+
     // ── Создание PeerConnection ─────────────────────────
 
     const createPC = useCallback((chatId: string, callId: string) => {
@@ -167,12 +224,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
             const enc = await encryptSignaling(chatId, candidateStr);
             wsManager.send({
                 type: 'call_ice',
-                payload: {
-                    chat_id: chatId,
-                    call_id: callId,
-                    candidate: enc.data,
-                    encrypted: enc.encrypted,
-                },
+                payload: { chat_id: chatId, call_id: callId, candidate: enc.data, encrypted: enc.encrypted },
             });
         };
 
@@ -180,53 +232,95 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
             console.log('[Call] Remote track received');
             if (remoteAudioRef.current && e.streams[0]) {
                 remoteAudioRef.current.srcObject = e.streams[0];
+                remoteAudioRef.current.volume = (stateRef.current.peerVolume ?? 100) / 100;
             }
         };
 
+        // ── Двойное отслеживание: connectionState + iceConnectionState ──
+
         pc.onconnectionstatechange = () => {
             const st = pc.connectionState;
-            console.log('[Call] Connection state:', st);
+            console.log('[Call] connectionState:', st);
+
             if (st === 'connected') {
-                if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-                const isEnc = cryptoManager.hasChatKey(chatId);
-                setCallState(s => ({ ...s, status: 'connected', isEncrypted: isEnc }));
-                startTimer();
-            } else if (st === 'disconnected' || st === 'failed' || st === 'closed') {
-                if (stateRef.current.status !== 'idle' && stateRef.current.status !== 'ended') {
-                    setCallState(s => ({ ...s, status: 'ended', endReason: 'hangup' }));
-                    cleanup();
-                }
+                handleConnected(chatId);
+            } else if (st === 'failed') {
+                handleDisconnected();
             }
+            // 'disconnected' может быть временным — не реагируем сразу
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            const st = pc.iceConnectionState;
+            console.log('[Call] iceConnectionState:', st);
+
+            if (st === 'connected' || st === 'completed') {
+                handleConnected(chatId);
+            } else if (st === 'failed') {
+                handleDisconnected();
+            } else if (st === 'disconnected') {
+                // Ждём 5 секунд — может восстановится
+                setTimeout(() => {
+                    if (pcRef.current && pcRef.current.iceConnectionState === 'disconnected') {
+                        console.warn('[Call] ICE still disconnected after 5s');
+                        handleDisconnected();
+                    }
+                }, 5000);
+            }
+        };
+
+        pc.onicegatheringstatechange = () => {
+            console.log('[Call] iceGatheringState:', pc.iceGatheringState);
         };
 
         pcRef.current = pc;
         return pc;
-    }, [cleanup, startTimer]);
+    }, [handleConnected, handleDisconnected]);
 
-    // ── Получить аудио-поток ─────────────────────────────
+    // ── Получить аудио-поток с GainNode ──────────────────
 
-    const getAudioStream = useCallback(async (): Promise<MediaStream> => {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-            },
+    const getAudioStream = useCallback(async (initialGain: number): Promise<MediaStream> => {
+        const originalStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
             video: false,
         });
-        localStreamRef.current = stream;
-        return stream;
+
+        localStreamRef.current = originalStream;
+
+        try {
+            const ctx = new AudioContext();
+            audioCtxRef.current = ctx;
+            const source = ctx.createMediaStreamSource(originalStream);
+            const gain = ctx.createGain();
+            gain.gain.value = (initialGain / 100) * 2;
+            gainNodeRef.current = gain;
+            const dest = ctx.createMediaStreamDestination();
+            source.connect(gain).connect(dest);
+            return dest.stream;
+        } catch (e) {
+            console.warn('[Call] AudioContext failed, using raw stream:', e);
+            return originalStream;
+        }
     }, []);
 
-    // ── Добавить pending ICE кандидатов ──────────────────
+    // ── Flush pending ICE candidates ─────────────────────
 
     const flushPendingCandidates = useCallback(async () => {
         const pc = pcRef.current;
         if (!pc || !pc.remoteDescription) return;
-        for (const c of pendingCandidatesRef.current) {
-            try { await pc.addIceCandidate(c); } catch (e) { console.warn('[Call] addIceCandidate:', e); }
-        }
+
+        const candidates = [...pendingCandidatesRef.current];
         pendingCandidatesRef.current = [];
+
+        console.log(`[Call] Flushing ${candidates.length} pending ICE candidates`);
+
+        for (const c of candidates) {
+            try {
+                await pc.addIceCandidate(c);
+            } catch (e) {
+                console.warn('[Call] addIceCandidate failed:', e);
+            }
+        }
     }, []);
 
     // ═══════════════════════════════════════════════════════
@@ -234,13 +328,18 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
     // ═══════════════════════════════════════════════════════
 
     const startCall = useCallback(async (chatId: string) => {
-        if (stateRef.current.status !== 'idle') return;
+        const st = stateRef.current.status;
+        // Разрешаем начать только из idle или ended
+        if (st !== 'idle' && st !== 'ended') return;
+
+        // Если были в ended — сбрасываем
+        if (st === 'ended') cleanup();
 
         const callId = crypto.randomUUID();
         const peer = getPeerInfo(chatId);
 
         try {
-            const stream = await getAudioStream();
+            const stream = await getAudioStream(100);
             const pc = createPC(chatId, callId);
             stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
@@ -251,39 +350,38 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
             wsManager.send({
                 type: 'call_offer',
-                payload: {
-                    chat_id: chatId,
-                    call_id: callId,
-                    sdp: enc.data,
-                    encrypted: enc.encrypted,
-                },
+                payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted },
             });
 
             setCallState({
-                status: 'calling',
-                chatId,
-                callId,
-                peerId: null,
-                peerName: peer.name,
-                peerAvatarUrl: peer.avatarUrl,
-                isMuted: false,
-                duration: 0,
-                isEncrypted: enc.encrypted,
+                status: 'calling', chatId, callId,
+                peerId: null, peerName: peer.name, peerAvatarUrl: peer.avatarUrl,
+                isMuted: false, peerMuted: false,
+                duration: 0, isEncrypted: enc.encrypted,
+                peerVolume: 100, micGain: 100,
             });
 
-            // Таймаут без ответа
-            timeoutRef.current = setTimeout(() => {
+            ringtoneRef.current.start('outgoing');
+
+            // Таймаут ожидания ответа
+            callTimeoutRef.current = setTimeout(() => {
                 if (stateRef.current.status === 'calling') {
+                    console.log('[Call] Ring timeout');
                     wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
-                    setCallState(s => ({ ...s, status: 'ended', endReason: 'timeout' }));
                     cleanup();
+                    setCallState(s => ({ ...s, status: 'ended', endReason: 'timeout' }));
                 }
             }, CALL_TIMEOUT_MS);
 
         } catch (e: any) {
             console.error('[Call] Start failed:', e);
             cleanup();
-            setCallState({ ...INITIAL, status: 'ended', endReason: 'error' });
+            setCallState(s => ({
+                ...s,
+                peerName: s.peerName || peer.name,
+                status: 'ended',
+                endReason: 'error',
+            }));
         }
     }, [createPC, getAudioStream, getPeerInfo, cleanup]);
 
@@ -295,15 +393,19 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         const offer = pendingOfferRef.current;
         if (!offer || stateRef.current.status !== 'ringing') return;
 
-        stopRingtone();
+        // ← ФИКС: очищаем таймер автоотклонения
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
 
         try {
-            const stream = await getAudioStream();
+            const stream = await getAudioStream(100);
             const pc = createPC(offer.chatId, offer.callId);
             stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
             const sdp = await decryptSignaling(offer.chatId, offer.sdp, offer.encrypted);
             await pc.setRemoteDescription({ type: 'offer', sdp });
+
+            // ← Flush ПОСЛЕ setRemoteDescription
             await flushPendingCandidates();
 
             const answer = await pc.createAnswer();
@@ -321,30 +423,33 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                 },
             });
 
-            setCallState(s => ({ ...s, status: 'connecting' }));
+            setCallState(s => ({ ...s, status: 'connecting', peerVolume: 100, micGain: 100 }));
+
+            // ← Таймаут на фазу connecting
+            startConnectingTimeout(offer.chatId, offer.callId);
 
         } catch (e: any) {
             console.error('[Call] Answer failed:', e);
             cleanup();
-            setCallState({ ...INITIAL, status: 'ended', endReason: 'error' });
+            setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
         }
-    }, [createPC, getAudioStream, flushPendingCandidates, cleanup, stopRingtone]);
+    }, [createPC, getAudioStream, flushPendingCandidates, cleanup, clearAllTimeouts, startConnectingTimeout]);
 
     // ═══════════════════════════════════════════════════════
-    //  Отклонить звонок
+    //  Отклонить
     // ═══════════════════════════════════════════════════════
 
     const rejectCall = useCallback(() => {
         const offer = pendingOfferRef.current;
         if (!offer) return;
-        stopRingtone();
-        wsManager.send({
-            type: 'call_reject',
-            payload: { chat_id: offer.chatId, call_id: offer.callId },
-        });
+
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
+
+        wsManager.send({ type: 'call_reject', payload: { chat_id: offer.chatId, call_id: offer.callId } });
         pendingOfferRef.current = null;
         setCallState(INITIAL);
-    }, [stopRingtone]);
+    }, [clearAllTimeouts]);
 
     // ═══════════════════════════════════════════════════════
     //  Повесить трубку
@@ -353,17 +458,14 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
     const hangup = useCallback(() => {
         const { chatId, callId } = stateRef.current;
         if (chatId && callId) {
-            wsManager.send({
-                type: 'call_hangup',
-                payload: { chat_id: chatId, call_id: callId },
-            });
+            wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
         }
         cleanup();
-        setCallState({ ...INITIAL, status: 'ended', endReason: 'hangup' });
+        setCallState(s => ({ ...s, status: 'ended', endReason: 'hangup' }));
     }, [cleanup]);
 
     // ═══════════════════════════════════════════════════════
-    //  Вкл/выкл микрофон
+    //  Мьют + уведомление собеседнику
     // ═══════════════════════════════════════════════════════
 
     const toggleMute = useCallback(() => {
@@ -372,11 +474,37 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         const track = stream.getAudioTracks()[0];
         if (!track) return;
         track.enabled = !track.enabled;
-        setCallState(s => ({ ...s, isMuted: !track.enabled }));
+        const newMuted = !track.enabled;
+
+        setCallState(s => ({ ...s, isMuted: newMuted }));
+
+        const { chatId, callId } = stateRef.current;
+        if (chatId && callId) {
+            wsManager.send({
+                type: 'call_mute',
+                payload: { chat_id: chatId, call_id: callId, muted: newMuted },
+            });
+        }
     }, []);
 
     // ═══════════════════════════════════════════════════════
-    //  Сбросить состояние (после показа "ended")
+    //  Громкость
+    // ═══════════════════════════════════════════════════════
+
+    const setPeerVolume = useCallback((value: number) => {
+        const v = Math.max(0, Math.min(100, value));
+        if (remoteAudioRef.current) remoteAudioRef.current.volume = v / 100;
+        setCallState(s => ({ ...s, peerVolume: v }));
+    }, []);
+
+    const setMicGain = useCallback((value: number) => {
+        const v = Math.max(0, Math.min(100, value));
+        if (gainNodeRef.current) gainNodeRef.current.gain.value = (v / 100) * 2;
+        setCallState(s => ({ ...s, micGain: v }));
+    }, []);
+
+    // ═══════════════════════════════════════════════════════
+    //  Dismiss
     // ═══════════════════════════════════════════════════════
 
     const dismissCall = useCallback(() => {
@@ -384,40 +512,48 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
     }, []);
 
     // ═══════════════════════════════════════════════════════
-    //  Обработка WS-сообщений
+    //  WebSocket
     // ═══════════════════════════════════════════════════════
 
     useEffect(() => {
         const unsub = wsManager.subscribe(async (msg: WsServerMsg) => {
             switch (msg.type) {
-                // ── Входящий звонок ──
+                // ── Входящий звонок ──────────────────────
                 case 'call_incoming': {
                     const { chat_id, call_id, caller_id, caller_name, sdp, encrypted } = msg.payload;
-                    // Если уже в звонке — отклоняем
-                    if (stateRef.current.status !== 'idle') {
+
+                    const st = stateRef.current.status;
+
+                    // ← ФИКС: если в 'ended' — просто сбрасываем, не отклоняем
+                    if (st === 'ended') {
+                        cleanup();
+                        // Продолжаем дальше к приёму звонка
+                    } else if (st !== 'idle') {
+                        // Реально заняты (calling/ringing/connecting/connected)
                         wsManager.send({ type: 'call_reject', payload: { chat_id, call_id } });
                         return;
                     }
+
                     const chat = chatsRef.current.find(c => c.id === chat_id);
                     const callerMember = chat?.members.find(m => m.user_id === caller_id);
 
-                    pendingOfferRef.current = { chatId: chat_id, callId: call_id, sdp, encrypted, callerId: caller_id, callerName: caller_name };
+                    pendingOfferRef.current = {
+                        chatId: chat_id, callId: call_id, sdp, encrypted,
+                        callerId: caller_id, callerName: caller_name,
+                    };
 
                     setCallState({
-                        status: 'ringing',
-                        chatId: chat_id,
-                        callId: call_id,
-                        peerId: caller_id,
-                        peerName: caller_name,
+                        status: 'ringing', chatId: chat_id, callId: call_id,
+                        peerId: caller_id, peerName: caller_name,
                         peerAvatarUrl: callerMember?.avatar_url,
-                        isMuted: false,
-                        duration: 0,
-                        isEncrypted: encrypted,
+                        isMuted: false, peerMuted: false,
+                        duration: 0, isEncrypted: encrypted,
+                        peerVolume: 100, micGain: 100,
                     });
-                    startRingtone();
 
-                    // Автоотбой через 35 сек если не ответили
-                    timeoutRef.current = setTimeout(() => {
+                    ringtoneRef.current.start('incoming');
+
+                    callTimeoutRef.current = setTimeout(() => {
                         if (stateRef.current.status === 'ringing') {
                             rejectCall();
                         }
@@ -425,19 +561,29 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── Собеседник принял звонок ──
+                // ── Собеседник принял ────────────────────
                 case 'call_accepted': {
                     const { call_id, sdp, encrypted, chat_id } = msg.payload;
                     if (stateRef.current.callId !== call_id) return;
-                    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+
+                    // ← Очищаем ВСЕ таймауты
+                    clearAllTimeouts();
+                    ringtoneRef.current.stop();
 
                     try {
                         const pc = pcRef.current;
                         if (!pc) return;
+
                         const realSdp = await decryptSignaling(chat_id, sdp, encrypted);
                         await pc.setRemoteDescription({ type: 'answer', sdp: realSdp });
+
+                        // ← Flush после setRemoteDescription
                         await flushPendingCandidates();
+
                         setCallState(s => ({ ...s, status: 'connecting' }));
+
+                        // ← Таймаут на фазу connecting
+                        startConnectingTimeout(chat_id, call_id);
                     } catch (e) {
                         console.error('[Call] Set answer failed:', e);
                         hangup();
@@ -445,22 +591,26 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── ICE кандидат ──
+                // ── ICE кандидат ─────────────────────────
                 case 'call_ice': {
                     const { call_id, candidate, encrypted: enc, chat_id } = msg.payload;
-                    if (stateRef.current.callId !== call_id && pendingOfferRef.current?.callId !== call_id) return;
+
+                    // Принимаем кандидаты для нашего звонка ИЛИ для pending offer
+                    const isOurCall = stateRef.current.callId === call_id;
+                    const isPendingCall = pendingOfferRef.current?.callId === call_id;
+                    if (!isOurCall && !isPendingCall) return;
 
                     try {
                         const chatId = stateRef.current.chatId || pendingOfferRef.current?.chatId || chat_id;
                         const raw = await decryptSignaling(chatId, candidate, enc);
-                        const parsed = JSON.parse(raw);
-                        const iceCandidate = parsed as RTCIceCandidateInit;
+                        const parsed = JSON.parse(raw) as RTCIceCandidateInit;
 
                         const pc = pcRef.current;
                         if (pc && pc.remoteDescription) {
-                            await pc.addIceCandidate(iceCandidate);
+                            await pc.addIceCandidate(parsed);
                         } else {
-                            pendingCandidatesRef.current.push(iceCandidate);
+                            // Буферизуем если PC ещё нет или remoteDescription не установлен
+                            pendingCandidatesRef.current.push(parsed);
                         }
                     } catch (e) {
                         console.warn('[Call] ICE candidate error:', e);
@@ -468,7 +618,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── Собеседник отклонил звонок ──
+                // ── Отклонён ─────────────────────────────
                 case 'call_rejected': {
                     const { call_id } = msg.payload;
                     if (stateRef.current.callId !== call_id) return;
@@ -477,11 +627,13 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── Собеседник завершил звонок ──
+                // ── Завершён ─────────────────────────────
                 case 'call_ended': {
                     const { call_id } = msg.payload;
-                    if (stateRef.current.callId !== call_id && pendingOfferRef.current?.callId !== call_id) return;
-                    stopRingtone();
+                    const isOurCall = stateRef.current.callId === call_id;
+                    const isPendingCall = pendingOfferRef.current?.callId === call_id;
+                    if (!isOurCall && !isPendingCall) return;
+
                     cleanup();
                     setCallState(s => {
                         if (s.status === 'idle') return s;
@@ -489,27 +641,26 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     });
                     break;
                 }
+
+                // ── Мьют собеседника ─────────────────────
+                case 'call_mute_changed': {
+                    const { call_id, muted } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    setCallState(s => ({ ...s, peerMuted: muted }));
+                    break;
+                }
             }
         });
         return unsub;
-    }, [currentUserId, cleanup, flushPendingCandidates, hangup, rejectCall, startRingtone, stopRingtone]);
-
-    // ── Cleanup при размонтировании ──────────────────────
+    }, [currentUserId, cleanup, flushPendingCandidates, hangup, rejectCall, clearAllTimeouts, startConnectingTimeout]);
 
     useEffect(() => {
-        return () => {
-            cleanup();
-            stopRingtone();
-        };
-    }, [cleanup, stopRingtone]);
+        return () => cleanup();
+    }, [cleanup]);
 
     return {
         callState,
-        startCall,
-        answerCall,
-        rejectCall,
-        hangup,
-        toggleMute,
-        dismissCall,
+        startCall, answerCall, rejectCall, hangup,
+        toggleMute, setPeerVolume, setMicGain, dismissCall,
     };
 }

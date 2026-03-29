@@ -2318,3 +2318,273 @@ input {
         opacity: 0.4;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGE NOTIFICATIONS (правый нижний угол)
+   ═══════════════════════════════════════════════════════════ */
+.notification-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1800;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 380px;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg), 0 4px 24px rgba(0, 0, 0, .18);
+    cursor: pointer;
+    pointer-events: auto;
+    animation: notifSlideIn .35s cubic-bezier(.2, .9, .3, 1.1);
+    transition: transform .15s, opacity .15s, box-shadow .15s;
+    min-width: 300px;
+    max-width: 380px;
+}
+
+.notification-item:hover {
+    transform: translateX(-4px);
+    box-shadow: var(--shadow-lg), 0 6px 32px rgba(0, 0, 0, .24);
+}
+
+.notification-item:active {
+    transform: scale(.98);
+}
+
+.notification-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.notification-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.notification-group-icon {
+    display: inline-flex;
+    color: var(--text2);
+    flex-shrink: 0;
+}
+
+.notification-label {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.notification-text {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+}
+
+.notification-close {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity .15s, background .12s, color .12s;
+}
+
+.notification-item:hover .notification-close {
+    opacity: 1;
+}
+
+.notification-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* Полоска прогресса автоскрытия */
+.notification-item::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    animation: notifProgress 4.5s linear forwards;
+    opacity: 0.4;
+}
+
+@keyframes notifSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(80px) scale(.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes notifProgress {
+    from {
+        width: calc(100% - 32px);
+    }
+
+    to {
+        width: 0;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL: PEER NAME ROW (с индикатором мьюта)
+   ═══════════════════════════════════════════════════════════ */
+.call-peer-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.call-peer-muted {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, .15);
+    color: var(--red);
+    flex-shrink: 0;
+    animation: fadeIn .2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL: VOLUME PANEL
+   ═══════════════════════════════════════════════════════════ */
+.call-volume-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 18px 14px;
+    margin-top: 2px;
+    border-radius: 0 0 20px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+    animation: volumePanelIn .2s ease;
+}
+
+.call-volume-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.call-volume-icon {
+    display: flex;
+    color: var(--text2);
+    width: 18px;
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.call-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    outline: none;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.call-volume-slider:hover {
+    background: var(--bg-hover);
+}
+
+.call-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+    transition: transform .12s;
+}
+
+.call-volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+.call-volume-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+}
+
+.call-volume-value {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    min-width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Кнопка "настройки" в активном состоянии */
+.call-ctrl-btn.active-soft {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+@keyframes volumePanelIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

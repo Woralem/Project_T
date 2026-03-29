@@ -98,6 +98,11 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         call_id: Uuid,
     },
+    CallMute {
+        chat_id: Uuid,
+        call_id: Uuid,
+        muted: bool,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -180,6 +185,12 @@ pub enum WsServerMsg {
     CallEnded {
         chat_id: Uuid,
         call_id: Uuid,
+    },
+    CallMuteChanged {
+        chat_id: Uuid,
+        call_id: Uuid,
+        user_id: Uuid,
+        muted: bool,
     },
 }
 
