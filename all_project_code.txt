@@ -2284,6 +2284,746 @@ input {
     transform: none;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   CALL OVERLAY (активный звонок)
+   ═══════════════════════════════════════════════════════════ */
+.call-overlay {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1500;
+    animation: slideDown .3s ease;
+}
+
+.call-overlay.call-ended {
+    opacity: 0.85;
+}
+
+.call-overlay-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(99, 102, 241, .15);
+    min-width: 340px;
+}
+
+.call-peer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.call-peer-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.call-peer-name {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.call-status-text {
+    font-size: 12px;
+    color: var(--text2);
+}
+
+.call-status-text.calling {
+    animation: callPulseText 1.5s ease infinite;
+}
+
+.call-status-text.connecting {
+    color: var(--accent);
+}
+
+.call-status-text.connected {
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+}
+
+.call-e2e-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--green);
+    background: rgba(34, 197, 94, .12);
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.call-controls {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.call-ctrl-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: none;
+    cursor: pointer;
+    transition: background .15s, transform .12s;
+}
+
+.call-ctrl-btn:hover {
+    background: var(--bg-hover);
+    transform: scale(1.06);
+}
+
+.call-ctrl-btn:active {
+    transform: scale(.94);
+}
+
+.call-ctrl-btn.active {
+    background: var(--red);
+    color: #fff;
+}
+
+.call-ctrl-btn.hangup {
+    background: var(--red);
+    color: #fff;
+}
+
+.call-ctrl-btn.hangup:hover {
+    background: #dc2626;
+}
+
+.call-ctrl-btn.dismiss {
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    color: var(--text3);
+}
+
+.call-pulse {
+    position: absolute;
+    inset: -4px;
+    border-radius: 24px;
+    border: 2px solid var(--accent);
+    animation: callPulseRing 2s ease infinite;
+    pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INCOMING CALL MODAL
+   ═══════════════════════════════════════════════════════════ */
+.incoming-call-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, .6);
+    display: grid;
+    place-items: center;
+    animation: fadeIn .2s ease;
+}
+
+.incoming-call-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 40px 48px;
+    border-radius: 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: scaleIn .25s ease;
+    text-align: center;
+}
+
+.incoming-call-pulse-ring {
+    position: absolute;
+    top: 26px;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 2px solid var(--green);
+    animation: callPulseRing 1.5s ease infinite;
+    pointer-events: none;
+}
+
+.incoming-call-name {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.incoming-call-label {
+    font-size: 14px;
+    color: var(--text2);
+    animation: callPulseText 1.5s ease infinite;
+}
+
+.incoming-call-e2e {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--green);
+    background: rgba(34, 197, 94, .1);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.incoming-call-actions {
+    display: flex;
+    gap: 32px;
+    margin-top: 12px;
+}
+
+.incoming-call-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+}
+
+.incoming-call-btn:hover {
+    transform: scale(1.08);
+}
+
+.incoming-call-btn:active {
+    transform: scale(.95);
+}
+
+.incoming-call-btn.accept {
+    background: var(--green);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, .35);
+}
+
+.incoming-call-btn.accept:hover {
+    box-shadow: 0 6px 28px rgba(34, 197, 94, .5);
+}
+
+.incoming-call-btn.reject {
+    background: var(--red);
+    box-shadow: 0 4px 20px rgba(239, 68, 68, .35);
+}
+
+.incoming-call-btn.reject:hover {
+    box-shadow: 0 6px 28px rgba(239, 68, 68, .5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALLS VIEW (вкладка информации)
+   ═══════════════════════════════════════════════════════════ */
+.calls-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 16px 24px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+}
+
+.calls-info-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text2);
+}
+
+.calls-info-icon {
+    display: flex;
+    color: var(--green);
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+@keyframes callPulseRing {
+    0% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0;
+        transform: scale(1.3);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.3);
+    }
+}
+
+@keyframes callPulseText {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGE NOTIFICATIONS (правый нижний угол)
+   ═══════════════════════════════════════════════════════════ */
+.notification-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1800;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 380px;
+}
+
+.notification-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg), 0 4px 24px rgba(0, 0, 0, .18);
+    cursor: pointer;
+    pointer-events: auto;
+    animation: notifSlideIn .35s cubic-bezier(.2, .9, .3, 1.1);
+    transition: transform .15s, opacity .15s, box-shadow .15s;
+    min-width: 300px;
+    max-width: 380px;
+}
+
+.notification-item:hover {
+    transform: translateX(-4px);
+    box-shadow: var(--shadow-lg), 0 6px 32px rgba(0, 0, 0, .24);
+}
+
+.notification-item:active {
+    transform: scale(.98);
+}
+
+.notification-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.notification-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.notification-group-icon {
+    display: inline-flex;
+    color: var(--text2);
+    flex-shrink: 0;
+}
+
+.notification-label {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.notification-text {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+}
+
+.notification-close {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity .15s, background .12s, color .12s;
+}
+
+.notification-item:hover .notification-close {
+    opacity: 1;
+}
+
+.notification-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* Полоска прогресса автоскрытия */
+.notification-item::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    animation: notifProgress 4.5s linear forwards;
+    opacity: 0.4;
+}
+
+@keyframes notifSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(80px) scale(.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes notifProgress {
+    from {
+        width: calc(100% - 32px);
+    }
+
+    to {
+        width: 0;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL: PEER NAME ROW (с индикатором мьюта)
+   ═══════════════════════════════════════════════════════════ */
+.call-peer-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.call-peer-muted {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, .15);
+    color: var(--red);
+    flex-shrink: 0;
+    animation: fadeIn .2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL: VOLUME PANEL
+   ═══════════════════════════════════════════════════════════ */
+.call-volume-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 18px 14px;
+    margin-top: 2px;
+    border-radius: 0 0 20px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+    animation: volumePanelIn .2s ease;
+}
+
+.call-volume-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.call-volume-icon {
+    display: flex;
+    color: var(--text2);
+    width: 18px;
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.call-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    outline: none;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.call-volume-slider:hover {
+    background: var(--bg-hover);
+}
+
+.call-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+    transition: transform .12s;
+}
+
+.call-volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+.call-volume-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+}
+
+.call-volume-value {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    min-width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Кнопка "настройки" в активном состоянии */
+.call-ctrl-btn.active-soft {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+@keyframes volumePanelIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IN-APP NOTIFICATIONS (правый нижний угол — ВСЕГДА видны)
+   ═══════════════════════════════════════════════════════════ */
+.notification-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1800;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 380px;
+}
+
+.notification-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg), 0 4px 24px rgba(0, 0, 0, .18);
+    cursor: pointer;
+    pointer-events: auto;
+    animation: notifSlideIn .35s cubic-bezier(.2, .9, .3, 1.1);
+    transition: transform .15s, opacity .15s, box-shadow .15s;
+    min-width: 300px;
+    max-width: 380px;
+    overflow: hidden;
+}
+
+.notification-item:hover {
+    transform: translateX(-4px);
+    box-shadow: var(--shadow-lg), 0 6px 32px rgba(0, 0, 0, .24);
+}
+
+.notification-item:active {
+    transform: scale(.98);
+}
+
+.notification-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.notification-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.notification-group-icon {
+    display: inline-flex;
+    color: var(--text2);
+    flex-shrink: 0;
+}
+
+.notification-label {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.notification-text {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+}
+
+.notification-close {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity .15s, background .12s, color .12s;
+}
+
+.notification-item:hover .notification-close {
+    opacity: 1;
+}
+
+.notification-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* Полоска автоскрытия */
+.notification-item::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    animation: notifProgress 5s linear forwards;
+    opacity: 0.4;
+}
+
+@keyframes notifSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(80px) scale(.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes notifProgress {
+    from {
+        width: calc(100% - 32px);
+    }
+
+    to {
+        width: 0;
+    }
+}
+
 
 ================================================================================
 FILE PATH: ./client/src/app.rs
@@ -2302,14 +3042,22 @@ pub fn default_window_title() -> &'static str {
 FILE PATH: ./client/src/App.tsx
 ================================================================================
 import React from 'react';
-import type { Tab, UserDto } from './types';
+import type { Tab, UserDto, NotificationData } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
+import { useCall } from './hooks/useCall';
 import { useToast } from './hooks/useToast';
 import { cryptoManager } from './crypto';
+import {
+    initNotifications,
+    playNotificationSound,
+    sendSystemNotification,
+    showCallNotification,
+} from './notifications';
 import './App.css';
 
 import { ToastContainer } from './components/ui/Toast';
+import { NotificationContainer } from './components/ui/Notification';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { NavRail } from './components/nav/NavRail';
 import { ChatListPanel } from './components/chat/ChatListPanel';
@@ -2317,6 +3065,8 @@ import { ChatView } from './components/chat/ChatView';
 import { EmptyState } from './components/chat/EmptyState';
 import { NewChatModal } from './components/chat/NewChatModal';
 import { CallsView } from './components/calls/CallsView';
+import { CallOverlay } from './components/calls/CallOverlay';
+import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
 
 function loadDark(): boolean {
@@ -2326,20 +3076,101 @@ function saveDark(v: boolean) {
     try { localStorage.setItem('dark_mode', String(v)); } catch { /* */ }
 }
 
+const MAX_NOTIFICATIONS = 4;
+const NOTIFICATION_DURATION = 5000;
+
 export default function App() {
     const [tab, setTab] = React.useState<Tab>('chats');
     const [dark, setDark] = React.useState(loadDark);
     const [search, setSearch] = React.useState('');
     const [newChatOpen, setNewChatOpen] = React.useState(false);
+    const [notifications, setNotifications] = React.useState<NotificationData[]>([]);
     const { toasts, showToast } = useToast();
 
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
+
+    // ── Инициализация уведомлений ─────────────────────────
+
+    React.useEffect(() => {
+        if (!user) return;
+        initNotifications();
+    }, [user]);
+
+    // ── Ref для selectChat ───────────────────────────────
+
+    const selectChatRef = React.useRef<(id: string) => void>(() => { });
+
+    // ── Dismiss notification ─────────────────────────────
+
+    const dismissNotification = React.useCallback((id: string) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    }, []);
+
+    // ── Клик по уведомлению ──────────────────────────────
+
+    const handleNotifClick = React.useCallback((chatId: string) => {
+        setTab('chats');
+        selectChatRef.current(chatId);
+        // Удаляем все уведомления этого чата
+        setNotifications(prev => prev.filter(n => n.chatId !== chatId));
+    }, []);
+
+    // ── Обработчик нового сообщения ──────────────────────
+
+    const handleNewMessage = React.useCallback((data: NotificationData) => {
+        // 1. ВСЕГДА звук
+        playNotificationSound();
+
+        // 2. ВСЕГДА in-app уведомление (плашка в правом нижнем углу)
+        setNotifications(prev => {
+            const next = [...prev, data];
+            // Максимум 4, убираем старые
+            return next.slice(-MAX_NOTIFICATIONS);
+        });
+
+        // Автоудаление через 5 сек
+        setTimeout(() => {
+            setNotifications(prev => prev.filter(n => n.id !== data.id));
+        }, NOTIFICATION_DURATION);
+
+        // 3. Системное уведомление (если окно не в фокусе)
+        if (document.hidden || !document.hasFocus()) {
+            const title = data.isGroup ? data.chatName : data.senderName;
+            const body = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
+            sendSystemNotification(
+                title,
+                body.length > 100 ? body.slice(0, 100) + '…' : body,
+                `msg-${data.chatId}`,
+                () => handleNotifClick(data.chatId),
+            );
+        }
+    }, [handleNotifClick]);
+
+    // ── Хуки ─────────────────────────────────────────────
+
     const {
         chats, selectedId, selectedChat,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage,
         editMessage, deleteMessage, createChat, refreshChat,
-    } = useChats(user);
+    } = useChats(user, handleNewMessage);
+
+    selectChatRef.current = selectChat;
+
+    const {
+        callState, startCall, answerCall, rejectCall,
+        hangup, toggleMute, setPeerVolume, setMicGain, dismissCall,
+    } = useCall(user?.id || '', chats);
+
+    // ── Уведомление о звонке ─────────────────────────────
+
+    React.useEffect(() => {
+        if (callState.status === 'ringing' && callState.peerName) {
+            if (document.hidden || !document.hasFocus()) {
+                showCallNotification(callState.peerName);
+            }
+        }
+    }, [callState.status, callState.peerName]);
 
     React.useEffect(() => {
         cryptoManager.initialize().then(keys => {
@@ -2348,21 +3179,26 @@ export default function App() {
     }, []);
 
     const toggleDark = React.useCallback(() => {
-        setDark(d => {
-            const next = !d;
-            saveDark(next);
-            return next;
-        });
+        setDark(d => { const next = !d; saveDark(next); return next; });
     }, []);
 
     const handleLogout = React.useCallback(() => {
+        if (callState.status !== 'idle' && callState.status !== 'ended') hangup();
         cryptoManager.clear();
         logout();
-    }, [logout]);
+    }, [logout, callState.status, hangup]);
 
     const handleUserUpdate = React.useCallback((updated: UserDto) => {
         setUser(updated);
     }, [setUser]);
+
+    const handleStartCall = React.useCallback((chatId: string) => {
+        if (callState.status !== 'idle') {
+            showToast('Вы уже в звонке', 'error');
+            return;
+        }
+        startCall(chatId);
+    }, [callState.status, startCall, showToast]);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -2390,36 +3226,23 @@ export default function App() {
     return (
         <div className={`root ${theme}`}>
             <div className="layout">
-                <NavRail
-                    tab={tab}
-                    onTab={setTab}
-                    darkMode={dark}
-                    onToggleTheme={toggleDark}
-                    onLogout={handleLogout}
-                />
+                <NavRail tab={tab} onTab={setTab} darkMode={dark} onToggleTheme={toggleDark} onLogout={handleLogout} />
 
                 {tab === 'chats' && (
                     <>
                         <ChatListPanel
-                            chats={chats}
-                            selectedId={selectedId}
-                            onSelect={selectChat}
-                            search={search}
-                            onSearch={setSearch}
+                            chats={chats} selectedId={selectedId} onSelect={selectChat}
+                            search={search} onSearch={setSearch}
                             onNewChat={() => setNewChatOpen(true)}
-                            loading={loadingChats}
-                            currentUserId={user.id}
+                            loading={loadingChats} currentUserId={user.id}
                         />
                         {selectedChat ? (
                             <ChatView
-                                chat={selectedChat}
-                                currentUserId={user.id}
+                                chat={selectedChat} currentUserId={user.id}
                                 loadingMessages={loadingMessages}
-                                onSendMessage={sendMessage}
-                                onSendVoice={sendVoiceMessage}
-                                onDeleteMessage={deleteMessage}
-                                onEditMessage={editMessage}
-                                onRefreshChat={refreshChat}
+                                onSendMessage={sendMessage} onSendVoice={sendVoiceMessage}
+                                onDeleteMessage={deleteMessage} onEditMessage={editMessage}
+                                onRefreshChat={refreshChat} onStartCall={handleStartCall}
                                 showToast={showToast}
                             />
                         ) : (
@@ -2427,25 +3250,29 @@ export default function App() {
                         )}
                     </>
                 )}
-
                 {tab === 'calls' && <CallsView />}
                 {tab === 'settings' && (
                     <SettingsView
-                        darkMode={dark}
-                        onToggleTheme={toggleDark}
-                        showToast={showToast}
-                        user={user}
-                        onUserUpdate={handleUserUpdate}
+                        darkMode={dark} onToggleTheme={toggleDark} showToast={showToast}
+                        user={user} onUserUpdate={handleUserUpdate}
                     />
                 )}
             </div>
 
-            <NewChatModal
-                open={newChatOpen}
-                onClose={() => setNewChatOpen(false)}
-                onCreate={createChat}
-                showToast={showToast}
+            <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} onCreate={createChat} showToast={showToast} />
+            <IncomingCallModal callState={callState} onAccept={answerCall} onReject={rejectCall} />
+            <CallOverlay
+                callState={callState} onHangup={hangup} onToggleMute={toggleMute}
+                onSetPeerVolume={setPeerVolume} onSetMicGain={setMicGain} onDismiss={dismissCall}
             />
+
+            {/* In-app уведомления — ВСЕГДА видны */}
+            <NotificationContainer
+                notifications={notifications}
+                onClickNotification={handleNotifClick}
+                onDismiss={dismissNotification}
+            />
+
             <ToastContainer toasts={toasts} />
         </div>
     );
@@ -2591,6 +3418,156 @@ export function AuthScreen({ onLogin, onRegister }: Props) {
 
 
 ================================================================================
+FILE PATH: ./client/src/components/calls/CallOverlay.tsx
+================================================================================
+import React, { useState, useEffect } from 'react';
+import type { CallState } from '../../types';
+import { Avatar } from '../ui/Avatar';
+import { Icon } from '../../icons';
+
+interface Props {
+    callState: CallState;
+    onHangup: () => void;
+    onToggleMute: () => void;
+    onSetPeerVolume: (v: number) => void;
+    onSetMicGain: (v: number) => void;
+    onDismiss: () => void;
+}
+
+function fmtDuration(s: number): string {
+    const m = Math.floor(s / 60);
+    return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function statusText(state: CallState): string {
+    switch (state.status) {
+        case 'calling': return 'Вызов...';
+        case 'connecting': return 'Подключение...';
+        case 'connected': return fmtDuration(state.duration);
+        case 'ended':
+            switch (state.endReason) {
+                case 'rejected': return 'Отклонено';
+                case 'timeout': return 'Нет ответа';
+                case 'error': return 'Ошибка соединения';
+                default: return 'Звонок завершён';
+            }
+        default: return '';
+    }
+}
+
+export function CallOverlay({
+    callState, onHangup, onToggleMute,
+    onSetPeerVolume, onSetMicGain, onDismiss,
+}: Props) {
+    const { status, peerName, peerAvatarUrl, isMuted, peerMuted, isEncrypted, peerVolume, micGain } = callState;
+    const [showControls, setShowControls] = useState(false);
+
+    // Автоскрытие "ended"
+    useEffect(() => {
+        if (status === 'ended') {
+            setShowControls(false);
+            const t = setTimeout(onDismiss, 3000);
+            return () => clearTimeout(t);
+        }
+    }, [status, onDismiss]);
+
+    if (status === 'idle' || status === 'ringing') return null;
+
+    const isActive = status === 'calling' || status === 'connecting' || status === 'connected';
+    const isEnded = status === 'ended';
+    const isConnected = status === 'connected';
+
+    return (
+        <div className={`call-overlay ${isEnded ? 'call-ended' : ''}`}>
+            <div className="call-overlay-inner">
+                <div className="call-peer">
+                    <Avatar name={peerName || '?'} size={48} avatarUrl={peerAvatarUrl} />
+                    <div className="call-peer-info">
+                        <div className="call-peer-name-row">
+                            <span className="call-peer-name">{peerName || 'Неизвестный'}</span>
+                            {peerMuted && (
+                                <span className="call-peer-muted" title="Микрофон выключен">
+                                    {Icon.micOff(14)}
+                                </span>
+                            )}
+                        </div>
+                        <span className={`call-status-text ${status}`}>
+                            {statusText(callState)}
+                        </span>
+                    </div>
+                </div>
+
+                {isEncrypted && isConnected && (
+                    <span className="call-e2e-badge">{Icon.lock(12)} E2E</span>
+                )}
+
+                <div className="call-controls">
+                    {isActive && (
+                        <>
+                            {isConnected && (
+                                <button
+                                    className={`call-ctrl-btn ${showControls ? 'active-soft' : ''}`}
+                                    onClick={() => setShowControls(v => !v)}
+                                    title="Настройки звука"
+                                >
+                                    {Icon.sliders(18)}
+                                </button>
+                            )}
+                            <button
+                                className={`call-ctrl-btn ${isMuted ? 'active' : ''}`}
+                                onClick={onToggleMute}
+                                title={isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+                            >
+                                {isMuted ? Icon.micOff(20) : Icon.mic(20)}
+                            </button>
+                            <button className="call-ctrl-btn hangup" onClick={onHangup} title="Завершить">
+                                {Icon.phoneOff(20)}
+                            </button>
+                        </>
+                    )}
+                    {isEnded && (
+                        <button className="call-ctrl-btn dismiss" onClick={onDismiss}>
+                            {Icon.x(18)}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Панель громкости */}
+            {showControls && isConnected && (
+                <div className="call-volume-panel">
+                    <div className="call-volume-row">
+                        <span className="call-volume-icon" title="Микрофон">
+                            {Icon.mic(15)}
+                        </span>
+                        <input
+                            type="range" min={0} max={100} value={micGain}
+                            className="call-volume-slider"
+                            onChange={e => onSetMicGain(Number(e.target.value))}
+                        />
+                        <span className="call-volume-value">{micGain}%</span>
+                    </div>
+                    <div className="call-volume-row">
+                        <span className="call-volume-icon" title="Динамик">
+                            {peerVolume === 0 ? Icon.volumeOff(15) : Icon.volumeHigh(15)}
+                        </span>
+                        <input
+                            type="range" min={0} max={100} value={peerVolume}
+                            className="call-volume-slider"
+                            onChange={e => onSetPeerVolume(Number(e.target.value))}
+                        />
+                        <span className="call-volume-value">{peerVolume}%</span>
+                    </div>
+                </div>
+            )}
+
+            {status === 'calling' && <div className="call-pulse" />}
+        </div>
+    );
+}
+
+
+================================================================================
 FILE PATH: ./client/src/components/calls/CallsView.tsx
 ================================================================================
 import React from 'react';
@@ -2601,12 +3578,72 @@ export function CallsView() {
         <section className="placeholder-view">
             <div className="placeholder-icon">{Icon.phone(56)}</div>
             <h2>Голосовые звонки</h2>
-            <p>Зашифрованные звонки через WebRTC скоро будут доступны</p>
+            <p>Откройте чат и нажмите кнопку звонка, чтобы начать зашифрованный разговор</p>
             <div className="placeholder-pills">
                 <span className="pill">{Icon.shield(14)} End-to-end</span>
                 <span className="pill">{Icon.mic(14)} Opus HD</span>
+                <span className="pill">{Icon.lock(14)} WebRTC P2P</span>
+            </div>
+            <div className="calls-info">
+                <div className="calls-info-item">
+                    <span className="calls-info-icon">{Icon.check(16)}</span>
+                    <span>Аудио идёт напрямую между устройствами</span>
+                </div>
+                <div className="calls-info-item">
+                    <span className="calls-info-icon">{Icon.check(16)}</span>
+                    <span>Сигнализация шифруется ключом чата</span>
+                </div>
+                <div className="calls-info-item">
+                    <span className="calls-info-icon">{Icon.check(16)}</span>
+                    <span>Сервер не видит и не слышит содержимое</span>
+                </div>
             </div>
         </section>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/calls/IncomingCallModal.tsx
+================================================================================
+import React from 'react';
+import type { CallState } from '../../types';
+import { Avatar } from '../ui/Avatar';
+import { Icon } from '../../icons';
+
+interface Props {
+    callState: CallState;
+    onAccept: () => void;
+    onReject: () => void;
+}
+
+export function IncomingCallModal({ callState, onAccept, onReject }: Props) {
+    if (callState.status !== 'ringing') return null;
+
+    return (
+        <div className="incoming-call-overlay">
+            <div className="incoming-call-card">
+                <div className="incoming-call-pulse-ring" />
+                <Avatar
+                    name={callState.peerName || '?'}
+                    size={80}
+                    avatarUrl={callState.peerAvatarUrl}
+                />
+                <h3 className="incoming-call-name">{callState.peerName}</h3>
+                <p className="incoming-call-label">Входящий звонок...</p>
+                {callState.isEncrypted && (
+                    <span className="incoming-call-e2e">{Icon.lock(12)} Зашифрованный</span>
+                )}
+                <div className="incoming-call-actions">
+                    <button className="incoming-call-btn reject" onClick={onReject} title="Отклонить">
+                        {Icon.phoneOff(28)}
+                    </button>
+                    <button className="incoming-call-btn accept" onClick={onAccept} title="Принять">
+                        {Icon.phone(28)}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -3037,12 +4074,13 @@ interface Props {
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
     onRefreshChat: (chatId: string) => void;
+    onStartCall: (chatId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, onRefreshChat, showToast,
+    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
@@ -3113,6 +4151,14 @@ export function ChatView({
         onRefreshChat(chat.id);
     }, [onRefreshChat, chat.id]);
 
+    const handleCall = useCallback(() => {
+        if (chat.is_group) {
+            showToast('Групповые звонки пока не поддерживаются', 'info');
+            return;
+        }
+        onStartCall(chat.id);
+    }, [chat.id, chat.is_group, onStartCall, showToast]);
+
     return (
         <section className="chat-view">
             <div className="chat-header">
@@ -3126,7 +4172,9 @@ export function ChatView({
                     </div>
                 </div>
                 <div className="chat-header-actions">
-                    <button className="icon-btn" title="Позвонить" onClick={() => showToast('Звонки будут доступны позже')}>{Icon.phone(20)}</button>
+                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>
+                        {Icon.phone(20)}
+                    </button>
                     <button className="icon-btn" title="Поиск">{Icon.search(20)}</button>
                 </div>
             </div>
@@ -3629,6 +4677,7 @@ import { Avatar } from '../ui/Avatar';
 import * as api from '../../api';
 import type { UserDto } from '../../types';
 import { cryptoManager } from '../../crypto';
+import { isNotificationEnabled, requestNotificationPermission, sendTestNotification } from '../../notifications';
 
 interface Props {
     darkMode: boolean;
@@ -3645,6 +4694,23 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [settingUpE2E, setSettingUpE2E] = useState(false);
     const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleTestNotif = async () => {
+        await sendTestNotification();
+        showToast('Тестовое уведомление отправлено', 'info');
+    };
+
+    const [isNotifEnabled, setIsNotifEnabled] = useState(() => isNotificationEnabled());
+
+    const handleEnableNotifs = async () => {
+        const granted = await requestNotificationPermission();
+        setIsNotifEnabled(granted);
+        if (granted) {
+            showToast('Уведомления включены!', 'success');
+        } else {
+            showToast('Браузер заблокировал уведомления. Разрешите в настройках.', 'error');
+        }
+    };
 
     const handleCreateInvite = async () => {
         setCreatingInvite(true);
@@ -3870,6 +4936,33 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                 </div>
 
                 <div className="s-group">
+                    <div className="s-group-label">Уведомления</div>
+                    {isNotifEnabled ? (
+                        <>
+                            <div className="s-row">
+                                <span className="s-row-left">
+                                    {Icon.check(19)} Уведомления включены
+                                </span>
+                                <span className="e2e-badge active" style={{ fontSize: 11 }}>✓ Активно</span>
+                            </div>
+                            <button className="s-row" onClick={handleTestNotif}>
+                                <span className="s-row-left">
+                                    🔔 Отправить тестовое уведомление
+                                </span>
+                                <span className="s-arrow">→</span>
+                            </button>
+                        </>
+                    ) : (
+                        <button className="s-row" onClick={handleEnableNotifs}>
+                            <span className="s-row-left">
+                                🔔 Включить уведомления
+                            </span>
+                            <span className="s-arrow">→</span>
+                        </button>
+                    )}
+                </div>
+
+                <div className="s-group">
                     <div className="s-group-label">Внешний вид</div>
                     <button className="s-row" onClick={onToggleTheme}>
                         <span className="s-row-left">
@@ -4039,6 +5132,73 @@ export function MsgStatus({ status }: { status?: string }) {
         <span className={`msg-status ${status === 'read' ? 'read' : ''}`}>
             {status === 'sent' ? Icon.check(12) : Icon.checkDouble(12)}
         </span>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/Notification.tsx
+================================================================================
+import React from 'react';
+import type { NotificationData } from '../../types';
+import { Avatar } from './Avatar';
+import { Icon } from '../../icons';
+
+interface Props {
+    notifications: NotificationData[];
+    onClickNotification: (chatId: string) => void;
+    onDismiss: (id: string) => void;
+}
+
+export function NotificationContainer({ notifications, onClickNotification, onDismiss }: Props) {
+    if (!notifications.length) return null;
+
+    return (
+        <div className="notification-container">
+            {notifications.map(n => (
+                <NotificationItem
+                    key={n.id}
+                    notification={n}
+                    onClick={() => { onClickNotification(n.chatId); onDismiss(n.id); }}
+                    onDismiss={() => onDismiss(n.id)}
+                />
+            ))}
+        </div>
+    );
+}
+
+function NotificationItem({
+    notification, onClick, onDismiss,
+}: {
+    notification: NotificationData;
+    onClick: () => void;
+    onDismiss: () => void;
+}) {
+    const { chatName, senderName, senderAvatarUrl, text, isGroup } = notification;
+    const displayName = isGroup ? chatName : senderName;
+    const previewText = isGroup ? `${senderName}: ${text}` : text;
+    const truncated = previewText.length > 60 ? previewText.slice(0, 60) + '…' : previewText;
+
+    return (
+        <div className="notification-item" onClick={onClick}>
+            <Avatar name={displayName} size={42} avatarUrl={senderAvatarUrl} />
+            <div className="notification-body">
+                <div className="notification-header">
+                    <span className="notification-name">
+                        {isGroup && <span className="notification-group-icon">{Icon.users(11)}</span>}
+                        {displayName}
+                    </span>
+                    <span className="notification-label">Сейчас</span>
+                </div>
+                <span className="notification-text">{truncated}</span>
+            </div>
+            <button
+                className="notification-close"
+                onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+            >
+                {Icon.x(14)}
+            </button>
+        </div>
     );
 }
 
@@ -4677,10 +5837,774 @@ export function useAuth() {
 
 
 ================================================================================
+FILE PATH: ./client/src/hooks/useCall.ts
+================================================================================
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { CallState, LocalChat, WsServerMsg } from '../types';
+import { wsManager } from '../websocket';
+import { cryptoManager } from '../crypto';
+
+// ══════════════════════════════════════════════════════════
+//  Конфигурация
+// ══════════════════════════════════════════════════════════
+
+const ICE_CONFIG: RTCConfiguration = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        // ── TURN-сервер на вашем VPS (поменяйте пароль!) ──
+        {
+            urls: [
+                'turn:163.5.180.138:3478',
+                'turn:163.5.180.138:3478?transport=tcp',
+            ],
+            username: 'messenger',
+            credential: 'YourSecretTurnPassword2024',
+        },
+    ],
+    iceCandidatePoolSize: 4,
+    iceTransportPolicy: 'all',
+};
+
+const CALL_TIMEOUT_MS = 35_000;
+const CONNECTING_TIMEOUT_MS = 15_000;
+const ICE_DISCONNECTED_TIMEOUT_MS = 7_000;
+const ICE_RESTART_MAX = 2;
+
+const INITIAL: CallState = {
+    status: 'idle',
+    chatId: null,
+    callId: null,
+    peerId: null,
+    peerName: null,
+    isMuted: false,
+    peerMuted: false,
+    duration: 0,
+    isEncrypted: false,
+    peerVolume: 100,
+    micGain: 100,
+};
+
+interface PendingOffer {
+    chatId: string;
+    callId: string;
+    sdp: string;
+    encrypted: boolean;
+    callerId: string;
+    callerName: string;
+}
+
+// ── Шифрование сигнализации ──────────────────────────────
+
+async function encryptSignaling(
+    chatId: string, data: string,
+): Promise<{ data: string; encrypted: boolean }> {
+    if (!cryptoManager.hasChatKey(chatId)) return { data, encrypted: false };
+    try {
+        const payload = await cryptoManager.encrypt(chatId, data);
+        return { data: JSON.stringify(payload), encrypted: true };
+    } catch {
+        return { data, encrypted: false };
+    }
+}
+
+async function decryptSignaling(
+    chatId: string, data: string, isEncrypted: boolean,
+): Promise<string> {
+    if (!isEncrypted) return data;
+    try {
+        const payload = JSON.parse(data);
+        return await cryptoManager.decrypt(chatId, payload.ciphertext, payload.nonce);
+    } catch (e) {
+        console.warn('[Call] Decrypt signaling failed:', e);
+        return data;
+    }
+}
+
+// ── Рингтон ──────────────────────────────────────────────
+
+function createRingtonePlayer() {
+    let audio: HTMLAudioElement | null = null;
+    return {
+        start(type: 'incoming' | 'outgoing') {
+            this.stop();
+            audio = new Audio(type === 'incoming' ? '/sounds/ringtone.mp3' : '/sounds/ringback.mp3');
+            audio.loop = true;
+            audio.volume = type === 'incoming' ? 0.7 : 0.4;
+            audio.play().catch(() => { });
+        },
+        stop() {
+            if (audio) { audio.pause(); audio.currentTime = 0; audio.src = ''; audio = null; }
+        },
+    };
+}
+
+// ══════════════════════════════════════════════════════════
+
+export function useCall(currentUserId: string, chats: LocalChat[]) {
+    const [callState, setCallState] = useState<CallState>(INITIAL);
+
+    // ── Refs ─────────────────────────────────────────────
+
+    const pcRef = useRef<RTCPeerConnection | null>(null);
+    const localStreamRef = useRef<MediaStream | null>(null);
+    const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const iceDisconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingOfferRef = useRef<PendingOffer | null>(null);
+    const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+    const ringtoneRef = useRef(createRingtonePlayer());
+    const connectedFiredRef = useRef(false);
+    const iceRestartCountRef = useRef(0);
+
+    // Audio processing
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
+
+    // Стабильные refs для данных
+    const stateRef = useRef(callState);
+    stateRef.current = callState;
+    const chatsRef = useRef(chats);
+    chatsRef.current = chats;
+    const currentUserIdRef = useRef(currentUserId);
+    currentUserIdRef.current = currentUserId;
+
+    // ── Remote audio element ─────────────────────────────
+
+    useEffect(() => {
+        const audio = new Audio();
+        audio.autoplay = true;
+        remoteAudioRef.current = audio;
+        return () => { audio.srcObject = null; };
+    }, []);
+
+    // ── clearAllTimeouts ─────────────────────────────────
+
+    const clearAllTimeouts = useCallback(() => {
+        if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+        if (connectingTimeoutRef.current) { clearTimeout(connectingTimeoutRef.current); connectingTimeoutRef.current = null; }
+        if (iceDisconnectTimeoutRef.current) { clearTimeout(iceDisconnectTimeoutRef.current); iceDisconnectTimeoutRef.current = null; }
+    }, []);
+
+    // ── cleanup ──────────────────────────────────────────
+
+    const cleanup = useCallback(() => {
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
+        connectedFiredRef.current = false;
+        iceRestartCountRef.current = 0;
+
+        if (pcRef.current) {
+            pcRef.current.onicecandidate = null;
+            pcRef.current.ontrack = null;
+            pcRef.current.onconnectionstatechange = null;
+            pcRef.current.oniceconnectionstatechange = null;
+            pcRef.current.onicegatheringstatechange = null;
+            pcRef.current.close();
+            pcRef.current = null;
+        }
+
+        localStreamRef.current?.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+
+        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+            audioCtxRef.current.close().catch(() => { });
+        }
+        audioCtxRef.current = null;
+        gainNodeRef.current = null;
+
+        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+        pendingOfferRef.current = null;
+        pendingCandidatesRef.current = [];
+    }, [clearAllTimeouts]);
+
+    // ── Refs для callback'ов (для стабильного subscriber) ──
+
+    const cleanupRef = useRef(cleanup);
+    cleanupRef.current = cleanup;
+    const clearAllTimeoutsRef = useRef(clearAllTimeouts);
+    clearAllTimeoutsRef.current = clearAllTimeouts;
+
+    // ── Helpers ──────────────────────────────────────────
+
+    const startTimer = useCallback(() => {
+        if (timerRef.current) return;
+        timerRef.current = setInterval(() => {
+            setCallState(s => ({ ...s, duration: s.duration + 1 }));
+        }, 1000);
+    }, []);
+
+    const getPeerInfo = useCallback((chatId: string): { name: string; avatarUrl?: string } => {
+        const chat = chatsRef.current.find(c => c.id === chatId);
+        if (!chat) return { name: 'Неизвестный' };
+        if (!chat.is_group) {
+            const other = chat.members.find(m => m.user_id !== currentUserIdRef.current);
+            return { name: other?.display_name || chat.name, avatarUrl: other?.avatar_url };
+        }
+        return { name: chat.name };
+    }, []);
+
+    const flushPendingCandidates = useCallback(async () => {
+        const pc = pcRef.current;
+        if (!pc || !pc.remoteDescription) return;
+        const candidates = [...pendingCandidatesRef.current];
+        pendingCandidatesRef.current = [];
+        console.log(`[Call] Flushing ${candidates.length} buffered ICE candidates`);
+        for (const c of candidates) {
+            try { await pc.addIceCandidate(c); } catch (e) { console.warn('[Call] addIceCandidate:', e); }
+        }
+    }, []);
+
+    // ── ICE restart ──────────────────────────────────────
+
+    const tryIceRestart = useCallback(async () => {
+        const pc = pcRef.current;
+        const { chatId, callId, status } = stateRef.current;
+        if (!pc || !chatId || !callId) return;
+        if (status !== 'connected' && status !== 'connecting') return;
+        if (iceRestartCountRef.current >= ICE_RESTART_MAX) {
+            console.warn('[Call] Max ICE restarts reached');
+            return;
+        }
+
+        iceRestartCountRef.current++;
+        console.log(`[Call] ICE restart #${iceRestartCountRef.current}`);
+
+        try {
+            const offer = await pc.createOffer({ iceRestart: true });
+            await pc.setLocalDescription(offer);
+            const enc = await encryptSignaling(chatId, offer.sdp!);
+            wsManager.send({
+                type: 'call_offer',
+                payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted },
+            });
+        } catch (e) {
+            console.error('[Call] ICE restart failed:', e);
+        }
+    }, []);
+
+    // ── Get audio stream with GainNode ───────────────────
+
+    const getAudioStream = useCallback(async (): Promise<MediaStream> => {
+        const originalStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false,
+        });
+        localStreamRef.current = originalStream;
+
+        try {
+            const ctx = new AudioContext();
+            audioCtxRef.current = ctx;
+            const source = ctx.createMediaStreamSource(originalStream);
+            const gain = ctx.createGain();
+            gain.gain.value = 1.0;
+            gainNodeRef.current = gain;
+            const dest = ctx.createMediaStreamDestination();
+            source.connect(gain).connect(dest);
+            return dest.stream;
+        } catch {
+            return originalStream;
+        }
+    }, []);
+
+    // ── Create PeerConnection ────────────────────────────
+
+    const createPC = useCallback((chatId: string, callId: string): RTCPeerConnection => {
+        const pc = new RTCPeerConnection(ICE_CONFIG);
+
+        pc.onicecandidate = async (e) => {
+            if (!e.candidate) {
+                console.log('[Call] ICE gathering complete');
+                return;
+            }
+            try {
+                const candidateStr = JSON.stringify(e.candidate.toJSON());
+                const enc = await encryptSignaling(chatId, candidateStr);
+                wsManager.send({
+                    type: 'call_ice',
+                    payload: { chat_id: chatId, call_id: callId, candidate: enc.data, encrypted: enc.encrypted },
+                });
+            } catch (e) {
+                console.warn('[Call] Send ICE candidate failed:', e);
+            }
+        };
+
+        pc.ontrack = (e) => {
+            console.log('[Call] Remote track received');
+            if (remoteAudioRef.current && e.streams[0]) {
+                remoteAudioRef.current.srcObject = e.streams[0];
+                remoteAudioRef.current.volume = (stateRef.current.peerVolume ?? 100) / 100;
+            }
+        };
+
+        const markConnected = () => {
+            if (connectedFiredRef.current) return;
+            connectedFiredRef.current = true;
+            console.log('[Call] ✓ CONNECTED');
+            clearAllTimeoutsRef.current();
+            ringtoneRef.current.stop();
+            iceRestartCountRef.current = 0;
+            const isEnc = cryptoManager.hasChatKey(chatId);
+            setCallState(s => ({ ...s, status: 'connected', isEncrypted: isEnc }));
+            if (!timerRef.current) {
+                timerRef.current = setInterval(() => {
+                    setCallState(s => ({ ...s, duration: s.duration + 1 }));
+                }, 1000);
+            }
+        };
+
+        const markFailed = () => {
+            const st = stateRef.current.status;
+            if (st === 'idle' || st === 'ended') return;
+            console.log('[Call] ✗ FAILED');
+            cleanupRef.current();
+            setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+        };
+
+        // Двойное отслеживание: connectionState + iceConnectionState
+        pc.onconnectionstatechange = () => {
+            const st = pc.connectionState;
+            console.log('[Call] connectionState:', st);
+            if (st === 'connected') markConnected();
+            else if (st === 'failed') markFailed();
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            const st = pc.iceConnectionState;
+            console.log('[Call] iceConnectionState:', st);
+
+            if (st === 'connected' || st === 'completed') {
+                markConnected();
+                // Сбрасываем таймер disconnected
+                if (iceDisconnectTimeoutRef.current) {
+                    clearTimeout(iceDisconnectTimeoutRef.current);
+                    iceDisconnectTimeoutRef.current = null;
+                }
+            } else if (st === 'failed') {
+                // Пробуем ICE restart перед отключением
+                if (iceRestartCountRef.current < ICE_RESTART_MAX) {
+                    tryIceRestart();
+                } else {
+                    markFailed();
+                }
+            } else if (st === 'disconnected') {
+                // Ждём — может восстановится
+                if (iceDisconnectTimeoutRef.current) clearTimeout(iceDisconnectTimeoutRef.current);
+                iceDisconnectTimeoutRef.current = setTimeout(() => {
+                    const currentSt = pcRef.current?.iceConnectionState;
+                    if (currentSt === 'disconnected' || currentSt === 'failed') {
+                        console.warn('[Call] ICE still disconnected, trying restart');
+                        if (iceRestartCountRef.current < ICE_RESTART_MAX) {
+                            tryIceRestart();
+                        } else {
+                            markFailed();
+                        }
+                    }
+                }, ICE_DISCONNECTED_TIMEOUT_MS);
+            }
+        };
+
+        pc.onicegatheringstatechange = () => {
+            console.log('[Call] iceGatheringState:', pc.iceGatheringState);
+        };
+
+        pcRef.current = pc;
+        return pc;
+    }, [tryIceRestart]);
+
+    // ═══════════════════════════════════════════════════════
+    //  startCall
+    // ═══════════════════════════════════════════════════════
+
+    const startCall = useCallback(async (chatId: string) => {
+        const st = stateRef.current.status;
+        if (st !== 'idle' && st !== 'ended') return;
+        if (st === 'ended') cleanup();
+
+        const callId = crypto.randomUUID();
+        const peer = getPeerInfo(chatId);
+
+        try {
+            const stream = await getAudioStream();
+            const pc = createPC(chatId, callId);
+            stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            const enc = await encryptSignaling(chatId, offer.sdp!);
+
+            wsManager.send({
+                type: 'call_offer',
+                payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted },
+            });
+
+            setCallState({
+                status: 'calling', chatId, callId,
+                peerId: null, peerName: peer.name, peerAvatarUrl: peer.avatarUrl,
+                isMuted: false, peerMuted: false,
+                duration: 0, isEncrypted: enc.encrypted,
+                peerVolume: 100, micGain: 100,
+            });
+
+            ringtoneRef.current.start('outgoing');
+
+            callTimeoutRef.current = setTimeout(() => {
+                if (stateRef.current.status === 'calling') {
+                    wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
+                    cleanup();
+                    setCallState(s => ({ ...s, status: 'ended', endReason: 'timeout' }));
+                }
+            }, CALL_TIMEOUT_MS);
+
+        } catch (e: any) {
+            console.error('[Call] Start failed:', e);
+            cleanup();
+            setCallState(s => ({ ...s, peerName: s.peerName || peer.name, status: 'ended', endReason: 'error' }));
+        }
+    }, [createPC, getAudioStream, getPeerInfo, cleanup]);
+
+    // ═══════════════════════════════════════════════════════
+    //  answerCall
+    // ═══════════════════════════════════════════════════════
+
+    const answerCall = useCallback(async () => {
+        const offer = pendingOfferRef.current;
+        if (!offer || stateRef.current.status !== 'ringing') return;
+
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
+
+        setCallState(s => ({ ...s, status: 'connecting' }));
+
+        try {
+            const stream = await getAudioStream();
+            const pc = createPC(offer.chatId, offer.callId);
+            stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+            const sdp = await decryptSignaling(offer.chatId, offer.sdp, offer.encrypted);
+
+            console.log('[Call] Setting remote offer SDP');
+            await pc.setRemoteDescription({ type: 'offer', sdp });
+
+            console.log('[Call] Flushing candidates after setRemoteDescription');
+            await flushPendingCandidates();
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            const enc = await encryptSignaling(offer.chatId, answer.sdp!);
+
+            console.log('[Call] Sending call_answer');
+            wsManager.send({
+                type: 'call_answer',
+                payload: { chat_id: offer.chatId, call_id: offer.callId, sdp: enc.data, encrypted: enc.encrypted },
+            });
+
+            connectingTimeoutRef.current = setTimeout(() => {
+                if (stateRef.current.status === 'connecting') {
+                    console.warn('[Call] Connecting timeout (answerer)');
+                    const { chatId, callId } = stateRef.current;
+                    if (chatId && callId) {
+                        wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
+                    }
+                    cleanup();
+                    setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+                }
+            }, CONNECTING_TIMEOUT_MS);
+
+        } catch (e: any) {
+            console.error('[Call] Answer failed:', e);
+            cleanup();
+            setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+        }
+    }, [createPC, getAudioStream, flushPendingCandidates, cleanup, clearAllTimeouts]);
+
+    // ═══════════════════════════════════════════════════════
+    //  rejectCall
+    // ═══════════════════════════════════════════════════════
+
+    const rejectCall = useCallback(() => {
+        const offer = pendingOfferRef.current;
+        if (!offer) return;
+        clearAllTimeouts();
+        ringtoneRef.current.stop();
+        wsManager.send({ type: 'call_reject', payload: { chat_id: offer.chatId, call_id: offer.callId } });
+        pendingOfferRef.current = null;
+        setCallState(INITIAL);
+    }, [clearAllTimeouts]);
+
+    // ═══════════════════════════════════════════════════════
+    //  hangup
+    // ═══════════════════════════════════════════════════════
+
+    const hangup = useCallback(() => {
+        const { chatId, callId } = stateRef.current;
+        if (chatId && callId) {
+            wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
+        }
+        cleanup();
+        setCallState(s => ({ ...s, status: 'ended', endReason: 'hangup' }));
+    }, [cleanup]);
+
+    // ═══════════════════════════════════════════════════════
+    //  toggleMute
+    // ═══════════════════════════════════════════════════════
+
+    const toggleMute = useCallback(() => {
+        const stream = localStreamRef.current;
+        if (!stream) return;
+        const track = stream.getAudioTracks()[0];
+        if (!track) return;
+        track.enabled = !track.enabled;
+        const newMuted = !track.enabled;
+        setCallState(s => ({ ...s, isMuted: newMuted }));
+        const { chatId, callId } = stateRef.current;
+        if (chatId && callId) {
+            wsManager.send({ type: 'call_mute', payload: { chat_id: chatId, call_id: callId, muted: newMuted } });
+        }
+    }, []);
+
+    // ═══════════════════════════════════════════════════════
+    //  Volume controls
+    // ═══════════════════════════════════════════════════════
+
+    const setPeerVolume = useCallback((value: number) => {
+        const v = Math.max(0, Math.min(100, value));
+        if (remoteAudioRef.current) remoteAudioRef.current.volume = v / 100;
+        setCallState(s => ({ ...s, peerVolume: v }));
+    }, []);
+
+    const setMicGain = useCallback((value: number) => {
+        const v = Math.max(0, Math.min(100, value));
+        if (gainNodeRef.current) gainNodeRef.current.gain.value = (v / 100) * 2;
+        setCallState(s => ({ ...s, micGain: v }));
+    }, []);
+
+    // ═══════════════════════════════════════════════════════
+    //  dismiss
+    // ═══════════════════════════════════════════════════════
+
+    const dismissCall = useCallback(() => { setCallState(INITIAL); }, []);
+
+    // ═══════════════════════════════════════════════════════
+    //  Refs для всех callback'ов → стабильная подписка
+    // ═══════════════════════════════════════════════════════
+
+    const answerCallRef = useRef(answerCall);
+    answerCallRef.current = answerCall;
+    const rejectCallRef = useRef(rejectCall);
+    rejectCallRef.current = rejectCall;
+    const hangupRef = useRef(hangup);
+    hangupRef.current = hangup;
+    const flushRef = useRef(flushPendingCandidates);
+    flushRef.current = flushPendingCandidates;
+    const tryIceRestartRef = useRef(tryIceRestart);
+    tryIceRestartRef.current = tryIceRestart;
+    const getPeerInfoRef = useRef(getPeerInfo);
+    getPeerInfoRef.current = getPeerInfo;
+
+    // ═══════════════════════════════════════════════════════
+    //  WS подписка — ОДИН РАЗ, через refs
+    // ═══════════════════════════════════════════════════════
+
+    useEffect(() => {
+        console.log('[Call] WS subscriber registered');
+
+        const unsub = wsManager.subscribe(async (msg: WsServerMsg) => {
+            switch (msg.type) {
+
+                // ── Входящий звонок ──────────────────────
+                case 'call_incoming': {
+                    const { chat_id, call_id, caller_id, caller_name, sdp, encrypted } = msg.payload;
+                    const st = stateRef.current.status;
+
+                    console.log('[Call] ← call_incoming', { call_id, caller_name, currentStatus: st });
+
+                    // Если в 'ended' — сбрасываем и принимаем
+                    if (st === 'ended') {
+                        cleanupRef.current();
+                        setCallState(INITIAL);
+                        // Даём React обновить state
+                        await new Promise(r => setTimeout(r, 50));
+                    } else if (st !== 'idle') {
+                        console.log('[Call] Busy, auto-rejecting');
+                        wsManager.send({ type: 'call_reject', payload: { chat_id, call_id } });
+                        return;
+                    }
+
+                    const chat = chatsRef.current.find(c => c.id === chat_id);
+                    const callerMember = chat?.members.find(m => m.user_id === caller_id);
+
+                    pendingOfferRef.current = {
+                        chatId: chat_id, callId: call_id, sdp, encrypted,
+                        callerId: caller_id, callerName: caller_name,
+                    };
+
+                    setCallState({
+                        status: 'ringing', chatId: chat_id, callId: call_id,
+                        peerId: caller_id, peerName: caller_name,
+                        peerAvatarUrl: callerMember?.avatar_url,
+                        isMuted: false, peerMuted: false,
+                        duration: 0, isEncrypted: encrypted,
+                        peerVolume: 100, micGain: 100,
+                    });
+
+                    ringtoneRef.current.start('incoming');
+
+                    callTimeoutRef.current = setTimeout(() => {
+                        if (stateRef.current.status === 'ringing') {
+                            rejectCallRef.current();
+                        }
+                    }, CALL_TIMEOUT_MS);
+                    break;
+                }
+
+                // ── Собеседник принял ────────────────────
+                case 'call_accepted': {
+                    const { call_id, sdp, encrypted, chat_id } = msg.payload;
+
+                    console.log('[Call] ← call_accepted', {
+                        call_id,
+                        myCallId: stateRef.current.callId,
+                        match: stateRef.current.callId === call_id,
+                        status: stateRef.current.status,
+                    });
+
+                    if (stateRef.current.callId !== call_id) {
+                        console.warn('[Call] call_id mismatch, ignoring');
+                        return;
+                    }
+
+                    clearAllTimeoutsRef.current();
+                    ringtoneRef.current.stop();
+
+                    try {
+                        const pc = pcRef.current;
+                        if (!pc) {
+                            console.error('[Call] No PeerConnection!');
+                            return;
+                        }
+
+                        const realSdp = await decryptSignaling(chat_id, sdp, encrypted);
+
+                        console.log('[Call] Setting remote answer SDP');
+                        await pc.setRemoteDescription({ type: 'answer', sdp: realSdp });
+
+                        console.log('[Call] Flushing candidates after answer');
+                        await flushRef.current();
+
+                        setCallState(s => ({ ...s, status: 'connecting' }));
+
+                        connectingTimeoutRef.current = setTimeout(() => {
+                            if (stateRef.current.status === 'connecting') {
+                                console.warn('[Call] Connecting timeout (caller)');
+                                // Пробуем ICE restart перед отключением
+                                if (iceRestartCountRef.current < ICE_RESTART_MAX) {
+                                    tryIceRestartRef.current();
+                                } else {
+                                    hangupRef.current();
+                                }
+                            }
+                        }, CONNECTING_TIMEOUT_MS);
+
+                    } catch (e) {
+                        console.error('[Call] Set answer failed:', e);
+                        hangupRef.current();
+                    }
+                    break;
+                }
+
+                // ── ICE кандидат ─────────────────────────
+                case 'call_ice': {
+                    const { call_id, candidate, encrypted: enc, chat_id } = msg.payload;
+                    const isOurCall = stateRef.current.callId === call_id;
+                    const isPendingCall = pendingOfferRef.current?.callId === call_id;
+                    if (!isOurCall && !isPendingCall) return;
+
+                    try {
+                        const chatId = stateRef.current.chatId || pendingOfferRef.current?.chatId || chat_id;
+                        const raw = await decryptSignaling(chatId, candidate, enc);
+                        const parsed = JSON.parse(raw) as RTCIceCandidateInit;
+
+                        const pc = pcRef.current;
+                        if (pc && pc.remoteDescription) {
+                            await pc.addIceCandidate(parsed);
+                        } else {
+                            pendingCandidatesRef.current.push(parsed);
+                        }
+                    } catch (e) {
+                        console.warn('[Call] ICE candidate error:', e);
+                    }
+                    break;
+                }
+
+                // ── Отклонён ─────────────────────────────
+                case 'call_rejected': {
+                    const { call_id } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    console.log('[Call] ← call_rejected');
+                    cleanupRef.current();
+                    setCallState(s => ({ ...s, status: 'ended', endReason: 'rejected' }));
+                    break;
+                }
+
+                // ── Завершён ─────────────────────────────
+                case 'call_ended': {
+                    const { call_id } = msg.payload;
+                    const isOurCall = stateRef.current.callId === call_id;
+                    const isPendingCall = pendingOfferRef.current?.callId === call_id;
+                    if (!isOurCall && !isPendingCall) return;
+                    console.log('[Call] ← call_ended');
+                    cleanupRef.current();
+                    setCallState(s => s.status === 'idle' ? s : { ...s, status: 'ended', endReason: 'hangup' });
+                    break;
+                }
+
+                // ── Мьют собеседника ─────────────────────
+                case 'call_mute_changed': {
+                    const { call_id, muted } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    setCallState(s => ({ ...s, peerMuted: muted }));
+                    break;
+                }
+
+                // ── ICE restart (re-offer от собеседника) ──
+                case 'call_incoming': {
+                    // Уже обработан выше
+                    break;
+                }
+            }
+        });
+
+        return unsub;
+    }, []);  // ← ПУСТЫЕ ЗАВИСИМОСТИ — подписка ОДНА на всё время
+
+    // ── Cleanup при размонтировании ──────────────────────
+
+    useEffect(() => {
+        return () => cleanupRef.current();
+    }, []);
+
+    return {
+        callState,
+        startCall, answerCall, rejectCall, hangup,
+        toggleMute, setPeerVolume, setMicGain, dismissCall,
+    };
+}
+
+
+================================================================================
 FILE PATH: ./client/src/hooks/useChats.ts
 ================================================================================
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto, UserDto, EncryptedPayload, ChatMemberDto } from '../types';
+import type {
+    LocalChat, LocalMessage, WsServerMsg, ChatDto, MessageDto,
+    UserDto, EncryptedPayload, ChatMemberDto, NotificationData,
+} from '../types';
 import { formatTime, uid } from '../utils';
 import * as api from '../api';
 import { wsManager } from '../websocket';
@@ -4722,19 +6646,13 @@ function saveSelectedId(id: string | null) {
     try { if (id) localStorage.setItem('selected_chat_id', id); else localStorage.removeItem('selected_chat_id'); } catch { }
 }
 
-/**
- * Пытается загрузить ключ чата: сначала из памяти, потом из кэша, потом с сервера.
- * Возвращает true если ключ загружен.
- */
 async function ensureChatKey(chatId: string, currentUserId: string, members?: ChatMemberDto[]): Promise<boolean> {
     if (!cryptoManager.hasKeys()) return false;
     if (cryptoManager.hasChatKey(chatId)) return true;
 
-    // Пробуем из кэша IndexedDB
     const cached = await cryptoManager.loadChatKeyFromCache(chatId);
     if (cached) return true;
 
-    // Нужны актуальные данные с сервера
     let freshMembers = members;
     if (!freshMembers) {
         try {
@@ -4749,9 +6667,7 @@ async function ensureChatKey(chatId: string, currentUserId: string, members?: Ch
     const myMember = freshMembers.find(m => m.user_id === currentUserId);
     if (!myMember?.encrypted_chat_key) return false;
 
-    // Проверяем что ключ был обёрнут для нашей текущей личности
     if (myMember.member_key_id && myMember.member_key_id !== cryptoManager.getKeyId()) {
-        console.warn('[E2E] Chat key wrapped for old identity:', chatId);
         return false;
     }
 
@@ -4788,14 +6704,12 @@ async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): 
     if (!cryptoManager.hasKeys()) return;
     if (cryptoManager.hasChatKey(chatDto.id)) return;
 
-    // Если уже есть ключи — пробуем загрузить свой
     const anyHasKey = chatDto.members.some(m => m.encrypted_chat_key);
     if (anyHasKey) {
         await ensureChatKey(chatDto.id, currentUserId, chatDto.members);
         return;
     }
 
-    // Нет ключей — генерируем новый
     const membersWithKeys = chatDto.members.filter(m => m.public_keys?.identity_key);
     if (membersWithKeys.length < 2) return;
 
@@ -4811,17 +6725,19 @@ async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): 
         }
 
         await api.updateChatKeys(chatDto.id, encryptedKeys);
-
         cryptoManager.setChatKey(chatDto.id, chatKey);
         await cryptoManager.saveChatKeyToCache(chatDto.id, chatKey);
-
-        console.log('[E2E] Chat encryption initialized:', chatDto.id);
     } catch (e) {
         console.error('[E2E] Failed to setup chat encryption:', e);
     }
 }
 
-export function useChats(user: UserDto | null) {
+// ═══════════════════════════════════════════════════════════
+
+export function useChats(
+    user: UserDto | null,
+    onNewMessage?: (data: NotificationData) => void,
+) {
     const [chats, setChats] = useState<LocalChat[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(loadSelectedId);
     const [loadingChats, setLoadingChats] = useState(false);
@@ -4833,6 +6749,15 @@ export function useChats(user: UserDto | null) {
     selectedIdRef.current = selectedId;
     const chatsRef = useRef(chats);
     chatsRef.current = chats;
+    const onNewMessageRef = useRef(onNewMessage);
+    onNewMessageRef.current = onNewMessage;
+
+    const sendMarkRead = useCallback((chatId: string, messageId: string) => {
+        wsManager.send({
+            type: 'mark_read',
+            payload: { chat_id: chatId, message_id: messageId },
+        });
+    }, []);
 
     const loadChats = useCallback(async () => {
         if (!user || loadingRef.current) return;
@@ -4875,19 +6800,16 @@ export function useChats(user: UserDto | null) {
         let chat = chatsRef.current.find(c => c.id === chatId);
         if (!chat) return;
 
-        // Если E2E включено и нет ключа — всегда запрашиваем свежие данные с сервера
         if (cryptoManager.hasKeys() && !cryptoManager.hasChatKey(chatId)) {
             const cached = await cryptoManager.loadChatKeyFromCache(chatId);
             if (!cached) {
                 try {
                     const freshDto = await api.getChat(chatId);
                     const freshLocal = chatDtoToLocal(freshDto, currentUserId);
-                    // Обновляем members в локальном стейте
                     setChats(prev => prev.map(c => c.id !== chatId ? c : {
                         ...c, members: freshLocal.members,
                     }));
                     chat = { ...chat, members: freshLocal.members };
-                    // Пробуем развернуть ключ
                     await ensureChatKey(chatId, currentUserId, freshLocal.members);
                 } catch (e) {
                     console.warn('[E2E] Failed to refresh chat for key:', e);
@@ -4895,7 +6817,12 @@ export function useChats(user: UserDto | null) {
             }
         }
 
-        if (chat.messagesLoaded) return;
+        if (chat.messagesLoaded) {
+            if (chat.messages.length > 0) {
+                sendMarkRead(chatId, chat.messages[chat.messages.length - 1].id);
+            }
+            return;
+        }
 
         setLoadingMessages(true);
         try {
@@ -4906,9 +6833,12 @@ export function useChats(user: UserDto | null) {
             setChats(prev => prev.map(c => c.id !== chatId ? c : {
                 ...c, messages: local, messagesLoaded: true, unread_count: 0,
             }));
+            if (local.length > 0) {
+                sendMarkRead(chatId, local[local.length - 1].id);
+            }
         } catch (e) { console.error('Load messages failed', e); }
         finally { setLoadingMessages(false); }
-    }, [currentUserId]);
+    }, [currentUserId, sendMarkRead]);
 
     const sendMessage = useCallback(async (text: string) => {
         if (!selectedId || !text.trim() || !user) return;
@@ -4918,9 +6848,7 @@ export function useChats(user: UserDto | null) {
 
         let enc: EncryptedPayload | undefined;
         if (cryptoManager.hasChatKey(selectedId)) {
-            try {
-                enc = await cryptoManager.encrypt(selectedId, trimmed);
-            } catch (e) { console.warn('[E2E] Encrypt failed:', e); }
+            try { enc = await cryptoManager.encrypt(selectedId, trimmed); } catch { }
         }
 
         const pending: LocalMessage = {
@@ -4939,8 +6867,7 @@ export function useChats(user: UserDto | null) {
             payload: {
                 chat_id: selectedId,
                 content: enc ? '[Зашифрованное сообщение]' : trimmed,
-                client_id: clientId,
-                encrypted: enc,
+                client_id: clientId, encrypted: enc,
             },
         });
     }, [selectedId, user]);
@@ -4963,10 +6890,7 @@ export function useChats(user: UserDto | null) {
                 attachmentId = att.id;
                 finalMime = 'audio/encrypted';
                 encMeta = { ciphertext: '', nonce };
-            } catch (e) {
-                console.warn('[E2E] Voice enc failed:', e);
-                attachmentId = null;
-            }
+            } catch { attachmentId = null; }
         }
 
         if (!attachmentId) {
@@ -4994,11 +6918,8 @@ export function useChats(user: UserDto | null) {
         wsManager.send({
             type: 'send_message',
             payload: {
-                chat_id: chatId,
-                content: '🎤 Голосовое сообщение',
-                client_id: clientId,
-                attachment_id: attachmentId,
-                encrypted: encMeta,
+                chat_id: chatId, content: '🎤 Голосовое сообщение',
+                client_id: clientId, attachment_id: attachmentId, encrypted: encMeta,
             },
         });
     }, [user]);
@@ -5025,11 +6946,7 @@ export function useChats(user: UserDto | null) {
 
         wsManager.send({
             type: 'edit_message',
-            payload: {
-                message_id: messageId,
-                new_content: enc ? '[Зашифрованное сообщение]' : t,
-                encrypted: enc,
-            },
+            payload: { message_id: messageId, new_content: enc ? '[Зашифрованное сообщение]' : t, encrypted: enc },
         });
     }, [user]);
 
@@ -5043,18 +6960,14 @@ export function useChats(user: UserDto | null) {
     const createChat = useCallback(async (memberIds: string[], isGroup: boolean, name?: string) => {
         const nc = await api.createChat(memberIds, isGroup, name);
         const lc = chatDtoToLocal(nc, currentUserId);
-
-        if (cryptoManager.hasKeys()) {
-            await setupNewChatEncryption(nc, currentUserId);
-        }
-
+        if (cryptoManager.hasKeys()) await setupNewChatEncryption(nc, currentUserId);
         setChats(prev => prev.find(c => c.id === nc.id) ? prev : [lc, ...prev]);
         setSelectedId(nc.id);
         saveSelectedId(nc.id);
         return nc;
     }, [currentUserId]);
 
-    // ── WebSocket обработчик ──────────────────────────────────
+    // ── WebSocket ────────────────────────────────────────
 
     useEffect(() => {
         if (!user) return;
@@ -5084,64 +6997,84 @@ export function useChats(user: UserDto | null) {
                     }));
                     break;
                 }
+
                 case 'new_message': {
                     const { message } = msg.payload;
                     let lm = serverMsgToLocal(message, currentUserId);
 
                     if (message.encrypted && cryptoManager.hasKeys() && !message.attachment) {
-                        // Пробуем загрузить ключ чата если его нет
                         if (!cryptoManager.hasChatKey(message.chat_id)) {
                             await ensureChatKey(message.chat_id, currentUserId);
                         }
-
                         if (cryptoManager.hasChatKey(message.chat_id)) {
                             try {
                                 const dec = await cryptoManager.decrypt(
-                                    message.chat_id,
-                                    message.encrypted.ciphertext,
-                                    message.encrypted.nonce,
-                                    message.id,
+                                    message.chat_id, message.encrypted.ciphertext,
+                                    message.encrypted.nonce, message.id,
                                 );
                                 lm = { ...lm, content: dec, decrypted_content: dec };
-                            } catch (e) {
-                                lm = { ...lm, content: '🔒 Не удалось расшифровать' };
-                            }
+                            } catch { lm = { ...lm, content: '🔒 Не удалось расшифровать' }; }
                         } else {
                             lm = { ...lm, content: '🔒 Зашифровано' };
                         }
                     }
 
+                    const isSelected = selectedIdRef.current === message.chat_id;
+                    // Окно активно И чат выбран → не показываем уведомление
+                    const isWindowActive = document.hasFocus() && !document.hidden;
+                    const shouldNotify = !isSelected || !isWindowActive;
+
                     setChats(prev => {
                         if (!prev.some(c => c.id === message.chat_id)) { loadChats(); return prev; }
                         return prev.map(c => {
                             if (c.id !== message.chat_id || c.messages.some(m => m.id === message.id)) return c;
-                            const isSel = selectedIdRef.current === c.id;
                             const display = lm.decrypted_content || lm.content;
                             const pref = c.is_group ? `${message.sender_name}: ` : '';
                             return {
                                 ...c,
                                 messages: c.messagesLoaded ? [...c.messages, lm] : c.messages,
-                                unread_count: isSel ? 0 : c.unread_count + 1,
+                                unread_count: (isSelected && isWindowActive) ? 0 : c.unread_count + 1,
                                 lastMessageText: pref + display,
                                 lastMessageTime: formatTime(message.created_at),
                             };
                         });
                     });
+
+                    // mark_read только если окно активно И чат выбран
+                    if (isSelected && isWindowActive) {
+                        sendMarkRead(message.chat_id, message.id);
+                    }
+
+                    // Уведомление если нужно
+                    if (shouldNotify && onNewMessageRef.current) {
+                        const chat = chatsRef.current.find(c => c.id === message.chat_id);
+                        const sender = chat?.members.find(m => m.user_id === message.sender_id);
+                        onNewMessageRef.current({
+                            id: message.id,
+                            chatId: message.chat_id,
+                            chatName: chat?.name || message.sender_name,
+                            senderName: message.sender_name,
+                            senderAvatarUrl: sender?.avatar_url,
+                            text: lm.content,
+                            isGroup: chat?.is_group || false,
+                        });
+                    }
                     break;
                 }
+
                 case 'message_edited': {
                     const { chat_id, message_id, new_content, encrypted } = msg.payload;
                     let d = new_content;
                     if (encrypted && cryptoManager.hasChatKey(chat_id)) {
-                        try {
-                            d = await cryptoManager.decrypt(chat_id, encrypted.ciphertext, encrypted.nonce, message_id);
-                        } catch { d = '🔒 Не удалось расшифровать'; }
+                        try { d = await cryptoManager.decrypt(chat_id, encrypted.ciphertext, encrypted.nonce, message_id); }
+                        catch { d = '🔒 Не удалось расшифровать'; }
                     }
                     setChats(prev => prev.map(c => c.id !== chat_id ? c : {
                         ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content: d, edited: true }),
                     }));
                     break;
                 }
+
                 case 'message_deleted': {
                     const { chat_id, message_id } = msg.payload;
                     setChats(prev => prev.map(c => c.id !== chat_id ? c : {
@@ -5149,6 +7082,36 @@ export function useChats(user: UserDto | null) {
                     }));
                     break;
                 }
+
+                case 'messages_read': {
+                    const { chat_id, user_id, message_id } = msg.payload;
+                    if (user_id === currentUserId) break;
+
+                    setChats(prev => prev.map(c => {
+                        if (c.id !== chat_id) return c;
+                        const readIdx = c.messages.findIndex(m => m.id === message_id);
+                        if (readIdx === -1) {
+                            const hasUnread = c.messages.some(m => m.own && (m.status === 'sent' || m.status === 'delivered'));
+                            if (!hasUnread) return c;
+                            return {
+                                ...c, messages: c.messages.map(m =>
+                                    m.own && (m.status === 'sent' || m.status === 'delivered')
+                                        ? { ...m, status: 'read' as const } : m
+                                ),
+                            };
+                        }
+                        return {
+                            ...c, messages: c.messages.map((m, idx) => {
+                                if (m.own && idx <= readIdx && (m.status === 'sent' || m.status === 'delivered')) {
+                                    return { ...m, status: 'read' as const };
+                                }
+                                return m;
+                            }),
+                        };
+                    }));
+                    break;
+                }
+
                 case 'user_online': {
                     const { user_id } = msg.payload;
                     setChats(prev => prev.map(c => c.is_group ? c :
@@ -5168,10 +7131,7 @@ export function useChats(user: UserDto | null) {
                     setChats(prev => prev.map(c => ({
                         ...c,
                         members: c.members.map(m => m.user_id !== uu.id ? m : {
-                            ...m,
-                            display_name: uu.display_name,
-                            avatar_url: uu.avatar_url,
-                            public_keys: uu.public_keys,
+                            ...m, display_name: uu.display_name, avatar_url: uu.avatar_url, public_keys: uu.public_keys,
                         }),
                         name: !c.is_group && c.members.some(m => m.user_id === uu.id && m.user_id !== currentUserId)
                             ? uu.display_name : c.name,
@@ -5185,7 +7145,32 @@ export function useChats(user: UserDto | null) {
             }
         });
         return unsub;
-    }, [user, currentUserId, loadChats]);
+    }, [user, currentUserId, loadChats, sendMarkRead]);
+
+    // ── mark_read при возврате фокуса в окно ─────────────
+
+    useEffect(() => {
+        const onFocus = () => {
+            const chatId = selectedIdRef.current;
+            if (!chatId) return;
+            const chat = chatsRef.current.find(c => c.id === chatId);
+            if (!chat || !chat.messagesLoaded || chat.messages.length === 0) return;
+
+            const lastMsg = chat.messages[chat.messages.length - 1];
+            if (!lastMsg.own) {
+                sendMarkRead(chatId, lastMsg.id);
+                setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, unread_count: 0 }));
+            }
+        };
+
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) onFocus();
+        });
+        return () => {
+            window.removeEventListener('focus', onFocus);
+        };
+    }, [sendMarkRead]);
 
     useEffect(() => {
         if (!user) return;
@@ -5554,6 +7539,58 @@ export const Icon = {
         </svg>
     ),
 
+    phoneOff: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <g transform="rotate(135 12 12)">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5
+                    19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1
+                    2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0
+                    6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+            </g>
+        </svg>
+    ),
+
+    volumeHigh: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        </svg>
+    ),
+
+    volumeOff: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+        </svg>
+    ),
+
+    sliders: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
+            <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
+            <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" />
+            <line x1="17" y1="16" x2="23" y2="16" />
+        </svg>
+    ),
+
+    micOff: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.5-.35 2.18" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+    ),
+
     x: (s = 20) => (
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -5588,6 +7625,163 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+
+
+================================================================================
+FILE PATH: ./client/src/notifications.ts
+================================================================================
+import type { NotificationData } from './types';
+
+// ═══════════════════════════════════════════════════════════
+//  Tauri plugin
+// ═══════════════════════════════════════════════════════════
+
+let tauriNotifModule: any = null;
+let tauriChecked = false;
+
+function isTauri(): boolean {
+    return !!(window as any).__TAURI_INTERNALS__;
+}
+
+async function getTauriModule(): Promise<any> {
+    if (tauriChecked) return tauriNotifModule;
+    tauriChecked = true;
+    if (!isTauri()) return null;
+
+    try {
+        tauriNotifModule = await import('@tauri-apps/plugin-notification');
+        return tauriNotifModule;
+    } catch (e) {
+        console.warn('[Notif] Tauri plugin load failed:', e);
+        return null;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Звук
+// ═══════════════════════════════════════════════════════════
+
+let lastSoundTime = 0;
+
+export function playNotificationSound(): void {
+    const now = Date.now();
+    if (now - lastSoundTime < 800) return;
+    lastSoundTime = now;
+    try {
+        const audio = new Audio('/sounds/notification.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(() => { });
+    } catch { /* */ }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Инициализация
+// ═══════════════════════════════════════════════════════════
+
+let _permissionGranted = false;
+
+export async function initNotifications(): Promise<boolean> {
+    const mod = await getTauriModule();
+
+    if (mod) {
+        try {
+            let granted = await mod.isPermissionGranted();
+            if (!granted) {
+                const result = await mod.requestPermission();
+                granted = result === 'granted';
+            }
+            _permissionGranted = granted;
+            console.log('[Notif] Tauri permission:', granted);
+        } catch (e) {
+            console.warn('[Notif] Tauri permission error:', e);
+            _permissionGranted = false;
+        }
+    } else if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+            _permissionGranted = true;
+        } else if (Notification.permission !== 'denied') {
+            try {
+                const result = await Notification.requestPermission();
+                _permissionGranted = result === 'granted';
+            } catch {
+                _permissionGranted = false;
+            }
+        }
+        console.log('[Notif] Web permission:', _permissionGranted);
+    }
+
+    return _permissionGranted;
+}
+
+export async function requestNotificationPermission(): Promise<boolean> {
+    _permissionGranted = false;
+    tauriChecked = false;
+    tauriNotifModule = null;
+    return initNotifications();
+}
+
+export function isNotificationEnabled(): boolean {
+    return _permissionGranted;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Системное уведомление (best effort)
+// ═══════════════════════════════════════════════════════════
+
+export async function sendSystemNotification(
+    title: string,
+    body: string,
+    tag?: string,
+    onClick?: () => void,
+): Promise<void> {
+    console.log('[Notif] Trying system notification:', { title, body });
+
+    // Tauri
+    const mod = await getTauriModule();
+    if (mod) {
+        try {
+            await mod.sendNotification({ title, body });
+            console.log('[Notif] Tauri notification sent OK');
+            return;
+        } catch (e) {
+            console.error('[Notif] Tauri sendNotification error:', e);
+        }
+    }
+
+    // Web Notification API
+    if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+            const n = new Notification(title, {
+                body,
+                silent: true,
+                tag: tag || undefined,
+            });
+            if (onClick) {
+                n.onclick = () => {
+                    window.focus();
+                    onClick();
+                    n.close();
+                };
+            }
+            setTimeout(() => n.close(), 6000);
+            console.log('[Notif] Web notification sent OK');
+        } catch (e) {
+            console.error('[Notif] Web Notification error:', e);
+        }
+    }
+}
+
+/**
+ * Тестовое уведомление для отладки.
+ */
+export async function sendTestNotification(): Promise<void> {
+    playNotificationSound();
+    await sendSystemNotification(
+        'Тест уведомлений',
+        'Если вы видите это — уведомления работают! 🎉',
+        'test',
+    );
+}
 
 
 ================================================================================
@@ -5702,7 +7896,14 @@ export type WsServerMsg =
     | { type: 'user_online'; payload: { user_id: string } }
     | { type: 'user_offline'; payload: { user_id: string } }
     | { type: 'user_updated'; payload: { user: UserDto } }
-    | { type: 'error'; payload: { message: string } };
+    | { type: 'error'; payload: { message: string } }
+    // ── Звонки ──
+    | { type: 'call_incoming'; payload: { chat_id: string; call_id: string; caller_id: string; caller_name: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
+    | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
+    | { type: 'call_mute_changed'; payload: { chat_id: string; call_id: string; user_id: string; muted: boolean } }
+    | { type: 'call_ended'; payload: { chat_id: string; call_id: string } };
 
 export type WsClientMsg =
     | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
@@ -5710,7 +7911,14 @@ export type WsClientMsg =
     | { type: 'delete_message'; payload: { message_id: string } }
     | { type: 'typing'; payload: { chat_id: string } }
     | { type: 'stop_typing'; payload: { chat_id: string } }
-    | { type: 'mark_read'; payload: { chat_id: string; message_id: string } };
+    | { type: 'mark_read'; payload: { chat_id: string; message_id: string } }
+    // ── Звонки ──
+    | { type: 'call_offer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_answer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
+    | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
+    | { type: 'call_mute'; payload: { chat_id: string; call_id: string; muted: boolean } }
+    | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } };
 
 // ═══════════════════════════════════════════════════════════
 //  Локальные UI типы
@@ -5777,6 +7985,39 @@ export interface Chat {
         own: boolean;
         status?: string;
     }[];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Call типы
+// ═══════════════════════════════════════════════════════════
+
+export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
+export type CallEndReason = 'hangup' | 'rejected' | 'timeout' | 'error' | 'busy';
+
+export interface CallState {
+    status: CallStatus;
+    chatId: string | null;
+    callId: string | null;
+    peerId: string | null;
+    peerName: string | null;
+    peerAvatarUrl?: string;
+    isMuted: boolean;
+    peerMuted: boolean;
+    duration: number;
+    isEncrypted: boolean;
+    endReason?: CallEndReason;
+    peerVolume: number;
+    micGain: number;
+}
+
+export interface NotificationData {
+    id: string;
+    chatId: string;
+    chatName: string;
+    senderName: string;
+    senderAvatarUrl?: string;
+    text: string;
+    isGroup: boolean;
 }
 
 
@@ -6012,6 +8253,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -6025,6 +8267,7 @@ FILE PATH: ./client/src-tauri/src/main.rs
 ================================================================================
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -7173,21 +9416,34 @@ pub async fn upload_avatar(
             return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
-        let old_avatar: Option<(Uuid,)> =
+        // ── Удаление старой аватарки (порядок: сначала убираем FK, потом удаляем) ──
+        let old_avatar: Option<(Option<Uuid>,)> =
             sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
                 .bind(auth.user_id)
                 .fetch_optional(&state.db)
                 .await?;
 
-        if let Some((old_id,)) = old_avatar {
-            let old_path = format!("{}/{}", state.config.upload_dir, old_id);
-            let _ = tokio::fs::remove_file(&old_path).await;
+        let old_avatar_id = old_avatar.and_then(|r| r.0);
+
+        if let Some(old_id) = old_avatar_id {
+            // 1) Сначала убираем ссылку из users
+            sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
+                .bind(auth.user_id)
+                .execute(&state.db)
+                .await?;
+
+            // 2) Теперь безопасно удаляем attachment
             sqlx::query("DELETE FROM attachments WHERE id = $1")
                 .bind(old_id)
                 .execute(&state.db)
                 .await?;
+
+            // 3) Удаляем файл с диска
+            let old_path = format!("{}/{}", state.config.upload_dir, old_id);
+            let _ = tokio::fs::remove_file(&old_path).await;
         }
 
+        // ── Загрузка новой аватарки ──
         let att_id = Uuid::new_v4();
         let filename = format!("avatar_{}.{}", auth.user_id, get_extension(&mime));
         let path = format!("{}/{}", state.config.upload_dir, att_id);
@@ -7236,24 +9492,33 @@ pub async fn delete_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<()>, AppError> {
-    let avatar: Option<(Uuid,)> = sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
-        .bind(auth.user_id)
-        .fetch_optional(&state.db)
-        .await?;
-
-    if let Some((avatar_id,)) = avatar {
-        let path = format!("{}/{}", state.config.upload_dir, avatar_id);
-        let _ = tokio::fs::remove_file(&path).await;
-
-        sqlx::query("DELETE FROM attachments WHERE id = $1")
-            .bind(avatar_id)
-            .execute(&state.db)
+    let avatar: Option<(Option<Uuid>,)> =
+        sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
             .await?;
 
+    let avatar_id = avatar.and_then(|r| r.0);
+
+    if let Some(aid) = avatar_id {
+        // 1) Сначала убираем ссылку
         sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
+
+        // 2) Потом удаляем attachment
+        sqlx::query("DELETE FROM attachments WHERE id = $1")
+            .bind(aid)
+            .execute(&state.db)
+            .await?;
+
+        // 3) Удаляем файл
+        let path = format!("{}/{}", state.config.upload_dir, aid);
+        let _ = tokio::fs::remove_file(&path).await;
+
+        let user = get_user_dto(&state, auth.user_id).await?;
+        broadcast_user_update(&state, auth.user_id, user).await;
     }
 
     Ok(Json(()))
@@ -8069,6 +10334,18 @@ async fn run(socket: WebSocket, state: AppState, user_id: Uuid, username: String
     tracing::info!(%user_id, "ws disconnected");
 }
 
+/// Достать display_name из БД (с fallback на username)
+async fn get_display_name(state: &AppState, uid: Uuid, fallback: &str) -> String {
+    sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
+        .bind(uid)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.0)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
     match msg {
         WsClientMsg::SendMessage {
@@ -8136,8 +10413,57 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             )
             .await
         }
+        // ── Звонки ──────────────────────────────────────────
+        WsClientMsg::CallOffer {
+            chat_id,
+            call_id,
+            sdp,
+            encrypted,
+        } => on_call_offer(state, uid, uname, chat_id, call_id, sdp, encrypted).await,
+        WsClientMsg::CallAnswer {
+            chat_id,
+            call_id,
+            sdp,
+            encrypted,
+        } => on_call_answer(state, uid, chat_id, call_id, sdp, encrypted).await,
+        WsClientMsg::CallIce {
+            chat_id,
+            call_id,
+            candidate,
+            encrypted,
+        } => on_call_ice(state, uid, chat_id, call_id, candidate, encrypted).await,
+        WsClientMsg::CallReject { chat_id, call_id } => {
+            on_call_reject(state, uid, chat_id, call_id).await
+        }
+        WsClientMsg::CallHangup { chat_id, call_id } => {
+            on_call_hangup(state, uid, chat_id, call_id).await
+        }
+        WsClientMsg::CallMute {
+            chat_id,
+            call_id,
+            muted,
+        } => on_call_mute(state, uid, chat_id, call_id, muted).await,
     }
 }
+
+async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid, muted: bool) {
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallMuteChanged {
+            chat_id,
+            call_id,
+            user_id: uid,
+            muted,
+        },
+    )
+    .await;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Обработчики сообщений
+// ═══════════════════════════════════════════════════════════
 
 async fn on_send(
     state: &AppState,
@@ -8149,7 +10475,6 @@ async fn on_send(
     attachment_id: Option<Uuid>,
     encrypted: Option<EncryptedPayload>,
 ) {
-    // Проверяем членство
     let check: Option<(i64,)> =
         sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
             .bind(chat_id)
@@ -8183,15 +10508,7 @@ async fn on_send(
         return;
     }
 
-    let display_name: String =
-        sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
-            .bind(uid)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .map(|r| r.0)
-            .unwrap_or_else(|| uname.to_string());
+    let display_name = get_display_name(state, uid, uname).await;
 
     let attachment = if let Some(att_id) = attachment_id {
         let row: Option<(String, String, i64)> =
@@ -8215,7 +10532,6 @@ async fn on_send(
     let msg_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
-    // Сериализуем encrypted payload для хранения в БД
     let encrypted_json = encrypted
         .as_ref()
         .and_then(|e| serde_json::to_value(e).ok());
@@ -8364,6 +10680,108 @@ async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
     .await;
 }
 
+// ═══════════════════════════════════════════════════════════
+//  Обработчики звонков (чистый relay, без хранения)
+// ═══════════════════════════════════════════════════════════
+
+async fn on_call_offer(
+    state: &AppState,
+    uid: Uuid,
+    uname: &str,
+    chat_id: Uuid,
+    call_id: Uuid,
+    sdp: String,
+    encrypted: bool,
+) {
+    let caller_name = get_display_name(state, uid, uname).await;
+    tracing::info!(%uid, %chat_id, %call_id, "call_offer");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallIncoming {
+            chat_id,
+            call_id,
+            caller_id: uid,
+            caller_name,
+            sdp,
+            encrypted,
+        },
+    )
+    .await;
+}
+
+async fn on_call_answer(
+    state: &AppState,
+    uid: Uuid,
+    chat_id: Uuid,
+    call_id: Uuid,
+    sdp: String,
+    encrypted: bool,
+) {
+    tracing::info!(%uid, %chat_id, %call_id, "call_answer");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallAccepted {
+            chat_id,
+            call_id,
+            sdp,
+            encrypted,
+        },
+    )
+    .await;
+}
+
+async fn on_call_ice(
+    state: &AppState,
+    uid: Uuid,
+    chat_id: Uuid,
+    call_id: Uuid,
+    candidate: String,
+    encrypted: bool,
+) {
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallIce {
+            chat_id,
+            call_id,
+            candidate,
+            encrypted,
+        },
+    )
+    .await;
+}
+
+async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+    tracing::info!(%uid, %chat_id, %call_id, "call_reject");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallRejected { chat_id, call_id },
+    )
+    .await;
+}
+
+async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+    tracing::info!(%uid, %chat_id, %call_id, "call_hangup");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallEnded { chat_id, call_id },
+    )
+    .await;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Утилиты рассылки
+// ═══════════════════════════════════════════════════════════
+
 async fn broadcast_to_chat(state: &AppState, chat_id: Uuid, exclude: Uuid, msg: WsServerMsg) {
     let m: Vec<(Uuid,)> =
         sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id=$1 AND user_id!=$2")
@@ -8496,6 +10914,42 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         message_id: Uuid,
     },
+    // ── Звонки ──────────────────────────────────────────────
+    CallOffer {
+        chat_id: Uuid,
+        call_id: Uuid,
+        sdp: String,
+        #[serde(default)]
+        encrypted: bool,
+    },
+    CallAnswer {
+        chat_id: Uuid,
+        call_id: Uuid,
+        sdp: String,
+        #[serde(default)]
+        encrypted: bool,
+    },
+    #[serde(rename = "call_ice")]
+    CallIce {
+        chat_id: Uuid,
+        call_id: Uuid,
+        candidate: String,
+        #[serde(default)]
+        encrypted: bool,
+    },
+    CallReject {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
+    CallHangup {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
+    CallMute {
+        chat_id: Uuid,
+        call_id: Uuid,
+        muted: bool,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8548,6 +11002,42 @@ pub enum WsServerMsg {
     },
     Error {
         message: String,
+    },
+    // ── Звонки ──────────────────────────────────────────────
+    CallIncoming {
+        chat_id: Uuid,
+        call_id: Uuid,
+        caller_id: Uuid,
+        caller_name: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    CallAccepted {
+        chat_id: Uuid,
+        call_id: Uuid,
+        sdp: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_ice")]
+    CallIce {
+        chat_id: Uuid,
+        call_id: Uuid,
+        candidate: String,
+        encrypted: bool,
+    },
+    CallRejected {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
+    CallEnded {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
+    CallMuteChanged {
+        chat_id: Uuid,
+        call_id: Uuid,
+        user_id: Uuid,
+        muted: bool,
     },
 }
 

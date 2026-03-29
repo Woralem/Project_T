@@ -1617,8 +1617,6 @@ input {
     }
 }
 
-/* Добавить в client/src/App.css */
-
 /* ═══════════════════════════════════════════════════════════
    AVATAR EDIT
    ═══════════════════════════════════════════════════════════ */
@@ -1708,58 +1706,6 @@ input {
     50% {
         opacity: 0.5;
     }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   AVATAR EDIT
-   ═══════════════════════════════════════════════════════════ */
-.avatar-edit-wrap {
-    position: relative;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.avatar-edit-overlay {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.avatar-edit-wrap:hover .avatar-edit-overlay {
-    opacity: 1;
-}
-
-.avatar-loading {
-    font-size: 18px;
-    animation: pulse 1s infinite;
-}
-
-.profile-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.avatar-delete-btn {
-    font-size: 12px;
-    color: var(--red);
-    margin-top: 4px;
-    padding: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-}
-
-.avatar-delete-btn:hover {
-    text-decoration: underline;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1919,18 +1865,6 @@ input {
 
 .e2e-reset-btn:hover {
     color: var(--text2);
-}
-
-@keyframes pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.4;
-    }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2320,156 +2254,6 @@ input {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MESSAGE NOTIFICATIONS (правый нижний угол)
-   ═══════════════════════════════════════════════════════════ */
-.notification-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 1800;
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 8px;
-    pointer-events: none;
-    max-width: 380px;
-}
-
-.notification-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 16px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg), 0 4px 24px rgba(0, 0, 0, .18);
-    cursor: pointer;
-    pointer-events: auto;
-    animation: notifSlideIn .35s cubic-bezier(.2, .9, .3, 1.1);
-    transition: transform .15s, opacity .15s, box-shadow .15s;
-    min-width: 300px;
-    max-width: 380px;
-}
-
-.notification-item:hover {
-    transform: translateX(-4px);
-    box-shadow: var(--shadow-lg), 0 6px 32px rgba(0, 0, 0, .24);
-}
-
-.notification-item:active {
-    transform: scale(.98);
-}
-
-.notification-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.notification-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-}
-
-.notification-name {
-    font-size: 14px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.notification-group-icon {
-    display: inline-flex;
-    color: var(--text2);
-    flex-shrink: 0;
-}
-
-.notification-label {
-    font-size: 11px;
-    color: var(--text3);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.notification-text {
-    font-size: 13px;
-    color: var(--text2);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.35;
-}
-
-.notification-close {
-    flex-shrink: 0;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    color: var(--text3);
-    background: none;
-    border: none;
-    cursor: pointer;
-    pointer-events: auto;
-    opacity: 0;
-    transition: opacity .15s, background .12s, color .12s;
-}
-
-.notification-item:hover .notification-close {
-    opacity: 1;
-}
-
-.notification-close:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-}
-
-/* Полоска прогресса автоскрытия */
-.notification-item::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 16px;
-    right: 16px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--accent);
-    animation: notifProgress 4.5s linear forwards;
-    opacity: 0.4;
-}
-
-@keyframes notifSlideIn {
-    from {
-        opacity: 0;
-        transform: translateX(80px) scale(.92);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(0) scale(1);
-    }
-}
-
-@keyframes notifProgress {
-    from {
-        width: calc(100% - 32px);
-    }
-
-    to {
-        width: 0;
-    }
-}
-
-/* ═══════════════════════════════════════════════════════════
    CALL: PEER NAME ROW (с индикатором мьюта)
    ═══════════════════════════════════════════════════════════ */
 .call-peer-name-row {
@@ -2587,4 +2371,396 @@ input {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IN-APP NOTIFICATIONS (правый нижний угол — ВСЕГДА видны)
+   ═══════════════════════════════════════════════════════════ */
+.notification-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1800;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 380px;
+}
+
+.notification-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg), 0 4px 24px rgba(0, 0, 0, .18);
+    cursor: pointer;
+    pointer-events: auto;
+    animation: notifSlideIn .35s cubic-bezier(.2, .9, .3, 1.1);
+    transition: transform .15s, opacity .15s, box-shadow .15s;
+    min-width: 300px;
+    max-width: 380px;
+    overflow: hidden;
+}
+
+.notification-item:hover {
+    transform: translateX(-4px);
+    box-shadow: var(--shadow-lg), 0 6px 32px rgba(0, 0, 0, .24);
+}
+
+.notification-item:active {
+    transform: scale(.98);
+}
+
+.notification-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.notification-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.notification-group-icon {
+    display: inline-flex;
+    color: var(--text2);
+    flex-shrink: 0;
+}
+
+.notification-label {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.notification-text {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+}
+
+.notification-close {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity .15s, background .12s, color .12s;
+}
+
+.notification-item:hover .notification-close {
+    opacity: 1;
+}
+
+.notification-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* Полоска автоскрытия */
+.notification-item::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    animation: notifProgress 5s linear forwards;
+    opacity: 0.4;
+}
+
+@keyframes notifSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(80px) scale(.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes notifProgress {
+    from {
+        width: calc(100% - 32px);
+    }
+
+    to {
+        width: 0;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL EXPANDED (with media panel)
+   ═══════════════════════════════════════════════════════════ */
+.call-overlay.call-expanded {
+    max-width: 400px;
+    width: 400px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED MEDIA PANEL
+   ═══════════════════════════════════════════════════════════ */
+.media-panel {
+    padding: 12px 16px 16px;
+    border-radius: 0 0 20px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+    animation: volumePanelIn .2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 320px;
+    overflow-y: auto;
+    transition: border-color .2s;
+}
+
+.media-panel.media-drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+
+.media-upload-row {
+    display: flex;
+    gap: 8px;
+}
+
+.media-upload-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px dashed var(--border);
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .1s;
+    text-align: center;
+}
+
+.media-upload-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    transform: scale(1.01);
+}
+
+.media-upload-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.media-drop-hint {
+    padding: 20px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    background: var(--accent-dim);
+    animation: fadeIn .15s ease;
+}
+
+.media-empty {
+    text-align: center;
+    padding: 12px 8px;
+    font-size: 12px;
+    color: var(--text3);
+    line-height: 1.5;
+}
+
+/* ── Media Card ────────────────────────────────────────── */
+.media-card {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: fadeUp .2s ease;
+}
+
+.media-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.media-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.media-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-card-owner {
+    font-size: 11px;
+    color: var(--text3);
+}
+
+.media-remove-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color .12s, background .12s;
+}
+
+.media-remove-btn:hover {
+    color: var(--red);
+    background: rgba(239, 68, 68, .1);
+}
+
+/* ── Progress ──────────────────────────────────────────── */
+.media-progress {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.media-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width .3s linear;
+}
+
+/* ── Controls ──────────────────────────────────────────── */
+.media-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.media-ctrl-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    color: var(--text);
+    background: var(--bg-hover);
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .12s, color .12s;
+}
+
+.media-ctrl-btn:hover {
+    background: var(--bg-active);
+}
+
+.media-ctrl-btn.muted {
+    color: var(--red);
+}
+
+.media-time {
+    font-size: 11px;
+    color: var(--text3);
+    font-variant-numeric: tabular-nums;
+    flex: 1;
+    min-width: 0;
+}
+
+.media-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 60px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.media-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.media-volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+}
+
+/* Индикатор активных треков на кнопке */
+.call-ctrl-btn.has-media::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+}
+
+.call-ctrl-btn {
+    position: relative;
 }

@@ -195,6 +195,69 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             call_id,
             muted,
         } => on_call_mute(state, uid, chat_id, call_id, muted).await,
+
+        // ── Shared Media ────────────────────────────────────
+        WsClientMsg::CallMediaShare {
+            chat_id,
+            call_id,
+            file_id,
+            file_name,
+        } => {
+            let user_name = get_display_name(state, uid, uname).await;
+            let media_id = Uuid::new_v4().to_string();
+            broadcast_to_chat_all(
+                state,
+                chat_id,
+                WsServerMsg::CallMediaShared {
+                    chat_id,
+                    call_id,
+                    media_id,
+                    user_id: uid,
+                    user_name,
+                    file_id,
+                    file_name,
+                },
+            )
+            .await;
+        }
+        WsClientMsg::CallMediaRemove {
+            chat_id,
+            call_id,
+            media_id,
+        } => {
+            broadcast_to_chat_all(
+                state,
+                chat_id,
+                WsServerMsg::CallMediaRemoved {
+                    chat_id,
+                    call_id,
+                    media_id,
+                },
+            )
+            .await;
+        }
+        WsClientMsg::CallMediaControl {
+            chat_id,
+            call_id,
+            media_id,
+            action,
+            current_time,
+        } => {
+            broadcast_to_chat(
+                state,
+                chat_id,
+                uid,
+                WsServerMsg::CallMediaControlled {
+                    chat_id,
+                    call_id,
+                    media_id,
+                    user_id: uid,
+                    action,
+                    current_time,
+                },
+            )
+            .await;
+        }
     }
 }
 

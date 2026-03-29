@@ -106,7 +106,11 @@ export type WsServerMsg =
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute_changed'; payload: { chat_id: string; call_id: string; user_id: string; muted: boolean } }
-    | { type: 'call_ended'; payload: { chat_id: string; call_id: string } };
+    | { type: 'call_ended'; payload: { chat_id: string; call_id: string } }
+    // ── Медиа ──
+    | { type: 'call_media_shared'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; user_name: string; file_id: string; file_name: string } }
+    | { type: 'call_media_removed'; payload: { chat_id: string; call_id: string; media_id: string } }
+    | { type: 'call_media_controlled'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; action: string; current_time: number } };
 
 export type WsClientMsg =
     | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
@@ -121,7 +125,11 @@ export type WsClientMsg =
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute'; payload: { chat_id: string; call_id: string; muted: boolean } }
-    | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } };
+    | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } }
+    // ── Медиа ──
+    | { type: 'call_media_share'; payload: { chat_id: string; call_id: string; file_id: string; file_name: string } }
+    | { type: 'call_media_remove'; payload: { chat_id: string; call_id: string; media_id: string } }
+    | { type: 'call_media_control'; payload: { chat_id: string; call_id: string; media_id: string; action: string; current_time: number } };
 
 // ═══════════════════════════════════════════════════════════
 //  Локальные UI типы
@@ -194,6 +202,20 @@ export interface Chat {
 //  Call типы
 // ═══════════════════════════════════════════════════════════
 
+export interface SharedMediaItem {
+    id: string;
+    userId: string;
+    userName: string;
+    fileId: string;
+    fileName: string;
+    title: string;
+    isPlaying: boolean;
+    currentTime: number;
+    duration: number;
+    localVolume: number;
+    localMuted: boolean;
+}
+
 export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
 export type CallEndReason = 'hangup' | 'rejected' | 'timeout' | 'error' | 'busy';
 
@@ -211,6 +233,8 @@ export interface CallState {
     endReason?: CallEndReason;
     peerVolume: number;
     micGain: number;
+    sharedMedia: SharedMediaItem[];
+    showMediaPanel: boolean;
 }
 
 export interface NotificationData {

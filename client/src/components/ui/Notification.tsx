@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React from 'react';
 import type { NotificationData } from '../../types';
 import { Avatar } from './Avatar';
 import { Icon } from '../../icons';
@@ -18,7 +18,7 @@ export function NotificationContainer({ notifications, onClickNotification, onDi
                 <NotificationItem
                     key={n.id}
                     notification={n}
-                    onClick={() => onClickNotification(n.chatId)}
+                    onClick={() => { onClickNotification(n.chatId); onDismiss(n.id); }}
                     onDismiss={() => onDismiss(n.id)}
                 />
             ))}
@@ -27,32 +27,20 @@ export function NotificationContainer({ notifications, onClickNotification, onDi
 }
 
 function NotificationItem({
-    notification,
-    onClick,
-    onDismiss,
+    notification, onClick, onDismiss,
 }: {
     notification: NotificationData;
     onClick: () => void;
     onDismiss: () => void;
 }) {
     const { chatName, senderName, senderAvatarUrl, text, isGroup } = notification;
-
     const displayName = isGroup ? chatName : senderName;
-    const previewText = isGroup
-        ? `${senderName}: ${text}`
-        : text;
-
-    const truncated = previewText.length > 60
-        ? previewText.slice(0, 60) + '…'
-        : previewText;
+    const previewText = isGroup ? `${senderName}: ${text}` : text;
+    const truncated = previewText.length > 60 ? previewText.slice(0, 60) + '…' : previewText;
 
     return (
         <div className="notification-item" onClick={onClick}>
-            <Avatar
-                name={displayName}
-                size={42}
-                avatarUrl={senderAvatarUrl}
-            />
+            <Avatar name={displayName} size={42} avatarUrl={senderAvatarUrl} />
             <div className="notification-body">
                 <div className="notification-header">
                     <span className="notification-name">

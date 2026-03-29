@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { CallState, LocalChat, WsServerMsg } from '../types';
+import type { CallState, LocalChat, WsServerMsg, SharedMediaItem } from '../types';
 import { wsManager } from '../websocket';
 import { cryptoManager } from '../crypto';
 
@@ -43,6 +43,8 @@ const INITIAL: CallState = {
     isEncrypted: false,
     peerVolume: 100,
     micGain: 100,
+    sharedMedia: [],
+    showMediaPanel: false,
 };
 
 interface PendingOffer {
@@ -407,6 +409,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                 isMuted: false, peerMuted: false,
                 duration: 0, isEncrypted: enc.encrypted,
                 peerVolume: 100, micGain: 100,
+                sharedMedia: [], showMediaPanel: false,
             });
 
             ringtoneRef.current.start('outgoing');
@@ -550,6 +553,92 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
     const dismissCall = useCallback(() => { setCallState(INITIAL); }, []);
 
     // ═══════════════════════════════════════════════════════
+    //  Shared Media
+    // ═══════════════════════════════════════════════════════
+
+    const toggleMediaPanel = useCallback(() => {
+        setCallState(s => ({ ...s, showMediaPanel: !s.showMediaPanel }));
+    }, []);
+
+    const shareMedia = useCallback((fileId: string, fileName: string) => {
+        const { chatId, callId } = stateRef.current;
+        if (!chatId || !callId) return;
+        wsManager.send({
+            type: 'call_media_share',
+            payload: { chat_id: chatId, call_id: callId, file_id: fileId, file_name: fileName },
+        });
+    }, []);
+
+    const removeMedia = useCallback((mediaId: string) => {
+        const { chatId, callId } = stateRef.current;
+        if (!chatId || !callId) return;
+        setCallState(s => ({ ...s, sharedMedia: s.sharedMedia.filter(m => m.id !== mediaId) }));
+        wsManager.send({
+            type: 'call_media_remove',
+            payload: { chat_id: chatId, call_id: callId, media_id: mediaId },
+        });
+    }, []);
+
+    const controlMedia = useCallback((mediaId: string, action: 'play' | 'pause' | 'seek', time?: number) => {
+        const { chatId, callId } = stateRef.current;
+        if (!chatId || !callId) return;
+
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m => {
+                if (m.id !== mediaId) return m;
+                if (action === 'play') return { ...m, isPlaying: true };
+                if (action === 'pause') return { ...m, isPlaying: false };
+                if (action === 'seek' && time !== undefined) return { ...m, currentTime: time };
+                return m;
+            }),
+        }));
+
+        const item = stateRef.current.sharedMedia.find(m => m.id === mediaId);
+        wsManager.send({
+            type: 'call_media_control',
+            payload: {
+                chat_id: chatId, call_id: callId, media_id: mediaId,
+                action, current_time: time ?? item?.currentTime ?? 0,
+            },
+        });
+    }, []);
+
+    const setMediaVolume = useCallback((mediaId: string, volume: number) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m =>
+                m.id !== mediaId ? m : { ...m, localVolume: volume, localMuted: false }
+            ),
+        }));
+    }, []);
+
+    const toggleMediaMute = useCallback((mediaId: string) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m =>
+                m.id !== mediaId ? m : { ...m, localMuted: !m.localMuted }
+            ),
+        }));
+    }, []);
+
+    const updateMediaTitle = useCallback((mediaId: string, title: string) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m => m.id !== mediaId ? m : { ...m, title }),
+        }));
+    }, []);
+
+    const updateMediaTime = useCallback((mediaId: string, currentTime: number, duration: number) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m =>
+                m.id !== mediaId ? m : { ...m, currentTime, duration: duration || m.duration }
+            ),
+        }));
+    }, []);
+
+    // ═══════════════════════════════════════════════════════
     //  Refs для всех callback'ов → стабильная подписка
     // ═══════════════════════════════════════════════════════
 
@@ -610,6 +699,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                         isMuted: false, peerMuted: false,
                         duration: 0, isEncrypted: encrypted,
                         peerVolume: 100, micGain: 100,
+                        sharedMedia: [], showMediaPanel: false,
                     });
 
                     ringtoneRef.current.start('incoming');
@@ -731,9 +821,49 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── ICE restart (re-offer от собеседника) ──
-                case 'call_incoming': {
-                    // Уже обработан выше
+                // ── Совместная Музыка ────────────────────
+                case 'call_media_shared': {
+                    const { call_id, media_id, user_id, user_name, file_id, file_name } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    // Не дублируем если уже есть
+                    if (stateRef.current.sharedMedia.some(m => m.id === media_id)) return;
+
+                    const newItem: SharedMediaItem = {
+                        id: media_id, userId: user_id, userName: user_name,
+                        fileId: file_id, fileName: file_name, title: '',
+                        isPlaying: true, currentTime: 0, duration: 0,
+                        localVolume: 70, localMuted: false,
+                    };
+                    setCallState(s => ({
+                        ...s,
+                        sharedMedia: [...s.sharedMedia, newItem],
+                    }));
+                    break;
+                }
+                case 'call_media_removed': {
+                    const { call_id, media_id } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    setCallState(s => ({
+                        ...s, sharedMedia: s.sharedMedia.filter(m => m.id !== media_id),
+                    }));
+                    break;
+                }
+                case 'call_media_controlled': {
+                    const { call_id, media_id, action, current_time } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    setCallState(s => ({
+                        ...s,
+                        sharedMedia: s.sharedMedia.map(m => {
+                            if (m.id !== media_id) return m;
+                            if (action === 'play') return { ...m, isPlaying: true };
+                            if (action === 'pause') return { ...m, isPlaying: false };
+                            if (action === 'seek') return { ...m, currentTime: current_time };
+                            return m;
+                        }),
+                    }));
+                    if (action === 'seek') {
+                        (window as any).__mediaSeek?.(media_id, current_time);
+                    }
                     break;
                 }
             }
@@ -752,5 +882,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         callState,
         startCall, answerCall, rejectCall, hangup,
         toggleMute, setPeerVolume, setMicGain, dismissCall,
+        toggleMediaPanel, shareMedia, removeMedia, controlMedia,
+        setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
     };
 }

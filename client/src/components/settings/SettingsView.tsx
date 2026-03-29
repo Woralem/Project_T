@@ -4,6 +4,7 @@ import { Avatar } from '../ui/Avatar';
 import * as api from '../../api';
 import type { UserDto } from '../../types';
 import { cryptoManager } from '../../crypto';
+import { isNotificationEnabled, requestNotificationPermission, sendTestNotification } from '../../notifications';
 
 interface Props {
     darkMode: boolean;
@@ -20,6 +21,23 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [settingUpE2E, setSettingUpE2E] = useState(false);
     const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleTestNotif = async () => {
+        await sendTestNotification();
+        showToast('Тестовое уведомление отправлено', 'info');
+    };
+
+    const [isNotifEnabled, setIsNotifEnabled] = useState(() => isNotificationEnabled());
+
+    const handleEnableNotifs = async () => {
+        const granted = await requestNotificationPermission();
+        setIsNotifEnabled(granted);
+        if (granted) {
+            showToast('Уведомления включены!', 'success');
+        } else {
+            showToast('Браузер заблокировал уведомления. Разрешите в настройках.', 'error');
+        }
+    };
 
     const handleCreateInvite = async () => {
         setCreatingInvite(true);
@@ -238,6 +256,33 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                         <button className="s-row invite-create-btn" onClick={handleCreateInvite} disabled={creatingInvite}>
                             <span className="s-row-left">
                                 {Icon.plus(19)} {creatingInvite ? 'Создаётся...' : 'Создать инвайт-код'}
+                            </span>
+                            <span className="s-arrow">→</span>
+                        </button>
+                    )}
+                </div>
+
+                <div className="s-group">
+                    <div className="s-group-label">Уведомления</div>
+                    {isNotifEnabled ? (
+                        <>
+                            <div className="s-row">
+                                <span className="s-row-left">
+                                    {Icon.check(19)} Уведомления включены
+                                </span>
+                                <span className="e2e-badge active" style={{ fontSize: 11 }}>✓ Активно</span>
+                            </div>
+                            <button className="s-row" onClick={handleTestNotif}>
+                                <span className="s-row-left">
+                                    🔔 Отправить тестовое уведомление
+                                </span>
+                                <span className="s-arrow">→</span>
+                            </button>
+                        </>
+                    ) : (
+                        <button className="s-row" onClick={handleEnableNotifs}>
+                            <span className="s-row-left">
+                                🔔 Включить уведомления
                             </span>
                             <span className="s-arrow">→</span>
                         </button>

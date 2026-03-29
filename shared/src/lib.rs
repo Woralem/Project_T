@@ -103,6 +103,24 @@ pub enum WsClientMsg {
         call_id: Uuid,
         muted: bool,
     },
+    CallMediaShare {
+        chat_id: Uuid,
+        call_id: Uuid,
+        file_id: Uuid,
+        file_name: String,
+    },
+    CallMediaRemove {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+    },
+    CallMediaControl {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+        action: String,
+        current_time: f64,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -191,6 +209,28 @@ pub enum WsServerMsg {
         call_id: Uuid,
         user_id: Uuid,
         muted: bool,
+    },
+    CallMediaShared {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+        user_id: Uuid,
+        user_name: String,
+        file_id: Uuid,
+        file_name: String,
+    },
+    CallMediaRemoved {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+    },
+    CallMediaControlled {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+        user_id: Uuid,
+        action: String,
+        current_time: f64,
     },
 }
 
