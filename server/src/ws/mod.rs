@@ -86,6 +86,18 @@ async fn run(socket: WebSocket, state: AppState, user_id: Uuid, username: String
     tracing::info!(%user_id, "ws disconnected");
 }
 
+/// Достать display_name из БД (с fallback на username)
+async fn get_display_name(state: &AppState, uid: Uuid, fallback: &str) -> String {
+    sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
+        .bind(uid)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.0)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
     match msg {
         WsClientMsg::SendMessage {
@@ -153,8 +165,37 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             )
             .await
         }
+        // ── Звонки ──────────────────────────────────────────
+        WsClientMsg::CallOffer {
+            chat_id,
+            call_id,
+            sdp,
+            encrypted,
+        } => on_call_offer(state, uid, uname, chat_id, call_id, sdp, encrypted).await,
+        WsClientMsg::CallAnswer {
+            chat_id,
+            call_id,
+            sdp,
+            encrypted,
+        } => on_call_answer(state, uid, chat_id, call_id, sdp, encrypted).await,
+        WsClientMsg::CallIce {
+            chat_id,
+            call_id,
+            candidate,
+            encrypted,
+        } => on_call_ice(state, uid, chat_id, call_id, candidate, encrypted).await,
+        WsClientMsg::CallReject { chat_id, call_id } => {
+            on_call_reject(state, uid, chat_id, call_id).await
+        }
+        WsClientMsg::CallHangup { chat_id, call_id } => {
+            on_call_hangup(state, uid, chat_id, call_id).await
+        }
     }
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Обработчики сообщений
+// ═══════════════════════════════════════════════════════════
 
 async fn on_send(
     state: &AppState,
@@ -166,7 +207,6 @@ async fn on_send(
     attachment_id: Option<Uuid>,
     encrypted: Option<EncryptedPayload>,
 ) {
-    // Проверяем членство
     let check: Option<(i64,)> =
         sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
             .bind(chat_id)
@@ -200,15 +240,7 @@ async fn on_send(
         return;
     }
 
-    let display_name: String =
-        sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
-            .bind(uid)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .map(|r| r.0)
-            .unwrap_or_else(|| uname.to_string());
+    let display_name = get_display_name(state, uid, uname).await;
 
     let attachment = if let Some(att_id) = attachment_id {
         let row: Option<(String, String, i64)> =
@@ -232,7 +264,6 @@ async fn on_send(
     let msg_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
-    // Сериализуем encrypted payload для хранения в БД
     let encrypted_json = encrypted
         .as_ref()
         .and_then(|e| serde_json::to_value(e).ok());
@@ -380,6 +411,108 @@ async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
     )
     .await;
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Обработчики звонков (чистый relay, без хранения)
+// ═══════════════════════════════════════════════════════════
+
+async fn on_call_offer(
+    state: &AppState,
+    uid: Uuid,
+    uname: &str,
+    chat_id: Uuid,
+    call_id: Uuid,
+    sdp: String,
+    encrypted: bool,
+) {
+    let caller_name = get_display_name(state, uid, uname).await;
+    tracing::info!(%uid, %chat_id, %call_id, "call_offer");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallIncoming {
+            chat_id,
+            call_id,
+            caller_id: uid,
+            caller_name,
+            sdp,
+            encrypted,
+        },
+    )
+    .await;
+}
+
+async fn on_call_answer(
+    state: &AppState,
+    uid: Uuid,
+    chat_id: Uuid,
+    call_id: Uuid,
+    sdp: String,
+    encrypted: bool,
+) {
+    tracing::info!(%uid, %chat_id, %call_id, "call_answer");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallAccepted {
+            chat_id,
+            call_id,
+            sdp,
+            encrypted,
+        },
+    )
+    .await;
+}
+
+async fn on_call_ice(
+    state: &AppState,
+    uid: Uuid,
+    chat_id: Uuid,
+    call_id: Uuid,
+    candidate: String,
+    encrypted: bool,
+) {
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallIce {
+            chat_id,
+            call_id,
+            candidate,
+            encrypted,
+        },
+    )
+    .await;
+}
+
+async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+    tracing::info!(%uid, %chat_id, %call_id, "call_reject");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallRejected { chat_id, call_id },
+    )
+    .await;
+}
+
+async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+    tracing::info!(%uid, %chat_id, %call_id, "call_hangup");
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallEnded { chat_id, call_id },
+    )
+    .await;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Утилиты рассылки
+// ═══════════════════════════════════════════════════════════
 
 async fn broadcast_to_chat(state: &AppState, chat_id: Uuid, exclude: Uuid, msg: WsServerMsg) {
     let m: Vec<(Uuid,)> =

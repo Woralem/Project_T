@@ -99,7 +99,13 @@ export type WsServerMsg =
     | { type: 'user_online'; payload: { user_id: string } }
     | { type: 'user_offline'; payload: { user_id: string } }
     | { type: 'user_updated'; payload: { user: UserDto } }
-    | { type: 'error'; payload: { message: string } };
+    | { type: 'error'; payload: { message: string } }
+    // ── Звонки ──
+    | { type: 'call_incoming'; payload: { chat_id: string; call_id: string; caller_id: string; caller_name: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
+    | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
+    | { type: 'call_ended'; payload: { chat_id: string; call_id: string } };
 
 export type WsClientMsg =
     | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
@@ -107,7 +113,13 @@ export type WsClientMsg =
     | { type: 'delete_message'; payload: { message_id: string } }
     | { type: 'typing'; payload: { chat_id: string } }
     | { type: 'stop_typing'; payload: { chat_id: string } }
-    | { type: 'mark_read'; payload: { chat_id: string; message_id: string } };
+    | { type: 'mark_read'; payload: { chat_id: string; message_id: string } }
+    // ── Звонки ──
+    | { type: 'call_offer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_answer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
+    | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
+    | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
+    | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } };
 
 // ═══════════════════════════════════════════════════════════
 //  Локальные UI типы
@@ -174,4 +186,24 @@ export interface Chat {
         own: boolean;
         status?: string;
     }[];
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Call типы
+// ═══════════════════════════════════════════════════════════
+
+export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
+export type CallEndReason = 'hangup' | 'rejected' | 'timeout' | 'error' | 'busy';
+
+export interface CallState {
+    status: CallStatus;
+    chatId: string | null;
+    callId: string | null;
+    peerId: string | null;
+    peerName: string | null;
+    peerAvatarUrl?: string;
+    isMuted: boolean;
+    duration: number;
+    isEncrypted: boolean;
+    endReason?: CallEndReason;
 }

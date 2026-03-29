@@ -41,24 +41,45 @@ function saveSelectedId(id: string | null) {
     try { if (id) localStorage.setItem('selected_chat_id', id); else localStorage.removeItem('selected_chat_id'); } catch { }
 }
 
-async function loadChatE2EKey(chat: LocalChat, currentUserId: string): Promise<void> {
-    if (!cryptoManager.hasKeys()) return;
+/**
+ * Пытается загрузить ключ чата: сначала из памяти, потом из кэша, потом с сервера.
+ * Возвращает true если ключ загружен.
+ */
+async function ensureChatKey(chatId: string, currentUserId: string, members?: ChatMemberDto[]): Promise<boolean> {
+    if (!cryptoManager.hasKeys()) return false;
+    if (cryptoManager.hasChatKey(chatId)) return true;
 
-    const loaded = await cryptoManager.loadChatKeyFromCache(chat.id);
-    if (loaded) return;
+    // Пробуем из кэша IndexedDB
+    const cached = await cryptoManager.loadChatKeyFromCache(chatId);
+    if (cached) return true;
 
-    const myMember = chat.members.find(m => m.user_id === currentUserId);
-    if (!myMember?.encrypted_chat_key) return;
+    // Нужны актуальные данные с сервера
+    let freshMembers = members;
+    if (!freshMembers) {
+        try {
+            const dto = await api.getChat(chatId);
+            freshMembers = dto.members;
+        } catch (e) {
+            console.warn('[E2E] Failed to fetch chat for key:', e);
+            return false;
+        }
+    }
 
+    const myMember = freshMembers.find(m => m.user_id === currentUserId);
+    if (!myMember?.encrypted_chat_key) return false;
+
+    // Проверяем что ключ был обёрнут для нашей текущей личности
     if (myMember.member_key_id && myMember.member_key_id !== cryptoManager.getKeyId()) {
-        console.warn('[E2E] Chat key wrapped for old identity, cannot unwrap:', chat.id);
-        return;
+        console.warn('[E2E] Chat key wrapped for old identity:', chatId);
+        return false;
     }
 
     try {
-        await cryptoManager.unwrapChatKey(chat.id, myMember.encrypted_chat_key);
+        await cryptoManager.unwrapChatKey(chatId, myMember.encrypted_chat_key);
+        return true;
     } catch (e) {
-        console.error('[E2E] Failed to unwrap chat key:', chat.id, e);
+        console.error('[E2E] Failed to unwrap chat key:', chatId, e);
+        return false;
     }
 }
 
@@ -82,17 +103,19 @@ async function tryDecryptMessage(msg: LocalMessage, chatId: string): Promise<Loc
     }
 }
 
-async function setupChatEncryption(chat: LocalChat, currentUserId: string): Promise<void> {
+async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): Promise<void> {
     if (!cryptoManager.hasKeys()) return;
-    if (cryptoManager.hasChatKey(chat.id)) return;
+    if (cryptoManager.hasChatKey(chatDto.id)) return;
 
-    const anyMemberHasKey = chat.members.some(m => m.encrypted_chat_key);
-    if (anyMemberHasKey) {
-        await loadChatE2EKey(chat, currentUserId);
+    // Если уже есть ключи — пробуем загрузить свой
+    const anyHasKey = chatDto.members.some(m => m.encrypted_chat_key);
+    if (anyHasKey) {
+        await ensureChatKey(chatDto.id, currentUserId, chatDto.members);
         return;
     }
 
-    const membersWithKeys = chat.members.filter(m => m.public_keys?.identity_key);
+    // Нет ключей — генерируем новый
+    const membersWithKeys = chatDto.members.filter(m => m.public_keys?.identity_key);
     if (membersWithKeys.length < 2) return;
 
     try {
@@ -106,12 +129,12 @@ async function setupChatEncryption(chat: LocalChat, currentUserId: string): Prom
             );
         }
 
-        await api.updateChatKeys(chat.id, encryptedKeys);
+        await api.updateChatKeys(chatDto.id, encryptedKeys);
 
-        cryptoManager.setChatKey(chat.id, chatKey);
-        await cryptoManager.saveChatKeyToCache(chat.id, chatKey);
+        cryptoManager.setChatKey(chatDto.id, chatKey);
+        await cryptoManager.saveChatKeyToCache(chatDto.id, chatKey);
 
-        console.log('[E2E] Chat encryption initialized:', chat.id);
+        console.log('[E2E] Chat encryption initialized:', chatDto.id);
     } catch (e) {
         console.error('[E2E] Failed to setup chat encryption:', e);
     }
@@ -141,7 +164,9 @@ export function useChats(user: UserDto | null) {
                 return sc.map(dto => {
                     const ex = m.get(dto.id);
                     const fr = chatDtoToLocal(dto, currentUserId);
-                    return (ex && ex.messagesLoaded) ? { ...fr, messages: ex.messages, messagesLoaded: true } : fr;
+                    return (ex && ex.messagesLoaded)
+                        ? { ...fr, messages: ex.messages, messagesLoaded: true }
+                        : fr;
                 });
             });
         } catch (e) { console.error('Load chats failed', e); }
@@ -166,11 +191,27 @@ export function useChats(user: UserDto | null) {
         saveSelectedId(chatId);
         setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, unread_count: 0 }));
 
-        const chat = chatsRef.current.find(c => c.id === chatId);
+        let chat = chatsRef.current.find(c => c.id === chatId);
         if (!chat) return;
 
-        if (cryptoManager.hasKeys()) {
-            await loadChatE2EKey(chat, currentUserId);
+        // Если E2E включено и нет ключа — всегда запрашиваем свежие данные с сервера
+        if (cryptoManager.hasKeys() && !cryptoManager.hasChatKey(chatId)) {
+            const cached = await cryptoManager.loadChatKeyFromCache(chatId);
+            if (!cached) {
+                try {
+                    const freshDto = await api.getChat(chatId);
+                    const freshLocal = chatDtoToLocal(freshDto, currentUserId);
+                    // Обновляем members в локальном стейте
+                    setChats(prev => prev.map(c => c.id !== chatId ? c : {
+                        ...c, members: freshLocal.members,
+                    }));
+                    chat = { ...chat, members: freshLocal.members };
+                    // Пробуем развернуть ключ
+                    await ensureChatKey(chatId, currentUserId, freshLocal.members);
+                } catch (e) {
+                    console.warn('[E2E] Failed to refresh chat for key:', e);
+                }
+            }
         }
 
         if (chat.messagesLoaded) return;
@@ -323,7 +364,7 @@ export function useChats(user: UserDto | null) {
         const lc = chatDtoToLocal(nc, currentUserId);
 
         if (cryptoManager.hasKeys()) {
-            await setupChatEncryption(lc, currentUserId);
+            await setupNewChatEncryption(nc, currentUserId);
         }
 
         setChats(prev => prev.find(c => c.id === nc.id) ? prev : [lc, ...prev]);
@@ -331,6 +372,8 @@ export function useChats(user: UserDto | null) {
         saveSelectedId(nc.id);
         return nc;
     }, [currentUserId]);
+
+    // ── WebSocket обработчик ──────────────────────────────────
 
     useEffect(() => {
         if (!user) return;
@@ -365,6 +408,11 @@ export function useChats(user: UserDto | null) {
                     let lm = serverMsgToLocal(message, currentUserId);
 
                     if (message.encrypted && cryptoManager.hasKeys() && !message.attachment) {
+                        // Пробуем загрузить ключ чата если его нет
+                        if (!cryptoManager.hasChatKey(message.chat_id)) {
+                            await ensureChatKey(message.chat_id, currentUserId);
+                        }
+
                         if (cryptoManager.hasChatKey(message.chat_id)) {
                             try {
                                 const dec = await cryptoManager.decrypt(

@@ -40,19 +40,11 @@ default = []
 ================================================================================
 FILE PATH: ./client/src/api.ts
 ================================================================================
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto } from './types';
-
-// ═══════════════════════════════════════════════════════════
-//  Конфигурация
-// ═══════════════════════════════════════════════════════════
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey } from './types';
 
 const SERVER_URL = 'http://163.5.180.138:3000';
 const API_URL = `${SERVER_URL}/api`;
 export const WS_URL = 'ws://163.5.180.138:3000/ws';
-
-// ═══════════════════════════════════════════════════════════
-//  Token storage
-// ═══════════════════════════════════════════════════════════
 
 let token: string | null = localStorage.getItem('auth_token');
 
@@ -68,10 +60,6 @@ export function setToken(t: string | null) {
         localStorage.removeItem('auth_token');
     }
 }
-
-// ═══════════════════════════════════════════════════════════
-//  Base fetch
-// ═══════════════════════════════════════════════════════════
 
 async function request<T>(
     path: string,
@@ -216,6 +204,16 @@ export async function createChat(
     return request<ChatDto>('/chats', {
         method: 'POST',
         body: JSON.stringify({ member_ids, is_group, name }),
+    });
+}
+
+export async function updateChatKeys(
+    chatId: string,
+    encrypted_keys: Record<string, EncryptedChatKey>,
+): Promise<void> {
+    await request<void>(`/chats/${chatId}/keys`, {
+        method: 'PUT',
+        body: JSON.stringify({ encrypted_keys }),
     });
 }
 
@@ -2226,6 +2224,66 @@ input {
     opacity: 0.5;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   SECURITY BANNER
+   ═══════════════════════════════════════════════════════════ */
+.security-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.security-banner.warning {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+.security-banner.error {
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--red);
+}
+
+.security-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.security-banner-content span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.security-banner-btn {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    font-size: 12px;
+    transition: background .15s, transform .1s;
+}
+
+.security-banner-btn:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.security-banner-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
 
 ================================================================================
 FILE PATH: ./client/src/app.rs
@@ -2280,7 +2338,7 @@ export default function App() {
         chats, selectedId, selectedChat,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage,
-        editMessage, deleteMessage, createChat,
+        editMessage, deleteMessage, createChat, refreshChat,
     } = useChats(user);
 
     React.useEffect(() => {
@@ -2361,6 +2419,7 @@ export default function App() {
                                 onSendVoice={sendVoiceMessage}
                                 onDeleteMessage={deleteMessage}
                                 onEditMessage={editMessage}
+                                onRefreshChat={refreshChat}
                                 showToast={showToast}
                             />
                         ) : (
@@ -2562,11 +2621,11 @@ import { Icon } from '../../icons';
 interface Props {
     src: string;
     encryptedNonce?: string;
-    peerId?: string;
+    chatId?: string;
     attachmentId?: string;
 }
 
-export function AudioPlayer({ src, encryptedNonce, peerId, attachmentId }: Props) {
+export function AudioPlayer({ src, encryptedNonce, chatId, attachmentId }: Props) {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [playing, setPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
@@ -2576,7 +2635,7 @@ export function AudioPlayer({ src, encryptedNonce, peerId, attachmentId }: Props
     const [decryptError, setDecryptError] = useState(false);
     const urlRef = useRef<string | null>(null);
 
-    const isEncrypted = !!encryptedNonce && !!peerId;
+    const isEncrypted = !!encryptedNonce && !!chatId;
 
     useEffect(() => {
         if (!isEncrypted) return;
@@ -2591,7 +2650,7 @@ export function AudioPlayer({ src, encryptedNonce, peerId, attachmentId }: Props
                 const encData = await resp.arrayBuffer();
                 if (cancelled) return;
 
-                const decData = await cryptoManager.decryptBuffer(peerId!, encData, encryptedNonce!, attachmentId);
+                const decData = await cryptoManager.decryptBuffer(chatId!, encData, encryptedNonce!, attachmentId);
                 if (cancelled) return;
 
                 const blob = new Blob([decData], { type: 'audio/webm' });
@@ -2606,8 +2665,14 @@ export function AudioPlayer({ src, encryptedNonce, peerId, attachmentId }: Props
             }
         })();
 
-        return () => { cancelled = true; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
-    }, [src, encryptedNonce, peerId, isEncrypted, attachmentId]);
+        return () => {
+            cancelled = true;
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
+        };
+    }, [src, encryptedNonce, chatId, isEncrypted, attachmentId]);
 
     const audioSrc = isEncrypted ? decryptedUrl : src;
 
@@ -2620,26 +2685,48 @@ export function AudioPlayer({ src, encryptedNonce, peerId, attachmentId }: Props
         audio.addEventListener('loadedmetadata', onL);
         audio.addEventListener('timeupdate', onT);
         audio.addEventListener('ended', onE);
-        return () => { audio.removeEventListener('loadedmetadata', onL); audio.removeEventListener('timeupdate', onT); audio.removeEventListener('ended', onE); };
+        return () => {
+            audio.removeEventListener('loadedmetadata', onL);
+            audio.removeEventListener('timeupdate', onT);
+            audio.removeEventListener('ended', onE);
+        };
     }, [audioSrc]);
 
     const toggle = useCallback(() => {
-        const a = audioRef.current; if (!a) return;
+        const a = audioRef.current;
+        if (!a) return;
         if (playing) a.pause(); else a.play().catch(() => { });
         setPlaying(!playing);
     }, [playing]);
 
     const seek = (e: React.MouseEvent<HTMLDivElement>) => {
-        const a = audioRef.current; if (!a || !duration) return;
+        const a = audioRef.current;
+        if (!a || !duration) return;
         const r = e.currentTarget.getBoundingClientRect();
         a.currentTime = ((e.clientX - r.left) / r.width) * duration;
     };
 
     const fmt = (s: number) => !s || !isFinite(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-    if (decrypting) return <div className="audio-player"><div className="audio-play-btn" style={{ opacity: .5 }}>{Icon.lock(16)}</div><span style={{ fontSize: 12, opacity: .6, flex: 1 }}>Расшифровка…</span></div>;
-    if (decryptError) return <div className="audio-player"><div className="audio-play-btn" style={{ opacity: .5, background: 'var(--red)' }}>{Icon.lock(16)}</div><span style={{ fontSize: 12, opacity: .6, flex: 1 }}>🔒 Не удалось расшифровать</span></div>;
-    if (isEncrypted && !audioSrc) return <div className="audio-player"><span style={{ fontSize: 12, opacity: .5 }}>Загрузка…</span></div>;
+    if (decrypting) return (
+        <div className="audio-player">
+            <div className="audio-play-btn" style={{ opacity: .5 }}>{Icon.lock(16)}</div>
+            <span style={{ fontSize: 12, opacity: .6, flex: 1 }}>Расшифровка…</span>
+        </div>
+    );
+
+    if (decryptError) return (
+        <div className="audio-player">
+            <div className="audio-play-btn" style={{ opacity: .5, background: 'var(--red)' }}>{Icon.lock(16)}</div>
+            <span style={{ fontSize: 12, opacity: .6, flex: 1 }}>🔒 Не удалось расшифровать</span>
+        </div>
+    );
+
+    if (isEncrypted && !audioSrc) return (
+        <div className="audio-player">
+            <span style={{ fontSize: 12, opacity: .5 }}>Загрузка…</span>
+        </div>
+    );
 
     const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -2769,6 +2856,166 @@ export function ChatListPanel({
 
 
 ================================================================================
+FILE PATH: ./client/src/components/chat/ChatSecurityBanner.tsx
+================================================================================
+import React, { useMemo, useState } from 'react';
+import type { LocalChat, EncryptedChatKey } from '../../types';
+import { cryptoManager } from '../../crypto';
+import * as api from '../../api';
+import { Icon } from '../../icons';
+
+type SecurityStatus =
+    | 'no_local_keys'
+    | 'can_initialize'
+    | 'can_update'
+    | 'waiting'
+    | 'peer_no_e2e'
+    | 'secure';
+
+interface Props {
+    chat: LocalChat;
+    currentUserId: string;
+    onRefresh: () => void;
+    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
+}
+
+export function ChatSecurityBanner({ chat, currentUserId, onRefresh, showToast }: Props) {
+    const [updating, setUpdating] = useState(false);
+
+    const status: SecurityStatus = useMemo(() => {
+        if (!cryptoManager.hasKeys()) return 'no_local_keys';
+
+        const hasChatKey = cryptoManager.hasChatKey(chat.id);
+        const anyMemberHasKey = chat.members.some(m => m.encrypted_chat_key);
+
+        // Никто ещё не настроил ключи для этого чата
+        if (!anyMemberHasKey) {
+            const membersWithE2E = chat.members.filter(m => m.public_keys?.identity_key);
+            if (membersWithE2E.length >= 2) return 'can_initialize';
+            const peersWithoutE2E = chat.members.filter(m => m.user_id !== currentUserId && !m.public_keys?.identity_key);
+            if (peersWithoutE2E.length > 0) return 'peer_no_e2e';
+            return 'peer_no_e2e';
+        }
+
+        // Ключи есть на сервере, но у нас нет в памяти — возможно нужно загрузить
+        if (!hasChatKey) {
+            const myMember = chat.members.find(m => m.user_id === currentUserId);
+            // Если наш ключ обёрнут для устаревшей личности — ждём
+            if (myMember?.encrypted_chat_key && myMember.member_key_id !== cryptoManager.getKeyId()) {
+                return 'waiting';
+            }
+            // Если у нас вообще нет обёрнутого ключа
+            if (!myMember?.encrypted_chat_key) {
+                return 'waiting';
+            }
+            // Ключ есть и совпадает — скорее всего просто не загрузили ещё
+            // (загрузка произойдёт при selectChat)
+            return 'secure';
+        }
+
+        // У нас есть ключ чата — проверяем остальных участников
+        for (const member of chat.members) {
+            if (member.user_id === currentUserId) continue;
+            if (!member.public_keys?.identity_key) continue;
+
+            // У участника нет обёрнутого ключа — нужно обернуть
+            if (!member.encrypted_chat_key) return 'can_update';
+
+            // Ключ участника устарел — нужно перeобернуть
+            if (member.member_key_id && member.member_key_id !== member.public_keys.key_id) {
+                return 'can_update';
+            }
+        }
+
+        return 'secure';
+    }, [chat, currentUserId]);
+
+    const handleAction = async () => {
+        setUpdating(true);
+        try {
+            // ВСЕГДА запрашиваем свежие данные чтобы не затереть чужой ключ
+            const freshDto = await api.getChat(chat.id);
+
+            let chatKey = cryptoManager.getChatKey(chat.id);
+
+            // Если у нас нет ключа — пробуем развернуть с сервера
+            if (!chatKey) {
+                const myMember = freshDto.members.find(m => m.user_id === currentUserId);
+                if (myMember?.encrypted_chat_key) {
+                    try {
+                        await cryptoManager.unwrapChatKey(chat.id, myMember.encrypted_chat_key);
+                        chatKey = cryptoManager.getChatKey(chat.id);
+                        console.log('[E2E] Unwrapped existing chat key');
+                    } catch (e) {
+                        console.warn('[E2E] Failed to unwrap existing key:', e);
+                    }
+                }
+            }
+
+            // Если всё ещё нет — генерируем новый
+            if (!chatKey) {
+                chatKey = await cryptoManager.generateChatKey();
+                console.log('[E2E] Generated new chat key');
+            }
+
+            // Оборачиваем для ВСЕХ участников (с актуальными ключами)
+            const encryptedKeys: Record<string, EncryptedChatKey> = {};
+            for (const member of freshDto.members) {
+                if (!member.public_keys?.identity_key) continue;
+                encryptedKeys[member.user_id] = await cryptoManager.wrapChatKey(
+                    chatKey,
+                    member.public_keys.identity_key,
+                );
+            }
+
+            await api.updateChatKeys(chat.id, encryptedKeys);
+
+            cryptoManager.setChatKey(chat.id, chatKey);
+            await cryptoManager.saveChatKeyToCache(chat.id, chatKey);
+
+            showToast('Шифрование настроено!', 'success');
+            onRefresh();
+        } catch (e: any) {
+            console.error('[E2E] Update keys failed:', e);
+            showToast(e.message || 'Ошибка обновления ключей', 'error');
+        } finally {
+            setUpdating(false);
+        }
+    };
+
+    if (status === 'secure') return null;
+
+    const isWarning = status === 'can_update' || status === 'can_initialize';
+    const isError = status === 'waiting' || status === 'peer_no_e2e' || status === 'no_local_keys';
+
+    return (
+        <div className={`security-banner ${isWarning ? 'warning' : ''} ${isError ? 'error' : ''}`}>
+            <div className="security-banner-content">
+                {Icon.shield(16)}
+                <span>
+                    {status === 'no_local_keys' && 'Настройте E2E шифрование в настройках.'}
+                    {status === 'can_initialize' && 'Включите шифрование для этого чата.'}
+                    {status === 'can_update' && 'У собеседника обновились ключи. Обновите шифрование.'}
+                    {status === 'waiting' && 'Ожидайте — собеседник обновит доступ к шифрованию.'}
+                    {status === 'peer_no_e2e' && 'У собеседника не настроено шифрование.'}
+                </span>
+            </div>
+
+            {(status === 'can_initialize' || status === 'can_update') && (
+                <button
+                    className="security-banner-btn"
+                    onClick={handleAction}
+                    disabled={updating}
+                >
+                    {updating ? 'Обновление...' : status === 'can_initialize' ? 'Включить' : 'Обновить'}
+                </button>
+            )}
+        </div>
+    );
+}
+
+
+================================================================================
 FILE PATH: ./client/src/components/chat/ChatView.tsx
 ================================================================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -2779,7 +3026,7 @@ import { Avatar } from '../ui/Avatar';
 import { ContextMenu } from '../ui/ContextMenu';
 import { MessageBubble } from './MessageBubble';
 import { InputBar } from './InputBar';
-import * as api from '../../api';
+import { ChatSecurityBanner } from './ChatSecurityBanner';
 
 interface Props {
     chat: LocalChat;
@@ -2789,22 +3036,18 @@ interface Props {
     onSendVoice: (chatId: string, blob: Blob) => void;
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
+    onRefreshChat: (chatId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, showToast,
+    onDeleteMessage, onEditMessage, onRefreshChat, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
-
-    // peerId — собеседник в личном чате (для E2E расшифровки)
-    const peerId = chat.is_group
-        ? undefined
-        : chat.members.find(m => m.user_id !== currentUserId)?.user_id;
 
     const getChatAvatar = (): string | undefined => {
         if (chat.is_group) return undefined;
@@ -2815,30 +3058,60 @@ export function ChatView({
     useEffect(() => { setInputText(''); setEditingMsg(null); setCtxMenu(null); }, [chat.id]);
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') { if (ctxMenu) setCtxMenu(null); else if (editingMsg) { setEditingMsg(null); setInputText(''); } }
+            if (e.key === 'Escape') {
+                if (ctxMenu) setCtxMenu(null);
+                else if (editingMsg) { setEditingMsg(null); setInputText(''); }
+            }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [ctxMenu, editingMsg]);
 
     const handleSend = useCallback(() => {
-        const t = inputText.trim(); if (!t) return;
-        if (editingMsg) { if (t !== editingMsg.content) onEditMessage(editingMsg.id, t); setEditingMsg(null); }
-        else onSendMessage(t);
+        const t = inputText.trim();
+        if (!t) return;
+        if (editingMsg) {
+            if (t !== editingMsg.content) onEditMessage(editingMsg.id, t);
+            setEditingMsg(null);
+        } else {
+            onSendMessage(t);
+        }
         setInputText('');
     }, [inputText, editingMsg, onSendMessage, onEditMessage]);
 
-    const handleSendVoice = useCallback((blob: Blob) => { onSendVoice(chat.id, blob); }, [chat.id, onSendVoice]);
+    const handleSendVoice = useCallback((blob: Blob) => {
+        onSendVoice(chat.id, blob);
+    }, [chat.id, onSendVoice]);
 
-    const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, message: msg }); };
+    const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
+        e.preventDefault();
+        setCtxMenu({ x: e.clientX, y: e.clientY, message: msg });
+    };
 
     const ctxItems = (msg: LocalMessage): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [];
-        if (msg.own && msg.status !== 'pending') items.push({ label: 'Редактировать', icon: Icon.edit(16), onClick: () => { setEditingMsg(msg); setInputText(msg.content); } });
-        items.push({ label: 'Копировать', icon: Icon.copy(16), onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); } });
-        if (msg.own) items.push({ label: 'Удалить', icon: Icon.trash(16), danger: true, onClick: () => onDeleteMessage(msg.id) });
+        if (msg.own && msg.status !== 'pending') {
+            items.push({
+                label: 'Редактировать', icon: Icon.edit(16),
+                onClick: () => { setEditingMsg(msg); setInputText(msg.content); },
+            });
+        }
+        items.push({
+            label: 'Копировать', icon: Icon.copy(16),
+            onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); },
+        });
+        if (msg.own) {
+            items.push({
+                label: 'Удалить', icon: Icon.trash(16), danger: true,
+                onClick: () => onDeleteMessage(msg.id),
+            });
+        }
         return items;
     };
+
+    const handleRefresh = useCallback(() => {
+        onRefreshChat(chat.id);
+    }, [onRefreshChat, chat.id]);
 
     return (
         <section className="chat-view">
@@ -2858,6 +3131,13 @@ export function ChatView({
                 </div>
             </div>
 
+            <ChatSecurityBanner
+                chat={chat}
+                currentUserId={currentUserId}
+                onRefresh={handleRefresh}
+                showToast={showToast}
+            />
+
             <div className="messages-scroll">
                 <div className="messages-inner">
                     <div className="encryption-notice">{Icon.lock(14)}<span>Сообщения защищены сквозным шифрованием</span></div>
@@ -2873,7 +3153,7 @@ export function ChatView({
                                 message={msg}
                                 isFirst={isFirst}
                                 isGroup={chat.is_group}
-                                peerId={peerId}
+                                chatId={chat.id}
                                 onContextMenu={e => handleContextMenu(e, msg)}
                             />
                         );
@@ -3103,11 +3383,11 @@ interface Props {
     message: LocalMessage;
     isFirst: boolean;
     isGroup: boolean;
-    peerId?: string;
+    chatId: string;
     onContextMenu: (e: React.MouseEvent) => void;
 }
 
-export function MessageBubble({ message, isFirst, isGroup, peerId, onContextMenu }: Props) {
+export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu }: Props) {
     const showAuthor = isGroup && !message.own && isFirst;
     const isPending = message.status === 'pending';
     const isVoice = message.attachment?.mime_type?.startsWith('audio/') || message.attachment?.mime_type === 'application/octet-stream';
@@ -3127,7 +3407,7 @@ export function MessageBubble({ message, isFirst, isGroup, peerId, onContextMenu
                     <AudioPlayer
                         src={getFileUrl(message.attachment.id)}
                         encryptedNonce={isEncVoice ? message.encrypted!.nonce : undefined}
-                        peerId={isEncVoice ? peerId : undefined}
+                        chatId={isEncVoice ? chatId : undefined}
                         attachmentId={message.attachment.id}
                     />
                 )}
@@ -3366,7 +3646,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // ── Инвайты ────────────────────────────────────────────
     const handleCreateInvite = async () => {
         setCreatingInvite(true);
         try {
@@ -3387,7 +3666,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         }
     };
 
-    // ── Аватарка ───────────────────────────────────────────
     const handleAvatarClick = () => {
         fileInputRef.current?.click();
     };
@@ -3433,20 +3711,17 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         }
     };
 
-    // ── E2E Шифрование ─────────────────────────────────────
     const handleSetupE2E = async () => {
         setSettingUpE2E(true);
         try {
-            // 1. Генерируем ключи локально
             const publicKeys = await cryptoManager.generateKeys();
 
-            // 2. Отправляем публичные ключи на сервер
             const updatedUser = await api.updateProfile({
                 public_keys: publicKeys,
             });
 
             setE2eEnabled(true);
-            showToast('E2E шифрование настроено!', 'success');
+            showToast('E2E шифрование настроено! Откройте чаты чтобы включить шифрование.', 'success');
 
             if (onUserUpdate) {
                 onUserUpdate(updatedUser);
@@ -3460,17 +3735,16 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     };
 
     const handleResetE2E = async () => {
-        if (!confirm('Сбросить ключи шифрования? Зашифрованные сообщения станут недоступны.')) {
+        if (!confirm('Сбросить ключи шифрования?\n\nВы потеряете доступ к зашифрованным чатам до тех пор, пока собеседники не обновят ключи.')) {
             return;
         }
 
         try {
-            // Генерируем новые ключи
             const publicKeys = await cryptoManager.generateKeys();
             const updatedUser = await api.updateProfile({ public_keys: publicKeys });
 
             setE2eEnabled(true);
-            showToast('Ключи шифрования обновлены', 'success');
+            showToast('Ключи обновлены. Собеседники увидят уведомление.', 'success');
 
             if (onUserUpdate) {
                 onUserUpdate(updatedUser);
@@ -3487,7 +3761,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
             <div className="settings-inner">
                 <h2 className="settings-title">Настройки</h2>
 
-                {/* ═══ Профиль ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Профиль</div>
                     <div className="s-profile">
@@ -3524,43 +3797,38 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </div>
                 </div>
 
-                {/* ═══ E2E Шифрование ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Сквозное шифрование (E2E)</div>
 
                     {e2eEnabled ? (
-                        <>
-                            <div className="e2e-status-card">
-                                <div className="e2e-status-header">
-                                    <span className="e2e-badge active">{Icon.shield(16)} Включено</span>
-                                </div>
-                                {keyId && (
-                                    <div className="e2e-key-row">
-                                        <span className="e2e-key-label">Отпечаток ключа:</span>
-                                        <code className="e2e-key-value">{keyId}</code>
-                                    </div>
-                                )}
-                                <p className="e2e-hint">
-                                    Ваши сообщения в личных чатах шифруются на устройстве.
-                                    Сервер не может их прочитать.
-                                </p>
-                                <button className="e2e-reset-btn" onClick={handleResetE2E}>
-                                    Пересоздать ключи
-                                </button>
+                        <div className="e2e-status-card">
+                            <div className="e2e-status-header">
+                                <span className="e2e-badge active">{Icon.shield(16)} Включено</span>
                             </div>
-                        </>
+                            {keyId && (
+                                <div className="e2e-key-row">
+                                    <span className="e2e-key-label">Отпечаток ключа:</span>
+                                    <code className="e2e-key-value">{keyId}</code>
+                                </div>
+                            )}
+                            <p className="e2e-hint">
+                                Каждый чат шифруется своим ключом. Откройте чат для автоматической настройки шифрования. Если собеседник сменит устройство — вы увидите уведомление.
+                            </p>
+                            <button className="e2e-reset-btn" onClick={handleResetE2E}>
+                                Пересоздать ключи
+                            </button>
+                        </div>
                     ) : (
                         <div className="e2e-setup-card">
                             <div className="e2e-setup-icon">{Icon.lock(32)}</div>
                             <h3 className="e2e-setup-title">Шифрование не настроено</h3>
                             <p className="e2e-setup-desc">
-                                Настройте сквозное шифрование, чтобы ваши сообщения
-                                были защищены. Только вы и собеседник сможете их прочитать.
+                                Настройте сквозное шифрование. Для каждого чата будет создан свой ключ шифрования.
                             </p>
                             <ul className="e2e-features">
-                                <li>{Icon.check(14)} Шифрование на устройстве</li>
+                                <li>{Icon.check(14)} Отдельный ключ для каждого чата</li>
                                 <li>{Icon.check(14)} Сервер не видит содержимое</li>
-                                <li>{Icon.check(14)} ECDH + AES-256-GCM</li>
+                                <li>{Icon.check(14)} ECIES + AES-256-GCM</li>
                             </ul>
                             <button
                                 className="e2e-setup-btn"
@@ -3577,7 +3845,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </div>
 
-                {/* ═══ Инвайты ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Пригласить друга</div>
 
@@ -3602,7 +3869,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </div>
 
-                {/* ═══ Внешний вид ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">Внешний вид</div>
                     <button className="s-row" onClick={onToggleTheme}>
@@ -3616,12 +3882,11 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </button>
                 </div>
 
-                {/* ═══ О приложении ═══ */}
                 <div className="s-group">
                     <div className="s-group-label">О приложении</div>
                     <div className="s-row">
                         <span className="s-row-left">Версия</span>
-                        <span className="s-sub">0.2.0-alpha (E2E)</span>
+                        <span className="s-sub">0.3.0-alpha (Per-Chat E2E)</span>
                     </div>
                 </div>
             </div>
@@ -3803,14 +4068,13 @@ export function ToastContainer({ toasts }: { toasts: ToastData[] }) {
 FILE PATH: ./client/src/crypto/index.ts
 ================================================================================
 import { keystore } from './keystore';
+import type { EncryptedChatKey, EncryptedPayload } from '../types';
 
 const STORAGE_KEY = 'e2e_keys';
 const ALGORITHM = 'AES-GCM';
 
 export interface StoredKeys {
     identityKeyPair: { publicKey: string; privateKey: string };
-    signingKeyPair: { publicKey: string; privateKey: string };
-    signature: string;
     keyId: string;
 }
 
@@ -3835,22 +4099,20 @@ function b642ab(base64: string): ArrayBuffer {
     return bytes.buffer;
 }
 
-async function genKeyId(pub: ArrayBuffer): Promise<string> {
-    const hash = await crypto.subtle.digest('SHA-256', pub);
+async function generateKeyId(pubKey: ArrayBuffer): Promise<string> {
+    const hash = await crypto.subtle.digest('SHA-256', pubKey);
     return ab2b64(hash).slice(0, 32);
 }
 
 class E2ECryptoManager {
     private keys: StoredKeys | null = null;
-    private sessionKeys: Map<string, CryptoKey> = new Map();
+    private chatKeys: Map<string, CryptoKey> = new Map();
 
     async initialize(): Promise<ExportedPublicKeys | null> {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             try {
                 this.keys = JSON.parse(stored);
-                // Восстанавливаем сессионные ключи из IndexedDB
-                await this.restoreSessionKeys();
                 return this.getPublicKeys();
             } catch (e) {
                 console.error('[E2E] Load failed:', e);
@@ -3860,140 +4122,255 @@ class E2ECryptoManager {
         return null;
     }
 
-    private async restoreSessionKeys(): Promise<void> {
-        // Сессионные ключи будут восстановлены лениво при первом обращении
-        // через deriveSessionKey (с проверкой IndexedDB)
-        console.log('[E2E] Keys initialized, session keys will restore lazily');
-    }
-
     async generateKeys(): Promise<ExportedPublicKeys> {
-        this.sessionKeys.clear();
-        // Очищаем старые сессионные ключи (но НЕ расшифрованные сообщения)
-        // Расшифрованные тексты останутся доступны!
+        this.chatKeys.clear();
+        await keystore.clearSessionKeys();
 
-        const idKP = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-        const sigKP = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+        const idKP = await crypto.subtle.generateKey(
+            { name: 'ECDH', namedCurve: 'P-256' },
+            true,
+            ['deriveBits'],
+        );
 
         const idPubExp = await crypto.subtle.exportKey('spki', idKP.publicKey);
-        const sigPubExp = await crypto.subtle.exportKey('spki', sigKP.publicKey);
         const idPubB64 = ab2b64(idPubExp);
-        const sigPubB64 = ab2b64(sigPubExp);
-
-        const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, sigKP.privateKey, idPubExp);
-        const sigB64 = ab2b64(sig);
-        const kid = await genKeyId(idPubExp);
-
+        const kid = await generateKeyId(idPubExp);
         const idPrivExp = await crypto.subtle.exportKey('pkcs8', idKP.privateKey);
-        const sigPrivExp = await crypto.subtle.exportKey('pkcs8', sigKP.privateKey);
 
         this.keys = {
             identityKeyPair: { publicKey: idPubB64, privateKey: ab2b64(idPrivExp) },
-            signingKeyPair: { publicKey: sigPubB64, privateKey: ab2b64(sigPrivExp) },
-            signature: sigB64, keyId: kid,
+            keyId: kid,
         };
 
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.keys));
-        console.log('[E2E] Keys generated:', kid);
-        return { identity_key: idPubB64, signing_key: sigPubB64, signature: sigB64, key_id: kid };
+        console.log('[E2E] Identity generated:', kid);
+
+        return {
+            identity_key: idPubB64,
+            signing_key: idPubB64,
+            signature: 'NA',
+            key_id: kid,
+        };
     }
 
     getPublicKeys(): ExportedPublicKeys | null {
         if (!this.keys) return null;
         return {
             identity_key: this.keys.identityKeyPair.publicKey,
-            signing_key: this.keys.signingKeyPair.publicKey,
-            signature: this.keys.signature,
+            signing_key: this.keys.identityKeyPair.publicKey,
+            signature: 'NA',
             key_id: this.keys.keyId,
         };
     }
 
-    getKeyId(): string | null { return this.keys?.keyId || null; }
-    hasKeys(): boolean { return this.keys !== null; }
-
-    async forceRederiveSessionKey(pubKeyB64: string, peerId: string): Promise<void> {
-        this.sessionKeys.delete(peerId);
-        await keystore.deleteSessionKey(peerId);
-        await this.deriveSessionKey(pubKeyB64, peerId);
+    getKeyId(): string | null {
+        return this.keys?.keyId || null;
     }
 
-    async deriveSessionKey(pubKeyB64: string, peerId: string): Promise<void> {
-        if (!this.keys) throw new Error('Keys not initialized');
-        if (this.sessionKeys.has(peerId)) return;
+    hasKeys(): boolean {
+        return this.keys !== null;
+    }
 
-        // Пробуем восстановить из IndexedDB
-        const cached = await keystore.getSessionKey(peerId);
-        if (cached && cached.peerPublicKey === pubKeyB64) {
+    hasChatKey(chatId: string): boolean {
+        return this.chatKeys.has(chatId);
+    }
+
+    getChatKey(chatId: string): CryptoKey | undefined {
+        return this.chatKeys.get(chatId);
+    }
+
+    setChatKey(chatId: string, key: CryptoKey) {
+        this.chatKeys.set(chatId, key);
+    }
+
+    // ── Генерация ключа чата ──────────────────────────────────
+
+    async generateChatKey(): Promise<CryptoKey> {
+        return await crypto.subtle.generateKey(
+            { name: ALGORITHM, length: 256 },
+            true,
+            ['encrypt', 'decrypt'],
+        );
+    }
+
+    // ── Обернуть ключ чата для получателя (ECIES) ─────────────
+
+    async wrapChatKey(chatKey: CryptoKey, recipientPubKeyB64: string): Promise<EncryptedChatKey> {
+        const rawChatKey = await crypto.subtle.exportKey('raw', chatKey);
+
+        const ephPair = await crypto.subtle.generateKey(
+            { name: 'ECDH', namedCurve: 'P-256' },
+            true,
+            ['deriveBits'],
+        );
+        const ephPubExp = await crypto.subtle.exportKey('spki', ephPair.publicKey);
+        const ephPubB64 = ab2b64(ephPubExp);
+
+        const recipientPub = await crypto.subtle.importKey(
+            'spki',
+            b642ab(recipientPubKeyB64),
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false,
+            [],
+        );
+
+        const sharedBits = await crypto.subtle.deriveBits(
+            { name: 'ECDH', public: recipientPub },
+            ephPair.privateKey,
+            256,
+        );
+
+        const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, { name: 'HKDF' }, false, ['deriveKey']);
+        const wrapKey = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode('chat-key-wrap') },
+            hkdfKey,
+            { name: ALGORITHM, length: 256 },
+            false,
+            ['encrypt'],
+        );
+
+        const nonce = crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: ALGORITHM, iv: nonce },
+            wrapKey,
+            rawChatKey,
+        );
+
+        return {
+            ephemeral_pub: ephPubB64,
+            ciphertext: ab2b64(ciphertext),
+            nonce: ab2b64(nonce.buffer),
+        };
+    }
+
+    // ── Развернуть ключ чата, полученный с сервера ────────────
+
+    async unwrapChatKey(chatId: string, encChatKey: EncryptedChatKey): Promise<void> {
+        if (!this.keys) throw new Error('No identity keys');
+
+        const myPriv = await crypto.subtle.importKey(
+            'pkcs8',
+            b642ab(this.keys.identityKeyPair.privateKey),
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false,
+            ['deriveBits'],
+        );
+
+        const ephPub = await crypto.subtle.importKey(
+            'spki',
+            b642ab(encChatKey.ephemeral_pub),
+            { name: 'ECDH', namedCurve: 'P-256' },
+            false,
+            [],
+        );
+
+        const sharedBits = await crypto.subtle.deriveBits(
+            { name: 'ECDH', public: ephPub },
+            myPriv,
+            256,
+        );
+
+        const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, { name: 'HKDF' }, false, ['deriveKey']);
+        const unwrapKey = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode('chat-key-wrap') },
+            hkdfKey,
+            { name: ALGORITHM, length: 256 },
+            false,
+            ['decrypt'],
+        );
+
+        const rawChatKey = await crypto.subtle.decrypt(
+            { name: ALGORITHM, iv: b642ab(encChatKey.nonce) },
+            unwrapKey,
+            b642ab(encChatKey.ciphertext),
+        );
+
+        const chatKey = await crypto.subtle.importKey(
+            'raw',
+            rawChatKey,
+            { name: ALGORITHM, length: 256 },
+            true,
+            ['encrypt', 'decrypt'],
+        );
+
+        this.chatKeys.set(chatId, chatKey);
+
+        try {
+            await keystore.saveSessionKey(chatId, rawChatKey, this.keys.keyId);
+        } catch (e) {
+            console.warn('[E2E] Failed to cache chat key:', e);
+        }
+
+        console.log('[E2E] Unwrapped chat key for', chatId);
+    }
+
+    // ── Загрузка ключа чата из кэша ──────────────────────────
+
+    async loadChatKeyFromCache(chatId: string): Promise<boolean> {
+        if (this.chatKeys.has(chatId)) return true;
+        if (!this.keys) return false;
+
+        const cached = await keystore.getSessionKey(chatId);
+        if (cached && cached.peerPublicKey === this.keys.keyId) {
             try {
-                const rawKey = new Uint8Array(cached.key).buffer;
-                const aes = await crypto.subtle.importKey(
-                    'raw', rawKey, { name: ALGORITHM, length: 256 }, true, ['encrypt', 'decrypt']
+                const chatKey = await crypto.subtle.importKey(
+                    'raw',
+                    new Uint8Array(cached.key).buffer,
+                    { name: ALGORITHM, length: 256 },
+                    true,
+                    ['encrypt', 'decrypt'],
                 );
-                this.sessionKeys.set(peerId, aes);
-                console.log('[E2E] Session key restored from IndexedDB for', peerId);
-                return;
+                this.chatKeys.set(chatId, chatKey);
+                console.log('[E2E] Chat key loaded from cache:', chatId);
+                return true;
             } catch (e) {
-                console.warn('[E2E] Failed to restore cached key:', e);
-                await keystore.deleteSessionKey(peerId);
+                console.warn('[E2E] Cache restore failed:', e);
+                await keystore.deleteSessionKey(chatId);
             }
         }
-
-        // Derivation
-        const ourPriv = await crypto.subtle.importKey(
-            'pkcs8', b642ab(this.keys.identityKeyPair.privateKey),
-            { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']
-        );
-        const theirPub = await crypto.subtle.importKey(
-            'spki', b642ab(pubKeyB64),
-            { name: 'ECDH', namedCurve: 'P-256' }, false, []
-        );
-        const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: theirPub }, ourPriv, 256);
-        const hkdf = await crypto.subtle.importKey('raw', shared, { name: 'HKDF' }, false, ['deriveKey']);
-        const aes = await crypto.subtle.deriveKey(
-            { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode('e2e-messenger') },
-            hkdf, { name: ALGORITHM, length: 256 }, true, ['encrypt', 'decrypt']
-        );
-
-        this.sessionKeys.set(peerId, aes);
-
-        // Сохраняем в IndexedDB
-        try {
-            const exported = await crypto.subtle.exportKey('raw', aes);
-            await keystore.saveSessionKey(peerId, exported, pubKeyB64);
-            // Сохраняем ключ собеседника в историю
-            await keystore.savePeerKey(peerId, 'current', pubKeyB64);
-        } catch (e) {
-            console.warn('[E2E] Failed to cache session key:', e);
-        }
-
-        console.log('[E2E] Session key derived for', peerId);
+        return false;
     }
 
-    // ── Текст: шифруем ────────────────────────────────────
-    async encrypt(recipientId: string, plaintext: string): Promise<{ ciphertext: string; nonce: string; sender_key_id: string }> {
-        const key = this.sessionKeys.get(recipientId);
-        if (!key) throw new Error(`No session key for ${recipientId}`);
+    // ── Сохранить ключ чата в кэш напрямую ───────────────────
+
+    async saveChatKeyToCache(chatId: string, chatKey: CryptoKey): Promise<void> {
+        if (!this.keys) return;
+        try {
+            const raw = await crypto.subtle.exportKey('raw', chatKey);
+            await keystore.saveSessionKey(chatId, raw, this.keys.keyId);
+        } catch (e) {
+            console.warn('[E2E] Failed to save chat key to cache:', e);
+        }
+    }
+
+    // ── Шифрование текста ────────────────────────────────────
+
+    async encrypt(chatId: string, plaintext: string): Promise<EncryptedPayload> {
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
         const data = new TextEncoder().encode(plaintext);
         const nonce = crypto.getRandomValues(new Uint8Array(12));
         const enc = await crypto.subtle.encrypt({ name: ALGORITHM, iv: nonce }, key, data);
-        return { ciphertext: ab2b64(enc), nonce: ab2b64(nonce.buffer), sender_key_id: this.keys!.keyId };
+        return { ciphertext: ab2b64(enc), nonce: ab2b64(nonce.buffer) };
     }
 
-    // ── Текст: расшифровываем (с кэшированием в IndexedDB) ─
-    async decrypt(senderId: string, ciphertext: string, nonce: string, messageId?: string): Promise<string> {
-        // Сначала проверяем кэш
+    // ── Расшифровка текста ───────────────────────────────────
+
+    async decrypt(chatId: string, ciphertext: string, nonce: string, messageId?: string): Promise<string> {
         if (messageId) {
             const cached = await keystore.getDecryptedMessage(messageId);
             if (cached !== undefined) return cached;
         }
 
-        const key = this.sessionKeys.get(senderId);
-        if (!key) throw new Error(`No session key for ${senderId}`);
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
         const dec = await crypto.subtle.decrypt(
-            { name: ALGORITHM, iv: b642ab(nonce) }, key, b642ab(ciphertext)
+            { name: ALGORITHM, iv: b642ab(nonce) },
+            key,
+            b642ab(ciphertext),
         );
         const plaintext = new TextDecoder().decode(dec);
 
-        // Кэшируем
         if (messageId) {
             await keystore.saveDecryptedMessage(messageId, plaintext);
         }
@@ -4001,52 +4378,41 @@ class E2ECryptoManager {
         return plaintext;
     }
 
-    // ── Бинарное: шифруем (голосовые) ─────────────────────
-    async encryptBuffer(peerId: string, data: ArrayBuffer): Promise<{ encryptedData: ArrayBuffer; nonce: string }> {
-        const key = this.sessionKeys.get(peerId);
-        if (!key) throw new Error(`No session key for ${peerId}`);
+    // ── Шифрование бинарных данных (голосовые) ───────────────
+
+    async encryptBuffer(chatId: string, data: ArrayBuffer): Promise<{ encryptedData: ArrayBuffer; nonce: string }> {
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
         const nonce = crypto.getRandomValues(new Uint8Array(12));
         const enc = await crypto.subtle.encrypt({ name: ALGORITHM, iv: nonce }, key, data);
         return { encryptedData: enc, nonce: ab2b64(nonce.buffer) };
     }
 
-    // ── Бинарное: расшифровываем (с кэшированием) ─────────
-    async decryptBuffer(peerId: string, data: ArrayBuffer, nonceB64: string, attachmentId?: string): Promise<ArrayBuffer> {
-        // Проверяем кэш
+    // ── Расшифровка бинарных данных ─────────────────────────
+
+    async decryptBuffer(chatId: string, data: ArrayBuffer, nonceB64: string, attachmentId?: string): Promise<ArrayBuffer> {
         if (attachmentId) {
             const cached = await keystore.getVoiceCache(attachmentId);
-            if (cached) {
-                console.log('[E2E] Voice from cache:', attachmentId);
-                return cached;
-            }
+            if (cached) return cached;
         }
-
-        const key = this.sessionKeys.get(peerId);
-        if (!key) throw new Error(`No session key for ${peerId}`);
+        const key = this.chatKeys.get(chatId);
+        if (!key) throw new Error(`No chat key for ${chatId}`);
         const dec = await crypto.subtle.decrypt(
-            { name: ALGORITHM, iv: b642ab(nonceB64) }, key, data
+            { name: ALGORITHM, iv: b642ab(nonceB64) },
+            key,
+            data,
         );
-
-        // Кэшируем
         if (attachmentId) {
             await keystore.saveVoiceCache(attachmentId, dec);
         }
-
         return dec;
     }
 
-    invalidateSessionKey(userId: string): void {
-        this.sessionKeys.delete(userId);
-        keystore.deleteSessionKey(userId).catch(() => { });
-    }
-
-    invalidateAllSessionKeys(): void {
-        this.sessionKeys.clear();
-    }
+    // ── Очистка ─────────────────────────────────────────────
 
     async clear(): Promise<void> {
         this.keys = null;
-        this.sessionKeys.clear();
+        this.chatKeys.clear();
         localStorage.removeItem(STORAGE_KEY);
         await keystore.clearAll();
     }
@@ -4059,22 +4425,14 @@ export { keystore };
 ================================================================================
 FILE PATH: ./client/src/crypto/keystore.ts
 ================================================================================
-/**
- * IndexedDB хранилище для E2E ключей и расшифрованных сообщений.
- * Позволяет сохранять:
- * 1. Сессионные ключи (derived shared secrets) — чтобы не терять при перезагрузке
- * 2. Расшифрованные тексты сообщений — чтобы не расшифровывать повторно
- * 3. Историю публичных ключей собеседников — чтобы расшифровывать старые сообщения
- */
-
 const DB_NAME = 'e2e_keystore';
 const DB_VERSION = 2;
 
 const STORES = {
-    SESSION_KEYS: 'session_keys',       // peerId -> exported AES key
-    DECRYPTED_MSGS: 'decrypted_msgs',   // messageId -> plaintext
-    PEER_KEY_HISTORY: 'peer_key_history', // peerId:keyId -> identity_key
-    VOICE_CACHE: 'voice_cache',         // attachmentId -> decrypted blob
+    SESSION_KEYS: 'session_keys',
+    DECRYPTED_MSGS: 'decrypted_msgs',
+    PEER_KEY_HISTORY: 'peer_key_history',
+    VOICE_CACHE: 'voice_cache',
 };
 
 function openDB(): Promise<IDBDatabase> {
@@ -4133,12 +4491,7 @@ async function clearStore(store: string): Promise<void> {
     });
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Public API
-// ═══════════════════════════════════════════════════════════
-
 export const keystore = {
-    // ── Расшифрованные сообщения ───────────────────────────
     async saveDecryptedMessage(messageId: string, plaintext: string): Promise<void> {
         try { await put(STORES.DECRYPTED_MSGS, messageId, plaintext); }
         catch (e) { console.warn('[KS] saveDecryptedMessage failed:', e); }
@@ -4146,31 +4499,34 @@ export const keystore = {
 
     async getDecryptedMessage(messageId: string): Promise<string | undefined> {
         try { return await get<string>(STORES.DECRYPTED_MSGS, messageId); }
-        catch (e) { console.warn('[KS] getDecryptedMessage failed:', e); return undefined; }
+        catch (e) { return undefined; }
     },
 
-    // ── Сессионные ключи (сериализованные) ─────────────────
-    async saveSessionKey(peerId: string, exportedKey: ArrayBuffer, peerPublicKey: string): Promise<void> {
+    async saveSessionKey(chatId: string, exportedKey: ArrayBuffer, ownerKeyId: string): Promise<void> {
         try {
-            await put(STORES.SESSION_KEYS, peerId, {
+            await put(STORES.SESSION_KEYS, chatId, {
                 key: Array.from(new Uint8Array(exportedKey)),
-                peerPublicKey,
+                peerPublicKey: ownerKeyId,
                 timestamp: Date.now(),
             });
         } catch (e) { console.warn('[KS] saveSessionKey failed:', e); }
     },
 
-    async getSessionKey(peerId: string): Promise<{ key: number[]; peerPublicKey: string } | undefined> {
-        try { return await get(STORES.SESSION_KEYS, peerId); }
-        catch (e) { console.warn('[KS] getSessionKey failed:', e); return undefined; }
+    async getSessionKey(chatId: string): Promise<{ key: number[]; peerPublicKey: string } | undefined> {
+        try { return await get(STORES.SESSION_KEYS, chatId); }
+        catch (e) { return undefined; }
     },
 
-    async deleteSessionKey(peerId: string): Promise<void> {
-        try { await del(STORES.SESSION_KEYS, peerId); }
+    async deleteSessionKey(chatId: string): Promise<void> {
+        try { await del(STORES.SESSION_KEYS, chatId); }
         catch (e) { console.warn('[KS] deleteSessionKey failed:', e); }
     },
 
-    // ── История ключей собеседников ────────────────────────
+    async clearSessionKeys(): Promise<void> {
+        try { await clearStore(STORES.SESSION_KEYS); }
+        catch (e) { console.warn('[KS] clearSessionKeys failed:', e); }
+    },
+
     async savePeerKey(peerId: string, keyId: string, identityKey: string): Promise<void> {
         try { await put(STORES.PEER_KEY_HISTORY, `${peerId}:${keyId}`, identityKey); }
         catch (e) { console.warn('[KS] savePeerKey failed:', e); }
@@ -4181,7 +4537,6 @@ export const keystore = {
         catch (e) { return undefined; }
     },
 
-    // ── Кэш расшифрованных голосовых ───────────────────────
     async saveVoiceCache(attachmentId: string, data: ArrayBuffer): Promise<void> {
         try { await put(STORES.VOICE_CACHE, attachmentId, Array.from(new Uint8Array(data))); }
         catch (e) { console.warn('[KS] saveVoiceCache failed:', e); }
@@ -4194,7 +4549,6 @@ export const keystore = {
         } catch (e) { return undefined; }
     },
 
-    // ── Полная очистка ─────────────────────────────────────
     async clearAll(): Promise<void> {
         try {
             for (const store of Object.values(STORES)) {
@@ -4361,51 +4715,109 @@ function chatDtoToLocal(dto: ChatDto, uid: string): LocalChat {
     };
 }
 
-function loadSelectedId(): string | null { try { return localStorage.getItem('selected_chat_id'); } catch { return null; } }
-function saveSelectedId(id: string | null) { try { if (id) localStorage.setItem('selected_chat_id', id); else localStorage.removeItem('selected_chat_id'); } catch { } }
+function loadSelectedId(): string | null {
+    try { return localStorage.getItem('selected_chat_id'); } catch { return null; }
+}
+function saveSelectedId(id: string | null) {
+    try { if (id) localStorage.setItem('selected_chat_id', id); else localStorage.removeItem('selected_chat_id'); } catch { }
+}
 
-async function setupChatEncryption(members: ChatMemberDto[], myId: string, force = false) {
-    if (!cryptoManager.hasKeys()) return;
-    for (const m of members) {
-        if (m.user_id === myId || !m.public_keys?.identity_key) continue;
+/**
+ * Пытается загрузить ключ чата: сначала из памяти, потом из кэша, потом с сервера.
+ * Возвращает true если ключ загружен.
+ */
+async function ensureChatKey(chatId: string, currentUserId: string, members?: ChatMemberDto[]): Promise<boolean> {
+    if (!cryptoManager.hasKeys()) return false;
+    if (cryptoManager.hasChatKey(chatId)) return true;
+
+    // Пробуем из кэша IndexedDB
+    const cached = await cryptoManager.loadChatKeyFromCache(chatId);
+    if (cached) return true;
+
+    // Нужны актуальные данные с сервера
+    let freshMembers = members;
+    if (!freshMembers) {
         try {
-            if (force) await cryptoManager.forceRederiveSessionKey(m.public_keys.identity_key, m.user_id);
-            else await cryptoManager.deriveSessionKey(m.public_keys.identity_key, m.user_id);
-        } catch (e) { console.warn(`[E2E] Key derive failed for ${m.user_id}:`, e); }
+            const dto = await api.getChat(chatId);
+            freshMembers = dto.members;
+        } catch (e) {
+            console.warn('[E2E] Failed to fetch chat for key:', e);
+            return false;
+        }
+    }
+
+    const myMember = freshMembers.find(m => m.user_id === currentUserId);
+    if (!myMember?.encrypted_chat_key) return false;
+
+    // Проверяем что ключ был обёрнут для нашей текущей личности
+    if (myMember.member_key_id && myMember.member_key_id !== cryptoManager.getKeyId()) {
+        console.warn('[E2E] Chat key wrapped for old identity:', chatId);
+        return false;
+    }
+
+    try {
+        await cryptoManager.unwrapChatKey(chatId, myMember.encrypted_chat_key);
+        return true;
+    } catch (e) {
+        console.error('[E2E] Failed to unwrap chat key:', chatId, e);
+        return false;
     }
 }
 
-function isChatEncryptable(members: ChatMemberDto[], myId: string): boolean {
-    if (!cryptoManager.hasKeys()) return false;
-    return members.every(m => m.user_id === myId || !!m.public_keys?.identity_key);
-}
-
-function getRecipientId(chat: LocalChat, myId: string): string | null {
-    if (chat.is_group) return null;
-    return chat.members.find(m => m.user_id !== myId)?.user_id || null;
-}
-
-// Ключевое изменение: используем messageId для кэширования
-async function tryDecryptMessage(msg: LocalMessage, peerId?: string): Promise<LocalMessage> {
+async function tryDecryptMessage(msg: LocalMessage, chatId: string): Promise<LocalMessage> {
     if (!msg.encrypted || !cryptoManager.hasKeys()) return msg;
-    // Голосовые расшифровываются в AudioPlayer
     if (msg.attachment) return msg;
 
-    // 1. Проверяем кэш в IndexedDB (работает даже после смены ключей!)
     const cached = await keystore.getDecryptedMessage(msg.id);
     if (cached !== undefined) {
         return { ...msg, content: cached, decrypted_content: cached };
     }
 
-    // 2. Для своих сообщений — мы сами шифровали, можем расшифровать тем же shared key
-    const senderId = msg.own ? (peerId || msg.sender_id) : msg.sender_id;
+    if (!cryptoManager.hasChatKey(chatId)) return msg;
 
     try {
-        const dec = await cryptoManager.decrypt(senderId, msg.encrypted.ciphertext, msg.encrypted.nonce, msg.id);
+        const dec = await cryptoManager.decrypt(chatId, msg.encrypted.ciphertext, msg.encrypted.nonce, msg.id);
         return { ...msg, content: dec, decrypted_content: dec };
     } catch (e) {
         console.warn('[E2E] Decrypt failed:', msg.id, e);
         return { ...msg, content: '🔒 Не удалось расшифровать' };
+    }
+}
+
+async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): Promise<void> {
+    if (!cryptoManager.hasKeys()) return;
+    if (cryptoManager.hasChatKey(chatDto.id)) return;
+
+    // Если уже есть ключи — пробуем загрузить свой
+    const anyHasKey = chatDto.members.some(m => m.encrypted_chat_key);
+    if (anyHasKey) {
+        await ensureChatKey(chatDto.id, currentUserId, chatDto.members);
+        return;
+    }
+
+    // Нет ключей — генерируем новый
+    const membersWithKeys = chatDto.members.filter(m => m.public_keys?.identity_key);
+    if (membersWithKeys.length < 2) return;
+
+    try {
+        const chatKey = await cryptoManager.generateChatKey();
+        const encryptedKeys: Record<string, any> = {};
+
+        for (const member of membersWithKeys) {
+            encryptedKeys[member.user_id] = await cryptoManager.wrapChatKey(
+                chatKey,
+                member.public_keys!.identity_key,
+            );
+        }
+
+        await api.updateChatKeys(chatDto.id, encryptedKeys);
+
+        cryptoManager.setChatKey(chatDto.id, chatKey);
+        await cryptoManager.saveChatKeyToCache(chatDto.id, chatKey);
+
+        console.log('[E2E] Chat encryption initialized:', chatDto.id);
+    } catch (e) {
+        console.error('[E2E] Failed to setup chat encryption:', e);
     }
 }
 
@@ -4433,31 +4845,67 @@ export function useChats(user: UserDto | null) {
                 return sc.map(dto => {
                     const ex = m.get(dto.id);
                     const fr = chatDtoToLocal(dto, currentUserId);
-                    return (ex && ex.messagesLoaded) ? { ...fr, messages: ex.messages, messagesLoaded: true } : fr;
+                    return (ex && ex.messagesLoaded)
+                        ? { ...fr, messages: ex.messages, messagesLoaded: true }
+                        : fr;
                 });
             });
         } catch (e) { console.error('Load chats failed', e); }
         finally { setLoadingChats(false); loadingRef.current = false; }
     }, [user, currentUserId]);
 
-    const selectChat = useCallback(async (chatId: string) => {
-        setSelectedId(chatId); saveSelectedId(chatId);
-        setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, unread_count: 0 }));
-        const chat = chatsRef.current.find(c => c.id === chatId);
-        if (chat?.messagesLoaded) return;
-        if (chat && cryptoManager.hasKeys()) await setupChatEncryption(chat.members, currentUserId);
+    const refreshChat = useCallback(async (chatId: string) => {
+        try {
+            const dto = await api.getChat(chatId);
+            const local = chatDtoToLocal(dto, currentUserId);
+            setChats(prev => prev.map(c => {
+                if (c.id !== chatId) return c;
+                return { ...local, messages: c.messages, messagesLoaded: c.messagesLoaded };
+            }));
+        } catch (e) {
+            console.error('Refresh chat failed', e);
+        }
+    }, [currentUserId]);
 
-        const peerId = chat && !chat.is_group
-            ? chat.members.find(m => m.user_id !== currentUserId)?.user_id
-            : undefined;
+    const selectChat = useCallback(async (chatId: string) => {
+        setSelectedId(chatId);
+        saveSelectedId(chatId);
+        setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, unread_count: 0 }));
+
+        let chat = chatsRef.current.find(c => c.id === chatId);
+        if (!chat) return;
+
+        // Если E2E включено и нет ключа — всегда запрашиваем свежие данные с сервера
+        if (cryptoManager.hasKeys() && !cryptoManager.hasChatKey(chatId)) {
+            const cached = await cryptoManager.loadChatKeyFromCache(chatId);
+            if (!cached) {
+                try {
+                    const freshDto = await api.getChat(chatId);
+                    const freshLocal = chatDtoToLocal(freshDto, currentUserId);
+                    // Обновляем members в локальном стейте
+                    setChats(prev => prev.map(c => c.id !== chatId ? c : {
+                        ...c, members: freshLocal.members,
+                    }));
+                    chat = { ...chat, members: freshLocal.members };
+                    // Пробуем развернуть ключ
+                    await ensureChatKey(chatId, currentUserId, freshLocal.members);
+                } catch (e) {
+                    console.warn('[E2E] Failed to refresh chat for key:', e);
+                }
+            }
+        }
+
+        if (chat.messagesLoaded) return;
 
         setLoadingMessages(true);
         try {
             const msgs = await api.getMessages(chatId);
             const local = await Promise.all(
-                msgs.map(m => tryDecryptMessage(serverMsgToLocal(m, currentUserId), peerId))
+                msgs.map(m => tryDecryptMessage(serverMsgToLocal(m, currentUserId), chatId))
             );
-            setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, messages: local, messagesLoaded: true, unread_count: 0 }));
+            setChats(prev => prev.map(c => c.id !== chatId ? c : {
+                ...c, messages: local, messagesLoaded: true, unread_count: 0,
+            }));
         } catch (e) { console.error('Load messages failed', e); }
         finally { setLoadingMessages(false); }
     }, [currentUserId]);
@@ -4467,29 +4915,33 @@ export function useChats(user: UserDto | null) {
         const trimmed = text.trim();
         const clientId = uid();
         const now = new Date().toISOString();
-        const chat = chatsRef.current.find(c => c.id === selectedId);
-        const canEnc = chat && !chat.is_group && isChatEncryptable(chat.members, user.id);
+
         let enc: EncryptedPayload | undefined;
-        if (canEnc && chat) {
-            const rid = getRecipientId(chat, user.id);
-            if (rid) {
-                try {
-                    await setupChatEncryption(chat.members, user.id);
-                    enc = await cryptoManager.encrypt(rid, trimmed);
-                } catch (e) { console.warn('[E2E] Encrypt failed:', e); }
-            }
+        if (cryptoManager.hasChatKey(selectedId)) {
+            try {
+                enc = await cryptoManager.encrypt(selectedId, trimmed);
+            } catch (e) { console.warn('[E2E] Encrypt failed:', e); }
         }
+
         const pending: LocalMessage = {
             id: clientId, client_id: clientId, chat_id: selectedId,
             sender_id: user.id, sender_name: user.display_name, content: trimmed,
             edited: false, created_at: now, own: true, status: 'pending', encrypted: enc,
         };
+
         setChats(prev => prev.map(c => c.id !== selectedId ? c : {
-            ...c, messages: [...c.messages, pending], lastMessageText: 'Вы: ' + trimmed, lastMessageTime: formatTime(now),
+            ...c, messages: [...c.messages, pending],
+            lastMessageText: 'Вы: ' + trimmed, lastMessageTime: formatTime(now),
         }));
+
         wsManager.send({
             type: 'send_message',
-            payload: { chat_id: selectedId, content: enc ? '[Зашифрованное сообщение]' : trimmed, client_id: clientId, encrypted: enc },
+            payload: {
+                chat_id: selectedId,
+                content: enc ? '[Зашифрованное сообщение]' : trimmed,
+                client_id: clientId,
+                encrypted: enc,
+            },
         });
     }, [selectedId, user]);
 
@@ -4497,29 +4949,23 @@ export function useChats(user: UserDto | null) {
         if (!user) return;
         const clientId = uid();
         const now = new Date().toISOString();
-        const chat = chatsRef.current.find(c => c.id === chatId);
-        const canEnc = chat && !chat.is_group && isChatEncryptable(chat.members, user.id);
 
         let attachmentId: string | null = null;
         let encMeta: EncryptedPayload | undefined;
         let finalMime = blob.type || 'audio/webm';
 
-        if (canEnc && chat) {
-            const rid = getRecipientId(chat, user.id);
-            if (rid) {
-                try {
-                    await setupChatEncryption(chat.members, user.id);
-                    const audioData = await blob.arrayBuffer();
-                    const { encryptedData, nonce } = await cryptoManager.encryptBuffer(rid, audioData);
-                    const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
-                    const att = await api.uploadFile(encBlob, 'voice.enc');
-                    attachmentId = att.id;
-                    finalMime = 'audio/encrypted';
-                    encMeta = { ciphertext: '', nonce, sender_key_id: cryptoManager.getKeyId() || '' };
-                } catch (e) {
-                    console.warn('[E2E] Voice enc failed:', e);
-                    attachmentId = null;
-                }
+        if (cryptoManager.hasChatKey(chatId)) {
+            try {
+                const audioData = await blob.arrayBuffer();
+                const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, audioData);
+                const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
+                const att = await api.uploadFile(encBlob, 'voice.enc');
+                attachmentId = att.id;
+                finalMime = 'audio/encrypted';
+                encMeta = { ciphertext: '', nonce };
+            } catch (e) {
+                console.warn('[E2E] Voice enc failed:', e);
+                attachmentId = null;
             }
         }
 
@@ -4547,45 +4993,68 @@ export function useChats(user: UserDto | null) {
 
         wsManager.send({
             type: 'send_message',
-            payload: { chat_id: chatId, content: '🎤 Голосовое сообщение', client_id: clientId, attachment_id: attachmentId, encrypted: encMeta },
+            payload: {
+                chat_id: chatId,
+                content: '🎤 Голосовое сообщение',
+                client_id: clientId,
+                attachment_id: attachmentId,
+                encrypted: encMeta,
+            },
         });
     }, [user]);
 
     const editMessage = useCallback(async (messageId: string, newText: string) => {
         if (!newText.trim() || !user) return;
         const t = newText.trim();
+
         let enc: EncryptedPayload | undefined;
         for (const chat of chatsRef.current) {
             if (chat.messages.find(m => m.id === messageId)) {
-                if (!chat.is_group && isChatEncryptable(chat.members, user.id)) {
-                    const rid = getRecipientId(chat, user.id);
-                    if (rid) { try { await setupChatEncryption(chat.members, user.id); enc = await cryptoManager.encrypt(rid, t); } catch { } }
+                if (cryptoManager.hasChatKey(chat.id)) {
+                    try { enc = await cryptoManager.encrypt(chat.id, t); } catch { }
                 }
                 break;
             }
         }
-        // Обновляем кэш
+
         await keystore.saveDecryptedMessage(messageId, t);
 
         setChats(prev => prev.map(c => ({
             ...c, messages: c.messages.map(m => m.id !== messageId ? m : { ...m, content: t, edited: true }),
         })));
-        wsManager.send({ type: 'edit_message', payload: { message_id: messageId, new_content: enc ? '[Зашифрованное сообщение]' : t, encrypted: enc } });
+
+        wsManager.send({
+            type: 'edit_message',
+            payload: {
+                message_id: messageId,
+                new_content: enc ? '[Зашифрованное сообщение]' : t,
+                encrypted: enc,
+            },
+        });
     }, [user]);
 
     const deleteMessage = useCallback((messageId: string) => {
-        setChats(prev => prev.map(c => ({ ...c, messages: c.messages.filter(m => m.id !== messageId) })));
+        setChats(prev => prev.map(c => ({
+            ...c, messages: c.messages.filter(m => m.id !== messageId),
+        })));
         wsManager.send({ type: 'delete_message', payload: { message_id: messageId } });
     }, []);
 
     const createChat = useCallback(async (memberIds: string[], isGroup: boolean, name?: string) => {
         const nc = await api.createChat(memberIds, isGroup, name);
         const lc = chatDtoToLocal(nc, currentUserId);
-        if (cryptoManager.hasKeys()) await setupChatEncryption(nc.members, currentUserId);
+
+        if (cryptoManager.hasKeys()) {
+            await setupNewChatEncryption(nc, currentUserId);
+        }
+
         setChats(prev => prev.find(c => c.id === nc.id) ? prev : [lc, ...prev]);
-        setSelectedId(nc.id); saveSelectedId(nc.id);
+        setSelectedId(nc.id);
+        saveSelectedId(nc.id);
         return nc;
     }, [currentUserId]);
+
+    // ── WebSocket обработчик ──────────────────────────────────
 
     useEffect(() => {
         if (!user) return;
@@ -4593,7 +5062,6 @@ export function useChats(user: UserDto | null) {
             switch (msg.type) {
                 case 'message_sent': {
                     const { client_id, message } = msg.payload;
-                    // Кэшируем свой текст
                     const chat = chatsRef.current.find(c => c.id === message.chat_id);
                     const ownMsg = chat?.messages.find(m => m.client_id === client_id);
                     if (ownMsg && ownMsg.encrypted) {
@@ -4604,7 +5072,12 @@ export function useChats(user: UserDto | null) {
                         ...c, messages: c.messages.map(m => {
                             if (m.client_id !== client_id) return m;
                             const u = serverMsgToLocal(message, currentUserId);
-                            return { ...u, status: 'sent' as const, content: m.content, attachment: m.attachment || u.attachment, encrypted: m.encrypted };
+                            return {
+                                ...u, status: 'sent' as const,
+                                content: m.content,
+                                attachment: m.attachment || u.attachment,
+                                encrypted: m.encrypted,
+                            };
                         }),
                         lastMessageText: 'Вы: ' + (c.messages.find(m => m.client_id === client_id)?.content || message.content),
                         lastMessageTime: formatTime(message.created_at),
@@ -4616,14 +5089,26 @@ export function useChats(user: UserDto | null) {
                     let lm = serverMsgToLocal(message, currentUserId);
 
                     if (message.encrypted && cryptoManager.hasKeys() && !message.attachment) {
-                        try {
-                            const chat = chatsRef.current.find(c => c.id === message.chat_id);
-                            if (chat) await setupChatEncryption(chat.members, currentUserId);
-                            const dec = await cryptoManager.decrypt(
-                                message.sender_id, message.encrypted.ciphertext, message.encrypted.nonce, message.id
-                            );
-                            lm = { ...lm, content: dec, decrypted_content: dec };
-                        } catch (e) { lm = { ...lm, content: '🔒 Не удалось расшифровать' }; }
+                        // Пробуем загрузить ключ чата если его нет
+                        if (!cryptoManager.hasChatKey(message.chat_id)) {
+                            await ensureChatKey(message.chat_id, currentUserId);
+                        }
+
+                        if (cryptoManager.hasChatKey(message.chat_id)) {
+                            try {
+                                const dec = await cryptoManager.decrypt(
+                                    message.chat_id,
+                                    message.encrypted.ciphertext,
+                                    message.encrypted.nonce,
+                                    message.id,
+                                );
+                                lm = { ...lm, content: dec, decrypted_content: dec };
+                            } catch (e) {
+                                lm = { ...lm, content: '🔒 Не удалось расшифровать' };
+                            }
+                        } else {
+                            lm = { ...lm, content: '🔒 Зашифровано' };
+                        }
                     }
 
                     setChats(prev => {
@@ -4634,9 +5119,11 @@ export function useChats(user: UserDto | null) {
                             const display = lm.decrypted_content || lm.content;
                             const pref = c.is_group ? `${message.sender_name}: ` : '';
                             return {
-                                ...c, messages: c.messagesLoaded ? [...c.messages, lm] : c.messages,
+                                ...c,
+                                messages: c.messagesLoaded ? [...c.messages, lm] : c.messages,
                                 unread_count: isSel ? 0 : c.unread_count + 1,
-                                lastMessageText: pref + display, lastMessageTime: formatTime(message.created_at),
+                                lastMessageText: pref + display,
+                                lastMessageTime: formatTime(message.created_at),
                             };
                         });
                     });
@@ -4645,14 +5132,9 @@ export function useChats(user: UserDto | null) {
                 case 'message_edited': {
                     const { chat_id, message_id, new_content, encrypted } = msg.payload;
                     let d = new_content;
-                    if (encrypted && cryptoManager.hasKeys()) {
+                    if (encrypted && cryptoManager.hasChatKey(chat_id)) {
                         try {
-                            const chat = chatsRef.current.find(c => c.id === chat_id);
-                            const em = chat?.messages.find(m => m.id === message_id);
-                            if (em && !em.own && chat) {
-                                await setupChatEncryption(chat.members, currentUserId);
-                                d = await cryptoManager.decrypt(em.sender_id, encrypted.ciphertext, encrypted.nonce, message_id);
-                            }
+                            d = await cryptoManager.decrypt(chat_id, encrypted.ciphertext, encrypted.nonce, message_id);
                         } catch { d = '🔒 Не удалось расшифровать'; }
                     }
                     setChats(prev => prev.map(c => c.id !== chat_id ? c : {
@@ -4662,50 +5144,78 @@ export function useChats(user: UserDto | null) {
                 }
                 case 'message_deleted': {
                     const { chat_id, message_id } = msg.payload;
-                    setChats(prev => prev.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.filter(m => m.id !== message_id) }));
+                    setChats(prev => prev.map(c => c.id !== chat_id ? c : {
+                        ...c, messages: c.messages.filter(m => m.id !== message_id),
+                    }));
                     break;
                 }
                 case 'user_online': {
                     const { user_id } = msg.payload;
-                    setChats(prev => prev.map(c => c.is_group ? c : c.members.some(m => m.user_id === user_id) ? { ...c, online: true } : c));
+                    setChats(prev => prev.map(c => c.is_group ? c :
+                        c.members.some(m => m.user_id === user_id) ? { ...c, online: true } : c
+                    ));
                     break;
                 }
                 case 'user_offline': {
                     const { user_id } = msg.payload;
-                    setChats(prev => prev.map(c => c.is_group ? c : c.members.some(m => m.user_id === user_id) ? { ...c, online: false } : c));
+                    setChats(prev => prev.map(c => c.is_group ? c :
+                        c.members.some(m => m.user_id === user_id) ? { ...c, online: false } : c
+                    ));
                     break;
                 }
                 case 'user_updated': {
                     const { user: uu } = msg.payload;
-                    if (uu.public_keys) cryptoManager.invalidateSessionKey(uu.id);
                     setChats(prev => prev.map(c => ({
                         ...c,
-                        members: c.members.map(m => m.user_id !== uu.id ? m : { ...m, display_name: uu.display_name, avatar_url: uu.avatar_url, public_keys: uu.public_keys }),
-                        name: !c.is_group && c.members.some(m => m.user_id === uu.id && m.user_id !== currentUserId) ? uu.display_name : c.name,
+                        members: c.members.map(m => m.user_id !== uu.id ? m : {
+                            ...m,
+                            display_name: uu.display_name,
+                            avatar_url: uu.avatar_url,
+                            public_keys: uu.public_keys,
+                        }),
+                        name: !c.is_group && c.members.some(m => m.user_id === uu.id && m.user_id !== currentUserId)
+                            ? uu.display_name : c.name,
                     })));
                     break;
                 }
-                case 'error': { console.error('[WS]', msg.payload.message); break; }
+                case 'error': {
+                    console.error('[WS]', msg.payload.message);
+                    break;
+                }
             }
         });
         return unsub;
     }, [user, currentUserId, loadChats]);
 
-    useEffect(() => { if (!user) return; const u = wsManager.onStatusChange(c => { if (c) loadChats(); }); return u; }, [user, loadChats]);
-    useEffect(() => { if (user) loadChats(); else { setChats([]); setSelectedId(null); } }, [user, loadChats]);
+    useEffect(() => {
+        if (!user) return;
+        const u = wsManager.onStatusChange(c => { if (c) loadChats(); });
+        return u;
+    }, [user, loadChats]);
+
+    useEffect(() => {
+        if (user) loadChats();
+        else { setChats([]); setSelectedId(null); }
+    }, [user, loadChats]);
+
     useEffect(() => {
         if (chats.length > 0 && selectedId) {
             if (chats.some(c => c.id === selectedId)) {
                 const ch = chats.find(c => c.id === selectedId);
                 if (ch && !ch.messagesLoaded) selectChat(selectedId);
-            } else { setSelectedId(null); saveSelectedId(null); }
+            } else {
+                setSelectedId(null);
+                saveSelectedId(null);
+            }
         }
     }, [chats.length]);
 
     return {
-        chats, selectedId, selectedChat: chats.find(c => c.id === selectedId) ?? null,
+        chats, selectedId,
+        selectedChat: chats.find(c => c.id === selectedId) ?? null,
         loadingChats, loadingMessages,
-        selectChat, sendMessage, sendVoiceMessage, editMessage, deleteMessage, createChat, loadChats,
+        selectChat, sendMessage, sendVoiceMessage, editMessage, deleteMessage,
+        createChat, loadChats, refreshChat,
     };
 }
 
@@ -5105,7 +5615,13 @@ export interface PublicKeyBundle {
 export interface EncryptedPayload {
     ciphertext: string;
     nonce: string;
-    sender_key_id: string;
+    sender_key_id?: string;
+}
+
+export interface EncryptedChatKey {
+    ephemeral_pub: string;
+    ciphertext: string;
+    nonce: string;
 }
 
 export interface AttachmentDto {
@@ -5145,6 +5661,8 @@ export interface ChatMemberDto {
     online: boolean;
     avatar_url?: string;
     public_keys?: PublicKeyBundle;
+    encrypted_chat_key?: EncryptedChatKey;
+    member_key_id?: string;
 }
 
 export interface ChatDto {
@@ -5245,7 +5763,6 @@ export interface ContextMenuItem {
     onClick: () => void;
 }
 
-// Legacy Chat type for compatibility
 export interface Chat {
     id: string;
     name: string;
@@ -5673,6 +6190,13 @@ CREATE INDEX idx_users_key_id ON users(key_id) WHERE key_id IS NOT NULL;
 
 
 ================================================================================
+FILE PATH: ./server/migrations/0005_chat_keys.sql
+================================================================================
+ALTER TABLE chat_members ADD COLUMN encrypted_chat_key JSONB;
+ALTER TABLE chat_members ADD COLUMN member_key_id VARCHAR(64);
+
+
+================================================================================
 FILE PATH: ./server/src/api/auth.rs
 ================================================================================
 use axum::{extract::State, Json};
@@ -5902,7 +6426,10 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use shared::{AttachmentDto, ChatDto, ChatMemberDto, MessageDto, PublicKeyBundle};
+use shared::{
+    AttachmentDto, ChatDto, ChatMemberDto, EncryptedChatKey, MessageDto, PublicKeyBundle,
+    UpdateChatKeysReq,
+};
 use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
@@ -5966,6 +6493,7 @@ pub async fn create(
     chat_dto(&state, chat_id).await.map(Json)
 }
 
+/// GET /api/chats
 pub async fn list(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -5989,6 +6517,7 @@ pub async fn list(
     Ok(Json(chats))
 }
 
+/// GET /api/chats/:chat_id
 pub async fn get(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -5996,6 +6525,42 @@ pub async fn get(
 ) -> Result<Json<ChatDto>, AppError> {
     ensure_member(&state, chat_id, auth.user_id).await?;
     chat_dto(&state, chat_id).await.map(Json)
+}
+
+/// PUT /api/chats/:chat_id/keys
+pub async fn update_keys(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    Json(req): Json<UpdateChatKeysReq>,
+) -> Result<Json<()>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    for (uid, enc_key) in req.encrypted_keys {
+        let enc_key_json =
+            serde_json::to_value(&enc_key).map_err(|e| AppError::Internal(format!("json: {e}")))?;
+
+        let user_key_id: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT key_id FROM users WHERE id = $1")
+                .bind(uid)
+                .fetch_optional(&state.db)
+                .await?;
+
+        let key_id = user_key_id.and_then(|r| r.0);
+
+        sqlx::query(
+            "UPDATE chat_members SET encrypted_chat_key = $1, member_key_id = $2
+             WHERE chat_id = $3 AND user_id = $4",
+        )
+        .bind(&enc_key_json)
+        .bind(&key_id)
+        .bind(chat_id)
+        .bind(uid)
+        .execute(&state.db)
+        .await?;
+    }
+
+    Ok(Json(()))
 }
 
 async fn ensure_member(state: &AppState, chat_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
@@ -6029,11 +6594,14 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         Option<String>,
         Option<String>,
         Option<String>,
+        Option<serde_json::Value>,
+        Option<String>,
     );
 
     let rows: Vec<MemberRow> = sqlx::query_as(
         "SELECT u.id, u.username, u.display_name, cm.role,
-                u.avatar_id, u.identity_key, u.signing_key, u.key_signature, u.key_id
+                u.avatar_id, u.identity_key, u.signing_key, u.key_signature, u.key_id,
+                cm.encrypted_chat_key, cm.member_key_id
          FROM chat_members cm JOIN users u ON u.id = cm.user_id
          WHERE cm.chat_id = $1",
     )
@@ -6042,7 +6610,20 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
     .await?;
 
     let mut members = Vec::new();
-    for (uid, uname, dname, role, avatar_id, identity_key, signing_key, key_sig, key_id) in &rows {
+    for (
+        uid,
+        uname,
+        dname,
+        role,
+        avatar_id,
+        identity_key,
+        signing_key,
+        key_sig,
+        key_id,
+        enc_chat_key_json,
+        member_key_id,
+    ) in &rows
+    {
         let avatar_url = avatar_id.map(|id| format!("/api/files/{}", id));
 
         let public_keys = if identity_key.is_some() {
@@ -6056,6 +6637,10 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
             None
         };
 
+        let encrypted_chat_key: Option<EncryptedChatKey> = enc_chat_key_json
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+
         members.push(ChatMemberDto {
             user_id: *uid,
             username: uname.clone(),
@@ -6064,6 +6649,8 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
             online: state.is_online(uid).await,
             avatar_url,
             public_keys,
+            encrypted_chat_key,
+            member_key_id: member_key_id.clone(),
         });
     }
 
@@ -6496,8 +7083,6 @@ impl FromRequestParts<AppState> for AuthUser {
 ================================================================================
 FILE PATH: ./server/src/api/profile.rs
 ================================================================================
-// server/src/api/profile.rs
-
 use axum::{
     body::Body,
     extract::{Multipart, Path, State},
@@ -6510,7 +7095,7 @@ use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
 
-const MAX_AVATAR_SIZE: usize = 5 * 1024 * 1024; // 5MB
+const MAX_AVATAR_SIZE: usize = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 /// PUT /api/users/me
@@ -6519,7 +7104,6 @@ pub async fn update_profile(
     auth: AuthUser,
     Json(req): Json<UpdateProfileReq>,
 ) -> Result<Json<UserDto>, AppError> {
-    // Обновляем display_name если передан
     if let Some(ref name) = req.display_name {
         if name.is_empty() || name.len() > 64 {
             return Err(AppError::BadRequest("display_name: 1-64 символов".into()));
@@ -6531,13 +7115,11 @@ pub async fn update_profile(
             .await?;
     }
 
-    // Обновляем публичные ключи если переданы
     if let Some(ref keys) = req.public_keys {
-        // Валидация ключей
         validate_public_keys(keys)?;
 
         sqlx::query(
-            "UPDATE users SET identity_key = $1, signing_key = $2, key_signature = $3, key_id = $4 WHERE id = $5"
+            "UPDATE users SET identity_key = $1, signing_key = $2, key_signature = $3, key_id = $4 WHERE id = $5",
         )
         .bind(&keys.identity_key)
         .bind(&keys.signing_key)
@@ -6548,8 +7130,13 @@ pub async fn update_profile(
         .await?;
     }
 
-    // Возвращаем обновлённый профиль
-    get_user_dto(&state, auth.user_id).await.map(Json)
+    let user = get_user_dto(&state, auth.user_id).await?;
+
+    if req.public_keys.is_some() || req.display_name.is_some() {
+        broadcast_user_update(&state, auth.user_id, user.clone()).await;
+    }
+
+    Ok(Json(user))
 }
 
 /// POST /api/users/me/avatar
@@ -6568,7 +7155,6 @@ pub async fn upload_avatar(
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        // Проверяем тип файла
         if !ALLOWED_AVATAR_TYPES.contains(&mime.as_str()) {
             return Err(AppError::BadRequest(
                 "Разрешены только изображения (JPEG, PNG, WebP, GIF)".into(),
@@ -6587,7 +7173,6 @@ pub async fn upload_avatar(
             return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
-        // Удаляем старую аватарку если есть
         let old_avatar: Option<(Uuid,)> =
             sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
                 .bind(auth.user_id)
@@ -6595,17 +7180,14 @@ pub async fn upload_avatar(
                 .await?;
 
         if let Some((old_id,)) = old_avatar {
-            // Удаляем файл
             let old_path = format!("{}/{}", state.config.upload_dir, old_id);
             let _ = tokio::fs::remove_file(&old_path).await;
-            // Удаляем запись
             sqlx::query("DELETE FROM attachments WHERE id = $1")
                 .bind(old_id)
                 .execute(&state.db)
                 .await?;
         }
 
-        // Создаём новую аватарку
         let att_id = Uuid::new_v4();
         let filename = format!("avatar_{}.{}", auth.user_id, get_extension(&mime));
         let path = format!("{}/{}", state.config.upload_dir, att_id);
@@ -6628,7 +7210,6 @@ pub async fn upload_avatar(
         .execute(&state.db)
         .await?;
 
-        // Обновляем avatar_id пользователя
         sqlx::query("UPDATE users SET avatar_id = $1 WHERE id = $2")
             .bind(att_id)
             .bind(auth.user_id)
@@ -6639,9 +7220,8 @@ pub async fn upload_avatar(
 
         tracing::info!(user_id = %auth.user_id, %att_id, "avatar uploaded");
 
-        // Уведомляем контакты об обновлении профиля
         let user = get_user_dto(&state, auth.user_id).await?;
-        broadcast_user_update(&state, auth.user_id, user.clone()).await;
+        broadcast_user_update(&state, auth.user_id, user).await;
 
         return Ok(Json(UpdateAvatarRes { avatar_url }));
     }
@@ -6662,17 +7242,14 @@ pub async fn delete_avatar(
         .await?;
 
     if let Some((avatar_id,)) = avatar {
-        // Удаляем файл
         let path = format!("{}/{}", state.config.upload_dir, avatar_id);
         let _ = tokio::fs::remove_file(&path).await;
 
-        // Удаляем запись аттачмента
         sqlx::query("DELETE FROM attachments WHERE id = $1")
             .bind(avatar_id)
             .execute(&state.db)
             .await?;
 
-        // Очищаем avatar_id пользователя
         sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
             .bind(auth.user_id)
             .execute(&state.db)
@@ -6705,7 +7282,7 @@ pub async fn get_avatar(
 
     Response::builder()
         .header(header::CONTENT_TYPE, mime)
-        .header(header::CACHE_CONTROL, "public, max-age=86400") // 24 часа кэш
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
         .body(Body::from(data))
         .map_err(|e| AppError::Internal(format!("response: {e}")))
 }
@@ -6725,35 +7302,35 @@ fn get_extension(mime: &str) -> &str {
 }
 
 fn validate_public_keys(keys: &PublicKeyBundle) -> Result<(), AppError> {
-    // Проверяем что все поля заполнены и валидный base64
     use base64::{engine::general_purpose::STANDARD, Engine};
 
     let identity = STANDARD
         .decode(&keys.identity_key)
-        .map_err(|_| AppError::BadRequest("Невалидный identity_key".into()))?;
+        .map_err(|_| AppError::BadRequest("Невалидный identity_key base64".into()))?;
 
-    let signing = STANDARD
-        .decode(&keys.signing_key)
-        .map_err(|_| AppError::BadRequest("Невалидный signing_key".into()))?;
-
-    STANDARD
-        .decode(&keys.signature)
-        .map_err(|_| AppError::BadRequest("Невалидная signature".into()))?;
-
-    // Проверяем длину ключей (X25519 = 32 байта, Ed25519 = 32 байта)
-    if identity.len() != 32 {
+    if identity.is_empty() || identity.len() > 200 {
         return Err(AppError::BadRequest(
-            "identity_key должен быть 32 байта".into(),
-        ));
-    }
-    if signing.len() != 32 {
-        return Err(AppError::BadRequest(
-            "signing_key должен быть 32 байта".into(),
+            "identity_key: невалидная длина".into(),
         ));
     }
 
-    if keys.key_id.len() > 64 {
-        return Err(AppError::BadRequest("key_id слишком длинный".into()));
+    if keys.signing_key != "NA" {
+        let signing = STANDARD
+            .decode(&keys.signing_key)
+            .map_err(|_| AppError::BadRequest("Невалидный signing_key base64".into()))?;
+        if signing.is_empty() || signing.len() > 200 {
+            return Err(AppError::BadRequest("signing_key: невалидная длина".into()));
+        }
+    }
+
+    if keys.signature != "NA" {
+        STANDARD
+            .decode(&keys.signature)
+            .map_err(|_| AppError::BadRequest("Невалидная signature base64".into()))?;
+    }
+
+    if keys.key_id.is_empty() || keys.key_id.len() > 64 {
+        return Err(AppError::BadRequest("key_id: 1-64 символов".into()));
     }
 
     Ok(())
@@ -6792,7 +7369,6 @@ pub async fn get_user_dto(state: &AppState, user_id: Uuid) -> Result<UserDto, Ap
 async fn broadcast_user_update(state: &AppState, user_id: Uuid, user: UserDto) {
     use shared::WsServerMsg;
 
-    // Находим всех контактов (участников общих чатов)
     let contacts: Vec<(Uuid,)> = sqlx::query_as(
         "SELECT DISTINCT cm2.user_id FROM chat_members cm1
          JOIN chat_members cm2 ON cm2.chat_id = cm1.chat_id AND cm2.user_id != $1
@@ -6912,29 +7488,24 @@ pub fn create_app(state: AppState) -> Router {
         ]);
 
     let api = Router::new()
-        // Auth
         .route("/auth/register", post(api::auth::register))
         .route("/auth/login", post(api::auth::login))
         .route("/auth/me", get(api::auth::me))
-        // Profile
         .route("/users/me", put(api::profile::update_profile))
         .route(
             "/users/me/avatar",
             post(api::profile::upload_avatar).delete(api::profile::delete_avatar),
         )
         .route("/users/:user_id/avatar", get(api::profile::get_avatar))
-        // Users
         .route("/users", get(api::users::search))
-        // Chats
         .route("/chats", get(api::chats::list).post(api::chats::create))
         .route("/chats/:chat_id", get(api::chats::get))
         .route("/chats/:chat_id/messages", get(api::messages::list))
-        // Invites
+        .route("/chats/:chat_id/keys", put(api::chats::update_keys))
         .route(
             "/invites",
             get(api::invites::list).post(api::invites::create),
         )
-        // Files
         .route("/upload", post(api::files::upload))
         .route("/files/:file_id", get(api::files::download));
 
@@ -7258,6 +7829,8 @@ pub struct ChatMember {
     pub user_id: Uuid,
     pub role: String,
     pub joined_at: DateTime<Utc>,
+    pub encrypted_chat_key: Option<serde_json::Value>,
+    pub member_key_id: Option<String>,
 }
 
 
@@ -7854,6 +8427,8 @@ chrono = { version = "0.4", features = ["serde"] }
 ================================================================================
 FILE PATH: ./shared/src/lib.rs
 ================================================================================
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -7866,7 +8441,15 @@ use uuid::Uuid;
 pub struct EncryptedPayload {
     pub ciphertext: String,
     pub nonce: String,
-    pub sender_key_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender_key_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EncryptedChatKey {
+    pub ephemeral_pub: String,
+    pub ciphertext: String,
+    pub nonce: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -8030,6 +8613,10 @@ pub struct ChatMemberDto {
     pub avatar_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_keys: Option<PublicKeyBundle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_chat_key: Option<EncryptedChatKey>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub member_key_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -8039,6 +8626,10 @@ pub struct InviteDto {
     pub expires_at: Option<DateTime<Utc>>,
     pub used: bool,
 }
+
+// ═══════════════════════════════════════════════════════════
+//  Request types
+// ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterReq {
@@ -8082,6 +8673,11 @@ pub struct UpdateProfileReq {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateAvatarRes {
     pub avatar_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateChatKeysReq {
+    pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
 }
 
 

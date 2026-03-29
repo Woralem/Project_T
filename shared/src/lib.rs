@@ -67,6 +67,37 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         message_id: Uuid,
     },
+    // ── Звонки ──────────────────────────────────────────────
+    CallOffer {
+        chat_id: Uuid,
+        call_id: Uuid,
+        sdp: String,
+        #[serde(default)]
+        encrypted: bool,
+    },
+    CallAnswer {
+        chat_id: Uuid,
+        call_id: Uuid,
+        sdp: String,
+        #[serde(default)]
+        encrypted: bool,
+    },
+    #[serde(rename = "call_ice")]
+    CallIce {
+        chat_id: Uuid,
+        call_id: Uuid,
+        candidate: String,
+        #[serde(default)]
+        encrypted: bool,
+    },
+    CallReject {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
+    CallHangup {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -119,6 +150,36 @@ pub enum WsServerMsg {
     },
     Error {
         message: String,
+    },
+    // ── Звонки ──────────────────────────────────────────────
+    CallIncoming {
+        chat_id: Uuid,
+        call_id: Uuid,
+        caller_id: Uuid,
+        caller_name: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    CallAccepted {
+        chat_id: Uuid,
+        call_id: Uuid,
+        sdp: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_ice")]
+    CallIce {
+        chat_id: Uuid,
+        call_id: Uuid,
+        candidate: String,
+        encrypted: bool,
+    },
+    CallRejected {
+        chat_id: Uuid,
+        call_id: Uuid,
+    },
+    CallEnded {
+        chat_id: Uuid,
+        call_id: Uuid,
     },
 }
 

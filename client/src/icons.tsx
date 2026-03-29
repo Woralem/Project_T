@@ -175,6 +175,30 @@ export const Icon = {
         </svg>
     ),
 
+    phoneOff: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45
+                     c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18
+                     2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67" />
+            <path d="M14.68 14.68a19.5 19.5 0 0 1-6-6l1.27-1.27a2 2 0 0 0
+                     .45-2.11 12.73 12.73 0 0 1-.7-2.81A2 2 0 0 0 7.92 2h-3a2 2 0 0
+                     0-2 2.18c.12.95.32 1.88.59 2.78" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+        </svg>
+    ),
+
+    micOff: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.5-.35 2.18" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+    ),
+
     x: (s = 20) => (
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

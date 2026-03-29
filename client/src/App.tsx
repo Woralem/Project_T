@@ -2,6 +2,7 @@ import React from 'react';
 import type { Tab, UserDto } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
+import { useCall } from './hooks/useCall';
 import { useToast } from './hooks/useToast';
 import { cryptoManager } from './crypto';
 import './App.css';
@@ -14,6 +15,8 @@ import { ChatView } from './components/chat/ChatView';
 import { EmptyState } from './components/chat/EmptyState';
 import { NewChatModal } from './components/chat/NewChatModal';
 import { CallsView } from './components/calls/CallsView';
+import { CallOverlay } from './components/calls/CallOverlay';
+import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
 
 function loadDark(): boolean {
@@ -38,6 +41,11 @@ export default function App() {
         editMessage, deleteMessage, createChat, refreshChat,
     } = useChats(user);
 
+    const {
+        callState, startCall, answerCall, rejectCall,
+        hangup, toggleMute, dismissCall,
+    } = useCall(user?.id || '', chats);
+
     React.useEffect(() => {
         cryptoManager.initialize().then(keys => {
             if (keys) console.log('[E2E] Keys loaded from storage');
@@ -53,13 +61,24 @@ export default function App() {
     }, []);
 
     const handleLogout = React.useCallback(() => {
+        if (callState.status !== 'idle' && callState.status !== 'ended') {
+            hangup();
+        }
         cryptoManager.clear();
         logout();
-    }, [logout]);
+    }, [logout, callState.status, hangup]);
 
     const handleUserUpdate = React.useCallback((updated: UserDto) => {
         setUser(updated);
     }, [setUser]);
+
+    const handleStartCall = React.useCallback((chatId: string) => {
+        if (callState.status !== 'idle') {
+            showToast('Вы уже в звонке', 'error');
+            return;
+        }
+        startCall(chatId);
+    }, [callState.status, startCall, showToast]);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -117,6 +136,7 @@ export default function App() {
                                 onDeleteMessage={deleteMessage}
                                 onEditMessage={editMessage}
                                 onRefreshChat={refreshChat}
+                                onStartCall={handleStartCall}
                                 showToast={showToast}
                             />
                         ) : (
@@ -137,12 +157,27 @@ export default function App() {
                 )}
             </div>
 
+            {/* Модальные окна и оверлеи — поверх всего */}
             <NewChatModal
                 open={newChatOpen}
                 onClose={() => setNewChatOpen(false)}
                 onCreate={createChat}
                 showToast={showToast}
             />
+
+            <IncomingCallModal
+                callState={callState}
+                onAccept={answerCall}
+                onReject={rejectCall}
+            />
+
+            <CallOverlay
+                callState={callState}
+                onHangup={hangup}
+                onToggleMute={toggleMute}
+                onDismiss={dismissCall}
+            />
+
             <ToastContainer toasts={toasts} />
         </div>
     );

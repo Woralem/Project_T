@@ -17,12 +17,13 @@ interface Props {
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
     onRefreshChat: (chatId: string) => void;
+    onStartCall: (chatId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, onRefreshChat, showToast,
+    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
@@ -93,6 +94,14 @@ export function ChatView({
         onRefreshChat(chat.id);
     }, [onRefreshChat, chat.id]);
 
+    const handleCall = useCallback(() => {
+        if (chat.is_group) {
+            showToast('Групповые звонки пока не поддерживаются', 'info');
+            return;
+        }
+        onStartCall(chat.id);
+    }, [chat.id, chat.is_group, onStartCall, showToast]);
+
     return (
         <section className="chat-view">
             <div className="chat-header">
@@ -106,7 +115,9 @@ export function ChatView({
                     </div>
                 </div>
                 <div className="chat-header-actions">
-                    <button className="icon-btn" title="Позвонить" onClick={() => showToast('Звонки будут доступны позже')}>{Icon.phone(20)}</button>
+                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>
+                        {Icon.phone(20)}
+                    </button>
                     <button className="icon-btn" title="Поиск">{Icon.search(20)}</button>
                 </div>
             </div>

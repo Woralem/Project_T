@@ -2000,3 +2000,321 @@ input {
     cursor: not-allowed;
     transform: none;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CALL OVERLAY (активный звонок)
+   ═══════════════════════════════════════════════════════════ */
+.call-overlay {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1500;
+    animation: slideDown .3s ease;
+}
+
+.call-overlay.call-ended {
+    opacity: 0.85;
+}
+
+.call-overlay-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(99, 102, 241, .15);
+    min-width: 340px;
+}
+
+.call-peer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.call-peer-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.call-peer-name {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.call-status-text {
+    font-size: 12px;
+    color: var(--text2);
+}
+
+.call-status-text.calling {
+    animation: callPulseText 1.5s ease infinite;
+}
+
+.call-status-text.connecting {
+    color: var(--accent);
+}
+
+.call-status-text.connected {
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+}
+
+.call-e2e-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--green);
+    background: rgba(34, 197, 94, .12);
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.call-controls {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.call-ctrl-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: none;
+    cursor: pointer;
+    transition: background .15s, transform .12s;
+}
+
+.call-ctrl-btn:hover {
+    background: var(--bg-hover);
+    transform: scale(1.06);
+}
+
+.call-ctrl-btn:active {
+    transform: scale(.94);
+}
+
+.call-ctrl-btn.active {
+    background: var(--red);
+    color: #fff;
+}
+
+.call-ctrl-btn.hangup {
+    background: var(--red);
+    color: #fff;
+}
+
+.call-ctrl-btn.hangup:hover {
+    background: #dc2626;
+}
+
+.call-ctrl-btn.dismiss {
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    color: var(--text3);
+}
+
+.call-pulse {
+    position: absolute;
+    inset: -4px;
+    border-radius: 24px;
+    border: 2px solid var(--accent);
+    animation: callPulseRing 2s ease infinite;
+    pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INCOMING CALL MODAL
+   ═══════════════════════════════════════════════════════════ */
+.incoming-call-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, .6);
+    display: grid;
+    place-items: center;
+    animation: fadeIn .2s ease;
+}
+
+.incoming-call-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 40px 48px;
+    border-radius: 28px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: scaleIn .25s ease;
+    text-align: center;
+}
+
+.incoming-call-pulse-ring {
+    position: absolute;
+    top: 26px;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 2px solid var(--green);
+    animation: callPulseRing 1.5s ease infinite;
+    pointer-events: none;
+}
+
+.incoming-call-name {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.incoming-call-label {
+    font-size: 14px;
+    color: var(--text2);
+    animation: callPulseText 1.5s ease infinite;
+}
+
+.incoming-call-e2e {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--green);
+    background: rgba(34, 197, 94, .1);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.incoming-call-actions {
+    display: flex;
+    gap: 32px;
+    margin-top: 12px;
+}
+
+.incoming-call-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+}
+
+.incoming-call-btn:hover {
+    transform: scale(1.08);
+}
+
+.incoming-call-btn:active {
+    transform: scale(.95);
+}
+
+.incoming-call-btn.accept {
+    background: var(--green);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, .35);
+}
+
+.incoming-call-btn.accept:hover {
+    box-shadow: 0 6px 28px rgba(34, 197, 94, .5);
+}
+
+.incoming-call-btn.reject {
+    background: var(--red);
+    box-shadow: 0 4px 20px rgba(239, 68, 68, .35);
+}
+
+.incoming-call-btn.reject:hover {
+    box-shadow: 0 6px 28px rgba(239, 68, 68, .5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALLS VIEW (вкладка информации)
+   ═══════════════════════════════════════════════════════════ */
+.calls-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 16px 24px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+}
+
+.calls-info-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text2);
+}
+
+.calls-info-icon {
+    display: flex;
+    color: var(--green);
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALL ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+@keyframes callPulseRing {
+    0% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0;
+        transform: scale(1.3);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.3);
+    }
+}
+
+@keyframes callPulseText {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
