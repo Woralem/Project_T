@@ -35,6 +35,13 @@ services:
       postgres:
         condition: service_healthy
 
+  coturn:
+    image: coturn/coturn:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+
 volumes:
   pgdata:
   uploads:

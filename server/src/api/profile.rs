@@ -88,21 +88,34 @@ pub async fn upload_avatar(
             return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
-        let old_avatar: Option<(Uuid,)> =
+        // ── Удаление старой аватарки (порядок: сначала убираем FK, потом удаляем) ──
+        let old_avatar: Option<(Option<Uuid>,)> =
             sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
                 .bind(auth.user_id)
                 .fetch_optional(&state.db)
                 .await?;
 
-        if let Some((old_id,)) = old_avatar {
-            let old_path = format!("{}/{}", state.config.upload_dir, old_id);
-            let _ = tokio::fs::remove_file(&old_path).await;
+        let old_avatar_id = old_avatar.and_then(|r| r.0);
+
+        if let Some(old_id) = old_avatar_id {
+            // 1) Сначала убираем ссылку из users
+            sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
+                .bind(auth.user_id)
+                .execute(&state.db)
+                .await?;
+
+            // 2) Теперь безопасно удаляем attachment
             sqlx::query("DELETE FROM attachments WHERE id = $1")
                 .bind(old_id)
                 .execute(&state.db)
                 .await?;
+
+            // 3) Удаляем файл с диска
+            let old_path = format!("{}/{}", state.config.upload_dir, old_id);
+            let _ = tokio::fs::remove_file(&old_path).await;
         }
 
+        // ── Загрузка новой аватарки ──
         let att_id = Uuid::new_v4();
         let filename = format!("avatar_{}.{}", auth.user_id, get_extension(&mime));
         let path = format!("{}/{}", state.config.upload_dir, att_id);
@@ -151,24 +164,33 @@ pub async fn delete_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<()>, AppError> {
-    let avatar: Option<(Uuid,)> = sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
-        .bind(auth.user_id)
-        .fetch_optional(&state.db)
-        .await?;
-
-    if let Some((avatar_id,)) = avatar {
-        let path = format!("{}/{}", state.config.upload_dir, avatar_id);
-        let _ = tokio::fs::remove_file(&path).await;
-
-        sqlx::query("DELETE FROM attachments WHERE id = $1")
-            .bind(avatar_id)
-            .execute(&state.db)
+    let avatar: Option<(Option<Uuid>,)> =
+        sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
             .await?;
 
+    let avatar_id = avatar.and_then(|r| r.0);
+
+    if let Some(aid) = avatar_id {
+        // 1) Сначала убираем ссылку
         sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
+
+        // 2) Потом удаляем attachment
+        sqlx::query("DELETE FROM attachments WHERE id = $1")
+            .bind(aid)
+            .execute(&state.db)
+            .await?;
+
+        // 3) Удаляем файл
+        let path = format!("{}/{}", state.config.upload_dir, aid);
+        let _ = tokio::fs::remove_file(&path).await;
+
+        let user = get_user_dto(&state, auth.user_id).await?;
+        broadcast_user_update(&state, auth.user_id, user).await;
     }
 
     Ok(Json(()))
