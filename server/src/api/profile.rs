@@ -80,7 +80,8 @@ pub async fn update_profile(
     Json(req): Json<UpdateProfileReq>,
 ) -> Result<Json<UserDto>, AppError> {
     if let Some(ref name) = req.display_name {
-        if name.is_empty() || name.len() > 64 {
+        let char_count = name.chars().count();
+        if char_count == 0 || char_count > 64 {
             return Err(AppError::BadRequest("display_name: 1-64 символов".into()));
         }
         sqlx::query("UPDATE users SET display_name = $1 WHERE id = $2")
@@ -91,7 +92,7 @@ pub async fn update_profile(
     }
 
     if let Some(ref bio) = req.bio {
-        if bio.len() > 200 {
+        if bio.chars().count() > 200 {
             return Err(AppError::BadRequest("bio: максимум 200 символов".into()));
         }
         sqlx::query("UPDATE users SET bio = $1 WHERE id = $2")

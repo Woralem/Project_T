@@ -16,13 +16,15 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterReq>,
 ) -> Result<Json<AuthRes>, AppError> {
-    if req.username.len() < 3 || req.username.len() > 32 {
+    let un_len = req.username.chars().count();
+    if un_len < 3 || un_len > 32 {
         return Err(AppError::BadRequest("username: 3‑32 символов".into()));
     }
-    if req.password.len() < 6 {
+    if req.password.chars().count() < 6 {
         return Err(AppError::BadRequest("пароль: минимум 6 символов".into()));
     }
-    if req.display_name.is_empty() || req.display_name.len() > 64 {
+    let dn_len = req.display_name.chars().count();
+    if dn_len == 0 || dn_len > 64 {
         return Err(AppError::BadRequest("display_name: 1‑64 символов".into()));
     }
 

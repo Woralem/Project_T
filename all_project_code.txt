@@ -40,11 +40,12 @@ default = []
 ================================================================================
 FILE PATH: ./client/src/api.ts
 ================================================================================
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey } from './types';
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey, UserProfileDto, AvatarHistoryDto } from './types';
 
 const SERVER_URL = 'http://163.5.180.138:3000';
 const API_URL = `${SERVER_URL}/api`;
 export const WS_URL = 'ws://163.5.180.138:3000/ws';
+export { SERVER_URL };
 
 let token: string | null = localStorage.getItem('auth_token');
 
@@ -136,12 +137,17 @@ export function logout() {
 
 export async function updateProfile(data: {
     display_name?: string;
+    bio?: string;
     public_keys?: PublicKeyBundle;
 }): Promise<UserDto> {
     return request<UserDto>('/users/me', {
         method: 'PUT',
         body: JSON.stringify(data),
     });
+}
+
+export async function getUserProfile(userId: string): Promise<UserProfileDto> {
+    return request<UserProfileDto>(`/users/${userId}/profile`);
 }
 
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
@@ -169,6 +175,16 @@ export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> 
 
 export async function deleteAvatar(): Promise<void> {
     await request<void>('/users/me/avatar', { method: 'DELETE' });
+}
+
+export async function deleteAvatarHistory(avatarId: string): Promise<void> {
+    await request<void>(`/users/me/avatars/${avatarId}`, { method: 'DELETE' });
+}
+
+export async function setAvatarFromHistory(avatarId: string): Promise<{ avatar_url: string }> {
+    return request<{ avatar_url: string }>(`/users/me/avatars/${avatarId}/set-current`, {
+        method: 'POST',
+    });
 }
 
 export function getAvatarUrl(userId: string): string {
@@ -3048,6 +3064,509 @@ input {
     position: relative;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   PROFILE MODAL
+   ═══════════════════════════════════════════════════════════ */
+.profile-modal {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 28px 24px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: scaleIn .2s ease;
+}
+
+.profile-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    transition: background .12s, color .12s;
+}
+
+.profile-modal-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.profile-modal-loading,
+.profile-modal-error {
+    text-align: center;
+    padding: 40px 16px;
+    color: var(--text3);
+    font-size: 14px;
+}
+
+.profile-modal-error {
+    color: var(--red);
+}
+
+/* ── Avatar Section ─────────────────────────────────────── */
+.profile-avatar-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.profile-avatar-wrap {
+    position: relative;
+}
+
+.profile-avatar-wrap.clickable {
+    cursor: pointer;
+}
+
+.profile-avatar-wrap.clickable:hover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .15);
+    transition: background .15s;
+}
+
+.profile-avatar-count {
+    position: absolute;
+    bottom: 2px;
+    right: -4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Name Section ───────────────────────────────────────── */
+.profile-name-section {
+    text-align: center;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.profile-display-name {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.profile-username {
+    font-size: 14px;
+    color: var(--text2);
+}
+
+.profile-online-status {
+    font-size: 12px;
+    color: var(--text3);
+}
+
+.profile-online-status.online {
+    color: var(--green);
+}
+
+/* ── Info Sections ──────────────────────────────────────── */
+.profile-info-section {
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+}
+
+.profile-info-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text3);
+    margin-bottom: 4px;
+}
+
+.profile-info-value {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.profile-e2e-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.profile-key-id {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text3);
+}
+
+/* ── Avatar Thumbs ──────────────────────────────────────── */
+.profile-avatars-section {
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+}
+
+.profile-avatar-thumbs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.profile-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s, transform .1s;
+}
+
+.profile-thumb:hover {
+    transform: scale(1.06);
+}
+
+.profile-thumb.current {
+    border-color: var(--accent);
+}
+
+.profile-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* ── Actions ────────────────────────────────────────────── */
+.profile-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.profile-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--bg-surface);
+    color: var(--text);
+    transition: background .15s, transform .1s;
+}
+
+.profile-action-btn:hover {
+    background: var(--bg-hover);
+    transform: scale(1.02);
+}
+
+.profile-action-btn.primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.profile-action-btn.primary:hover {
+    background: var(--accent-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AVATAR GALLERY
+   ═══════════════════════════════════════════════════════════ */
+.avatar-gallery-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    background: rgba(0, 0, 0, .85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn .2s ease;
+}
+
+.avatar-gallery-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar-gallery-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s;
+}
+
+.avatar-gallery-close:hover {
+    background: rgba(255, 255, 255, .25);
+}
+
+.avatar-gallery-counter {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 4px 14px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .5);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.avatar-gallery-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .1);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s, transform .12s;
+}
+
+.avatar-gallery-nav:hover {
+    background: rgba(255, 255, 255, .2);
+    transform: translateY(-50%) scale(1.08);
+}
+
+.avatar-gallery-nav.prev {
+    left: 16px;
+}
+
+.avatar-gallery-nav.next {
+    right: 16px;
+}
+
+.avatar-gallery-image-wrap {
+    max-width: 80vw;
+    max-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar-gallery-image {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: 12px;
+    object-fit: contain;
+    animation: scaleIn .2s ease;
+}
+
+.avatar-gallery-error {
+    color: rgba(255, 255, 255, .5);
+    font-size: 16px;
+}
+
+.avatar-gallery-date {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 16px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .5);
+    color: rgba(255, 255, 255, .8);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS: BIO FIELD
+   ═══════════════════════════════════════════════════════════ */
+.s-bio-field {
+    margin-top: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+}
+
+.s-bio-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    margin-bottom: 6px;
+    display: block;
+}
+
+.s-bio-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid transparent;
+    resize: vertical;
+    min-height: 60px;
+    max-height: 120px;
+    transition: border .2s, background .2s;
+}
+
+.s-bio-input::placeholder {
+    color: var(--text3);
+}
+
+.s-bio-input:focus {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+    outline: none;
+}
+
+.s-bio-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.s-bio-counter {
+    font-size: 11px;
+    color: var(--text3);
+}
+
+.s-bio-save {
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+}
+
+.s-bio-save:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.s-bio-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS: AVATAR HISTORY
+   ═══════════════════════════════════════════════════════════ */
+.s-avatar-history {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.s-avatar-item {
+    position: relative;
+    width: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.s-avatar-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    object-fit: cover;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s, transform .1s;
+}
+
+.s-avatar-item.current .s-avatar-thumb {
+    border-color: var(--accent);
+}
+
+.s-avatar-thumb:hover {
+    transform: scale(1.05);
+}
+
+.s-avatar-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.s-avatar-action-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: var(--bg-surface);
+    border: none;
+    cursor: pointer;
+    transition: color .12s, background .12s;
+}
+
+.s-avatar-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent);
+}
+
+.s-avatar-action-btn.danger:hover {
+    color: var(--red);
+    background: rgba(239, 68, 68, .1);
+}
+
+.s-avatar-current-badge {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLICKABLE AUTHOR NAME
+   ═══════════════════════════════════════════════════════════ */
+.clickable-author {
+    cursor: pointer;
+    transition: opacity .15s;
+}
+
+.clickable-author:hover {
+    opacity: 0.75;
+    text-decoration: underline;
+}
+
 
 ================================================================================
 FILE PATH: ./client/src/app.rs
@@ -3092,6 +3611,7 @@ import { CallsView } from './components/calls/CallsView';
 import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
+import { ProfileModal } from './components/ui/ProfileModal';
 
 function loadDark(): boolean {
     try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; }
@@ -3109,55 +3629,37 @@ export default function App() {
     const [search, setSearch] = React.useState('');
     const [newChatOpen, setNewChatOpen] = React.useState(false);
     const [notifications, setNotifications] = React.useState<NotificationData[]>([]);
+    const [profileUserId, setProfileUserId] = React.useState<string | null>(null);
     const { toasts, showToast } = useToast();
 
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
-
-    // ── Инициализация уведомлений ─────────────────────────
 
     React.useEffect(() => {
         if (!user) return;
         initNotifications();
     }, [user]);
 
-    // ── Ref для selectChat ───────────────────────────────
-
     const selectChatRef = React.useRef<(id: string) => void>(() => { });
-
-    // ── Dismiss notification ─────────────────────────────
 
     const dismissNotification = React.useCallback((id: string) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
     }, []);
 
-    // ── Клик по уведомлению ──────────────────────────────
-
     const handleNotifClick = React.useCallback((chatId: string) => {
         setTab('chats');
         selectChatRef.current(chatId);
-        // Удаляем все уведомления этого чата
         setNotifications(prev => prev.filter(n => n.chatId !== chatId));
     }, []);
 
-    // ── Обработчик нового сообщения ──────────────────────
-
     const handleNewMessage = React.useCallback((data: NotificationData) => {
-        // 1. ВСЕГДА звук
         playNotificationSound();
-
-        // 2. ВСЕГДА in-app уведомление (плашка в правом нижнем углу)
         setNotifications(prev => {
             const next = [...prev, data];
-            // Максимум 4, убираем старые
             return next.slice(-MAX_NOTIFICATIONS);
         });
-
-        // Автоудаление через 5 сек
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== data.id));
         }, NOTIFICATION_DURATION);
-
-        // 3. Системное уведомление (если окно не в фокусе)
         if (document.hidden || !document.hasFocus()) {
             const title = data.isGroup ? data.chatName : data.senderName;
             const body = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
@@ -3169,8 +3671,6 @@ export default function App() {
             );
         }
     }, [handleNotifClick]);
-
-    // ── Хуки ─────────────────────────────────────────────
 
     const {
         chats, selectedId, selectedChat,
@@ -3187,8 +3687,6 @@ export default function App() {
         toggleMediaPanel, shareMedia, removeMedia, controlMedia,
         setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
     } = useCall(user?.id || '', chats);
-
-    // ── Уведомление о звонке ─────────────────────────────
 
     React.useEffect(() => {
         if (callState.status === 'ringing' && callState.peerName) {
@@ -3225,6 +3723,44 @@ export default function App() {
         }
         startCall(chatId);
     }, [callState.status, startCall, showToast]);
+
+    // ── Profile handlers ─────────────────────────────────
+
+    const handleOpenProfile = React.useCallback((userId: string) => {
+        setProfileUserId(userId);
+    }, []);
+
+    const handleProfileMessage = React.useCallback(async (userId: string) => {
+        setProfileUserId(null);
+        setTab('chats');
+
+        // Ищем существующий DM
+        const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
+        if (dm) {
+            selectChat(dm.id);
+        } else {
+            try {
+                await createChat([userId], false);
+            } catch (e: any) {
+                showToast(e.message || 'Ошибка создания чата', 'error');
+            }
+        }
+    }, [chats, selectChat, createChat, showToast]);
+
+    const handleProfileCall = React.useCallback((userId: string) => {
+        setProfileUserId(null);
+        const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
+        if (dm) {
+            handleStartCall(dm.id);
+        } else {
+            showToast('Сначала начните чат с пользователем', 'info');
+        }
+    }, [chats, handleStartCall, showToast]);
+
+    const handleProfileEdit = React.useCallback(() => {
+        setProfileUserId(null);
+        setTab('settings');
+    }, []);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -3269,6 +3805,7 @@ export default function App() {
                                 onSendMessage={sendMessage} onSendVoice={sendVoiceMessage}
                                 onDeleteMessage={deleteMessage} onEditMessage={editMessage}
                                 onRefreshChat={refreshChat} onStartCall={handleStartCall}
+                                onOpenProfile={handleOpenProfile}
                                 showToast={showToast}
                             />
                         ) : (
@@ -3306,7 +3843,18 @@ export default function App() {
                 showToast={showToast}
             />
 
-            {/* In-app уведомления — ВСЕГДА видны */}
+            {/* Profile Modal */}
+            {profileUserId && (
+                <ProfileModal
+                    userId={profileUserId}
+                    currentUserId={user.id}
+                    onClose={() => setProfileUserId(null)}
+                    onMessage={handleProfileMessage}
+                    onCall={handleProfileCall}
+                    onEdit={handleProfileEdit}
+                />
+            )}
+
             <NotificationContainer
                 notifications={notifications}
                 onClickNotification={handleNotifClick}
@@ -4467,12 +5015,13 @@ interface Props {
     onEditMessage: (msgId: string, newText: string) => void;
     onRefreshChat: (chatId: string) => void;
     onStartCall: (chatId: string) => void;
+    onOpenProfile?: (userId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, showToast,
+    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, onOpenProfile, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
@@ -4482,6 +5031,14 @@ export function ChatView({
     const getChatAvatar = (): string | undefined => {
         if (chat.is_group) return undefined;
         return chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
+    };
+
+    const handleHeaderAvatarClick = () => {
+        if (!onOpenProfile) return;
+        if (!chat.is_group) {
+            const other = chat.members.find(m => m.user_id !== currentUserId);
+            if (other) onOpenProfile(other.user_id);
+        }
     };
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
@@ -4551,10 +5108,14 @@ export function ChatView({
         onStartCall(chat.id);
     }, [chat.id, chat.is_group, onStartCall, showToast]);
 
+    const handleAuthorClick = useCallback((userId: string) => {
+        if (onOpenProfile) onOpenProfile(userId);
+    }, [onOpenProfile]);
+
     return (
         <section className="chat-view">
             <div className="chat-header">
-                <div className="chat-header-left">
+                <div className="chat-header-left" style={{ cursor: !chat.is_group ? 'pointer' : undefined }} onClick={handleHeaderAvatarClick}>
                     <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar()} />
                     <div className="chat-header-info">
                         <h3>{chat.name}</h3>
@@ -4595,6 +5156,7 @@ export function ChatView({
                                 isGroup={chat.is_group}
                                 chatId={chat.id}
                                 onContextMenu={e => handleContextMenu(e, msg)}
+                                onClickAuthor={handleAuthorClick}
                             />
                         );
                     })}
@@ -4825,9 +5387,10 @@ interface Props {
     isGroup: boolean;
     chatId: string;
     onContextMenu: (e: React.MouseEvent) => void;
+    onClickAuthor?: (userId: string) => void;
 }
 
-export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu }: Props) {
+export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu, onClickAuthor }: Props) {
     const showAuthor = isGroup && !message.own && isFirst;
     const isPending = message.status === 'pending';
     const isVoice = message.attachment?.mime_type?.startsWith('audio/') || message.attachment?.mime_type === 'application/octet-stream';
@@ -4838,9 +5401,22 @@ export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu
         message.content !== '[Зашифрованное сообщение]' &&
         message.content !== '🔒 Зашифровано';
 
+    const handleAuthorClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onClickAuthor) onClickAuthor(message.sender_id);
+    };
+
     return (
         <div className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`} onContextMenu={onContextMenu}>
-            {showAuthor && <span className="msg-author" style={{ color: getAvatarColor(message.sender_name) }}>{message.sender_name}</span>}
+            {showAuthor && (
+                <span
+                    className="msg-author clickable-author"
+                    style={{ color: getAvatarColor(message.sender_name) }}
+                    onClick={handleAuthorClick}
+                >
+                    {message.sender_name}
+                </span>
+            )}
             <div className={`msg-bubble ${isVoice && !hasText ? 'voice-bubble' : ''}`}>
                 {hasText && <span className="msg-text">{message.content}</span>}
                 {isVoice && message.attachment && (
@@ -5063,11 +5639,13 @@ export function NavRail({ tab, onTab, darkMode, onToggleTheme, onLogout }: Props
 ================================================================================
 FILE PATH: ./client/src/components/settings/SettingsView.tsx
 ================================================================================
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Icon } from '../../icons';
 import { Avatar } from '../ui/Avatar';
+import { AvatarGallery } from '../ui/AvatarGallery';
 import * as api from '../../api';
-import type { UserDto } from '../../types';
+import { SERVER_URL } from '../../api';
+import type { UserDto, AvatarHistoryDto } from '../../types';
 import { cryptoManager } from '../../crypto';
 import { isNotificationEnabled, requestNotificationPermission, sendTestNotification } from '../../notifications';
 
@@ -5079,6 +5657,11 @@ interface Props {
     onUserUpdate?: (user: UserDto) => void;
 }
 
+function fullUrl(url: string): string {
+    if (url.startsWith('http')) return url;
+    return `${SERVER_URL}${url}`;
+}
+
 export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserUpdate }: Props) {
     const [inviteCode, setInviteCode] = useState<string | null>(null);
     const [creatingInvite, setCreatingInvite] = useState(false);
@@ -5087,23 +5670,141 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // ── Bio ──────────────────────────────────────────────
+    const [bio, setBio] = useState(user?.bio || '');
+    const [bioChanged, setBioChanged] = useState(false);
+    const [savingBio, setSavingBio] = useState(false);
+
+    // ── Avatar History ──────────────────────────────────
+    const [avatarHistory, setAvatarHistory] = useState<AvatarHistoryDto[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    const [galleryOpen, setGalleryOpen] = useState(false);
+    const [galleryIndex, setGalleryIndex] = useState(0);
+
+    // ── Notifications ───────────────────────────────────
+    const [isNotifEnabled, setIsNotifEnabled] = useState(() => isNotificationEnabled());
+
+    // ── Загрузка профиля при монтировании ───────────────
+    const fetchProfile = useCallback(async () => {
+        if (!user) return;
+        setLoadingHistory(true);
+        try {
+            const profile = await api.getUserProfile(user.id);
+            setAvatarHistory(profile.avatars);
+            setBio(profile.bio);
+            setBioChanged(false);
+        } catch (e) {
+            console.warn('Failed to load profile:', e);
+        } finally {
+            setLoadingHistory(false);
+        }
+    }, [user?.id]);
+
+    useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+    // ── Сохранение Bio ──────────────────────────────────
+    const handleSaveBio = async () => {
+        if (!bioChanged) return;
+        setSavingBio(true);
+        try {
+            const updated = await api.updateProfile({ bio });
+            setBioChanged(false);
+            showToast('Био обновлено', 'success');
+            if (onUserUpdate) onUserUpdate(updated);
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка', 'error');
+        } finally {
+            setSavingBio(false);
+        }
+    };
+
+    // ── Аватарка: загрузка ──────────────────────────────
+    const handleAvatarClick = () => { fileInputRef.current?.click(); };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { showToast('Выберите изображение', 'error'); return; }
+        if (file.size > 5 * 1024 * 1024) { showToast('Файл слишком большой (макс 5MB)', 'error'); return; }
+
+        setUploadingAvatar(true);
+        try {
+            const result = await api.uploadAvatar(file);
+            showToast('Аватарка обновлена!', 'success');
+            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: result.avatar_url });
+            await fetchProfile();
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка загрузки', 'error');
+        } finally {
+            setUploadingAvatar(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    // ── Аватарка: снять текущую ─────────────────────────
+    const handleDeleteAvatar = async () => {
+        if (!user?.avatar_url) return;
+        try {
+            await api.deleteAvatar();
+            showToast('Аватарка снята', 'success');
+            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: undefined });
+            await fetchProfile();
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка', 'error');
+        }
+    };
+
+    // ── Аватарка: удалить из истории ─────────────────────
+    const handleDeleteFromHistory = async (avatarId: string) => {
+        try {
+            await api.deleteAvatarHistory(avatarId);
+            showToast('Удалено из истории', 'success');
+            await fetchProfile();
+            // Если удалили текущую — обновляем user
+            const entry = avatarHistory.find(a => a.id === avatarId);
+            if (entry?.is_current && user && onUserUpdate) {
+                onUserUpdate({ ...user, avatar_url: undefined });
+            }
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка', 'error');
+        }
+    };
+
+    // ── Аватарка: поставить из истории ───────────────────
+    const handleSetFromHistory = async (avatarId: string) => {
+        try {
+            const result = await api.setAvatarFromHistory(avatarId);
+            showToast('Аватарка установлена!', 'success');
+            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: result.avatar_url });
+            await fetchProfile();
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка', 'error');
+        }
+    };
+
+    // ── Галерея ─────────────────────────────────────────
+    const openGallery = (index: number) => {
+        setGalleryIndex(index);
+        setGalleryOpen(true);
+    };
+
+    const galleryUrls = avatarHistory.map(a => fullUrl(a.url));
+    const galleryDates = avatarHistory.map(a => a.set_at);
+
+    // ── Уведомления ─────────────────────────────────────
     const handleTestNotif = async () => {
         await sendTestNotification();
         showToast('Тестовое уведомление отправлено', 'info');
     };
 
-    const [isNotifEnabled, setIsNotifEnabled] = useState(() => isNotificationEnabled());
-
     const handleEnableNotifs = async () => {
         const granted = await requestNotificationPermission();
         setIsNotifEnabled(granted);
-        if (granted) {
-            showToast('Уведомления включены!', 'success');
-        } else {
-            showToast('Браузер заблокировал уведомления. Разрешите в настройках.', 'error');
-        }
+        if (granted) showToast('Уведомления включены!', 'success');
+        else showToast('Браузер заблокировал уведомления.', 'error');
     };
 
+    // ── Инвайты ─────────────────────────────────────────
     const handleCreateInvite = async () => {
         setCreatingInvite(true);
         try {
@@ -5111,105 +5812,40 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
             setInviteCode(invite.code);
             showToast('Инвайт-код создан!', 'success');
         } catch (e: any) {
-            showToast(e.message || 'Ошибка создания инвайта', 'error');
-        } finally {
-            setCreatingInvite(false);
-        }
+            showToast(e.message || 'Ошибка', 'error');
+        } finally { setCreatingInvite(false); }
     };
 
     const copyInvite = () => {
         if (inviteCode) {
             navigator.clipboard.writeText(inviteCode);
-            showToast('Код скопирован в буфер обмена', 'success');
+            showToast('Код скопирован', 'success');
         }
     };
 
-    const handleAvatarClick = () => {
-        fileInputRef.current?.click();
-    };
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (!file.type.startsWith('image/')) {
-            showToast('Выберите изображение', 'error');
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            showToast('Файл слишком большой (макс 5MB)', 'error');
-            return;
-        }
-
-        setUploadingAvatar(true);
-        try {
-            const result = await api.uploadAvatar(file);
-            showToast('Аватарка обновлена!', 'success');
-            if (user && onUserUpdate) {
-                onUserUpdate({ ...user, avatar_url: result.avatar_url });
-            }
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка загрузки аватарки', 'error');
-        } finally {
-            setUploadingAvatar(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
-    const handleDeleteAvatar = async () => {
-        if (!user?.avatar_url) return;
-        try {
-            await api.deleteAvatar();
-            showToast('Аватарка удалена', 'success');
-            if (user && onUserUpdate) {
-                onUserUpdate({ ...user, avatar_url: undefined });
-            }
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка удаления', 'error');
-        }
-    };
-
+    // ── E2E ─────────────────────────────────────────────
     const handleSetupE2E = async () => {
         setSettingUpE2E(true);
         try {
             const publicKeys = await cryptoManager.generateKeys();
-
-            const updatedUser = await api.updateProfile({
-                public_keys: publicKeys,
-            });
-
+            const updatedUser = await api.updateProfile({ public_keys: publicKeys });
             setE2eEnabled(true);
-            showToast('E2E шифрование настроено! Откройте чаты чтобы включить шифрование.', 'success');
-
-            if (onUserUpdate) {
-                onUserUpdate(updatedUser);
-            }
+            showToast('E2E шифрование настроено!', 'success');
+            if (onUserUpdate) onUserUpdate(updatedUser);
         } catch (e: any) {
-            showToast(e.message || 'Ошибка настройки E2E', 'error');
-            console.error('[E2E] Setup failed:', e);
-        } finally {
-            setSettingUpE2E(false);
-        }
+            showToast(e.message || 'Ошибка', 'error');
+        } finally { setSettingUpE2E(false); }
     };
 
     const handleResetE2E = async () => {
-        if (!confirm('Сбросить ключи шифрования?\n\nВы потеряете доступ к зашифрованным чатам до тех пор, пока собеседники не обновят ключи.')) {
-            return;
-        }
-
+        if (!confirm('Сбросить ключи шифрования?')) return;
         try {
             const publicKeys = await cryptoManager.generateKeys();
             const updatedUser = await api.updateProfile({ public_keys: publicKeys });
-
             setE2eEnabled(true);
-            showToast('Ключи обновлены. Собеседники увидят уведомление.', 'success');
-
-            if (onUserUpdate) {
-                onUserUpdate(updatedUser);
-            }
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        }
+            showToast('Ключи обновлены.', 'success');
+            if (onUserUpdate) onUserUpdate(updatedUser);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
     const keyId = cryptoManager.getKeyId();
@@ -5219,45 +5855,85 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
             <div className="settings-inner">
                 <h2 className="settings-title">Настройки</h2>
 
+                {/* ── Профиль ──────────────────────────────── */}
                 <div className="s-group">
                     <div className="s-group-label">Профиль</div>
                     <div className="s-profile">
                         <div className="avatar-edit-wrap" onClick={handleAvatarClick}>
-                            <Avatar
-                                name={user?.display_name || 'User'}
-                                size={72}
-                                avatarUrl={user?.avatar_url}
-                            />
+                            <Avatar name={user?.display_name || 'User'} size={72} avatarUrl={user?.avatar_url} />
                             <div className="avatar-edit-overlay">
-                                {uploadingAvatar ? (
-                                    <span className="avatar-loading">…</span>
-                                ) : (
-                                    Icon.camera(24)
-                                )}
+                                {uploadingAvatar ? <span className="avatar-loading">…</span> : Icon.camera(24)}
                             </div>
                         </div>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp,image/gif"
-                            style={{ display: 'none' }}
-                            onChange={handleFileChange}
-                        />
+                        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+                            style={{ display: 'none' }} onChange={handleFileChange} />
                         <div className="profile-info">
                             <strong>{user?.display_name || 'User'}</strong>
                             <span className="s-sub">@{user?.username || 'username'}</span>
                             {user?.avatar_url && (
                                 <button className="avatar-delete-btn" onClick={handleDeleteAvatar}>
-                                    Удалить фото
+                                    Снять аватарку
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Bio */}
+                    <div className="s-bio-field">
+                        <label className="s-bio-label">О себе</label>
+                        <textarea
+                            className="s-bio-input"
+                            placeholder="Расскажите о себе…"
+                            value={bio}
+                            maxLength={200}
+                            rows={3}
+                            onChange={e => { setBio(e.target.value); setBioChanged(true); }}
+                        />
+                        <div className="s-bio-footer">
+                            <span className="s-bio-counter">{bio.length}/200</span>
+                            {bioChanged && (
+                                <button className="s-bio-save" onClick={handleSaveBio} disabled={savingBio}>
+                                    {savingBio ? 'Сохранение…' : 'Сохранить'}
                                 </button>
                             )}
                         </div>
                     </div>
                 </div>
 
+                {/* ── История аватарок ─────────────────────── */}
+                {avatarHistory.length > 0 && (
+                    <div className="s-group">
+                        <div className="s-group-label">История аватарок ({avatarHistory.length})</div>
+                        <div className="s-avatar-history">
+                            {avatarHistory.map((a, i) => (
+                                <div key={a.id} className={`s-avatar-item ${a.is_current ? 'current' : ''}`}>
+                                    <img
+                                        src={fullUrl(a.url)}
+                                        alt=""
+                                        className="s-avatar-thumb"
+                                        onClick={() => openGallery(i)}
+                                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                    <div className="s-avatar-actions">
+                                        {!a.is_current && (
+                                            <button className="s-avatar-action-btn" onClick={() => handleSetFromHistory(a.id)} title="Установить">
+                                                {Icon.check(14)}
+                                            </button>
+                                        )}
+                                        <button className="s-avatar-action-btn danger" onClick={() => handleDeleteFromHistory(a.id)} title="Удалить">
+                                            {Icon.trash(14)}
+                                        </button>
+                                    </div>
+                                    {a.is_current && <span className="s-avatar-current-badge">Текущая</span>}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── E2E ──────────────────────────────────── */}
                 <div className="s-group">
                     <div className="s-group-label">Сквозное шифрование (E2E)</div>
-
                     {e2eEnabled ? (
                         <div className="e2e-status-card">
                             <div className="e2e-status-header">
@@ -5265,116 +5941,98 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                             </div>
                             {keyId && (
                                 <div className="e2e-key-row">
-                                    <span className="e2e-key-label">Отпечаток ключа:</span>
+                                    <span className="e2e-key-label">Отпечаток:</span>
                                     <code className="e2e-key-value">{keyId}</code>
                                 </div>
                             )}
-                            <p className="e2e-hint">
-                                Каждый чат шифруется своим ключом. Откройте чат для автоматической настройки шифрования. Если собеседник сменит устройство — вы увидите уведомление.
-                            </p>
-                            <button className="e2e-reset-btn" onClick={handleResetE2E}>
-                                Пересоздать ключи
-                            </button>
+                            <p className="e2e-hint">Каждый чат шифруется своим ключом.</p>
+                            <button className="e2e-reset-btn" onClick={handleResetE2E}>Пересоздать ключи</button>
                         </div>
                     ) : (
                         <div className="e2e-setup-card">
                             <div className="e2e-setup-icon">{Icon.lock(32)}</div>
                             <h3 className="e2e-setup-title">Шифрование не настроено</h3>
-                            <p className="e2e-setup-desc">
-                                Настройте сквозное шифрование. Для каждого чата будет создан свой ключ шифрования.
-                            </p>
+                            <p className="e2e-setup-desc">Настройте сквозное шифрование.</p>
                             <ul className="e2e-features">
                                 <li>{Icon.check(14)} Отдельный ключ для каждого чата</li>
                                 <li>{Icon.check(14)} Сервер не видит содержимое</li>
                                 <li>{Icon.check(14)} ECIES + AES-256-GCM</li>
                             </ul>
-                            <button
-                                className="e2e-setup-btn"
-                                onClick={handleSetupE2E}
-                                disabled={settingUpE2E}
-                            >
-                                {settingUpE2E ? (
-                                    <>Генерация ключей...</>
-                                ) : (
-                                    <>{Icon.shield(16)} Настроить E2E шифрование</>
-                                )}
+                            <button className="e2e-setup-btn" onClick={handleSetupE2E} disabled={settingUpE2E}>
+                                {settingUpE2E ? 'Генерация ключей...' : <>{Icon.shield(16)} Настроить E2E</>}
                             </button>
                         </div>
                     )}
                 </div>
 
+                {/* ── Инвайты ──────────────────────────────── */}
                 <div className="s-group">
                     <div className="s-group-label">Пригласить друга</div>
-
                     {inviteCode ? (
                         <div className="invite-result">
                             <div className="invite-code">{inviteCode}</div>
-                            <button className="invite-copy-btn" onClick={copyInvite}>
-                                {Icon.copy(16)} Копировать
-                            </button>
-                            <button className="invite-new-btn" onClick={handleCreateInvite}>
-                                Создать новый
-                            </button>
+                            <button className="invite-copy-btn" onClick={copyInvite}>{Icon.copy(16)} Копировать</button>
+                            <button className="invite-new-btn" onClick={handleCreateInvite}>Создать новый</button>
                             <p className="invite-hint">Действителен 48 часов. Одноразовый.</p>
                         </div>
                     ) : (
                         <button className="s-row invite-create-btn" onClick={handleCreateInvite} disabled={creatingInvite}>
-                            <span className="s-row-left">
-                                {Icon.plus(19)} {creatingInvite ? 'Создаётся...' : 'Создать инвайт-код'}
-                            </span>
+                            <span className="s-row-left">{Icon.plus(19)} {creatingInvite ? 'Создаётся...' : 'Создать инвайт-код'}</span>
                             <span className="s-arrow">→</span>
                         </button>
                     )}
                 </div>
 
+                {/* ── Уведомления ──────────────────────────── */}
                 <div className="s-group">
                     <div className="s-group-label">Уведомления</div>
                     {isNotifEnabled ? (
                         <>
                             <div className="s-row">
-                                <span className="s-row-left">
-                                    {Icon.check(19)} Уведомления включены
-                                </span>
+                                <span className="s-row-left">{Icon.check(19)} Уведомления включены</span>
                                 <span className="e2e-badge active" style={{ fontSize: 11 }}>✓ Активно</span>
                             </div>
                             <button className="s-row" onClick={handleTestNotif}>
-                                <span className="s-row-left">
-                                    🔔 Отправить тестовое уведомление
-                                </span>
+                                <span className="s-row-left">🔔 Тестовое уведомление</span>
                                 <span className="s-arrow">→</span>
                             </button>
                         </>
                     ) : (
                         <button className="s-row" onClick={handleEnableNotifs}>
-                            <span className="s-row-left">
-                                🔔 Включить уведомления
-                            </span>
+                            <span className="s-row-left">🔔 Включить уведомления</span>
                             <span className="s-arrow">→</span>
                         </button>
                     )}
                 </div>
 
+                {/* ── Тема ─────────────────────────────────── */}
                 <div className="s-group">
                     <div className="s-group-label">Внешний вид</div>
                     <button className="s-row" onClick={onToggleTheme}>
-                        <span className="s-row-left">
-                            {darkMode ? Icon.moon(19) : Icon.sun(19)}
-                            Тёмная тема
-                        </span>
-                        <span className={`toggle ${darkMode ? 'on' : ''}`}>
-                            <span className="toggle-dot" />
-                        </span>
+                        <span className="s-row-left">{darkMode ? Icon.moon(19) : Icon.sun(19)} Тёмная тема</span>
+                        <span className={`toggle ${darkMode ? 'on' : ''}`}><span className="toggle-dot" /></span>
                     </button>
                 </div>
 
+                {/* ── О приложении ─────────────────────────── */}
                 <div className="s-group">
                     <div className="s-group-label">О приложении</div>
                     <div className="s-row">
                         <span className="s-row-left">Версия</span>
-                        <span className="s-sub">0.3.0-alpha (Per-Chat E2E)</span>
+                        <span className="s-sub">0.4.0-alpha (Profiles)</span>
                     </div>
                 </div>
             </div>
+
+            {/* Галерея аватарок */}
+            {galleryOpen && galleryUrls.length > 0 && (
+                <AvatarGallery
+                    urls={galleryUrls}
+                    dates={galleryDates}
+                    startIndex={galleryIndex}
+                    onClose={() => setGalleryOpen(false)}
+                />
+            )}
         </section>
     );
 }
@@ -5455,6 +6113,105 @@ export function Avatar({ name, size = 40, online, avatarUrl }: Props) {
                     }}
                 />
             )}
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/AvatarGallery.tsx
+================================================================================
+import React, { useState, useEffect, useCallback } from 'react';
+import { formatDateFull } from '../../utils';
+import { Icon } from '../../icons';
+
+interface Props {
+    urls: string[];
+    dates?: string[];
+    startIndex?: number;
+    onClose: () => void;
+}
+
+export function AvatarGallery({ urls, dates, startIndex = 0, onClose }: Props) {
+    const [index, setIndex] = useState(startIndex);
+    const [imgError, setImgError] = useState(false);
+
+    const total = urls.length;
+    const hasPrev = index > 0;
+    const hasNext = index < total - 1;
+
+    useEffect(() => { setImgError(false); }, [index]);
+
+    const goNext = useCallback(() => {
+        if (hasNext) setIndex(i => i + 1);
+    }, [hasNext]);
+
+    const goPrev = useCallback(() => {
+        if (hasPrev) setIndex(i => i - 1);
+    }, [hasPrev]);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'ArrowRight') goNext();
+            if (e.key === 'ArrowLeft') goPrev();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose, goNext, goPrev]);
+
+    return (
+        <div className="avatar-gallery-overlay" onMouseDown={onClose}>
+            <div className="avatar-gallery-inner" onMouseDown={e => e.stopPropagation()}>
+                {/* Закрыть */}
+                <button className="avatar-gallery-close" onClick={onClose}>
+                    {Icon.x(24)}
+                </button>
+
+                {/* Счётчик */}
+                {total > 1 && (
+                    <div className="avatar-gallery-counter">
+                        {index + 1} / {total}
+                    </div>
+                )}
+
+                {/* Стрелки */}
+                {hasPrev && (
+                    <button className="avatar-gallery-nav prev" onClick={goPrev}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+                )}
+                {hasNext && (
+                    <button className="avatar-gallery-nav next" onClick={goNext}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="9 6 15 12 9 18" />
+                        </svg>
+                    </button>
+                )}
+
+                {/* Изображение */}
+                <div className="avatar-gallery-image-wrap">
+                    {imgError ? (
+                        <div className="avatar-gallery-error">Не удалось загрузить</div>
+                    ) : (
+                        <img
+                            src={urls[index]}
+                            alt=""
+                            className="avatar-gallery-image"
+                            onError={() => setImgError(true)}
+                        />
+                    )}
+                </div>
+
+                {/* Дата */}
+                {dates && dates[index] && (
+                    <div className="avatar-gallery-date">
+                        {formatDateFull(dates[index])}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -5591,6 +6348,197 @@ function NotificationItem({
                 {Icon.x(14)}
             </button>
         </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/ProfileModal.tsx
+================================================================================
+import React, { useState, useEffect, useCallback } from 'react';
+import type { UserProfileDto } from '../../types';
+import * as api from '../../api';
+import { SERVER_URL } from '../../api';
+import { formatDate } from '../../utils';
+import { Avatar } from './Avatar';
+import { AvatarGallery } from './AvatarGallery';
+import { Icon } from '../../icons';
+
+interface Props {
+    userId: string;
+    currentUserId: string;
+    onClose: () => void;
+    onMessage: (userId: string) => void;
+    onCall: (userId: string) => void;
+    onEdit: () => void;
+}
+
+function fullUrl(url: string): string {
+    if (url.startsWith('http')) return url;
+    return `${SERVER_URL}${url}`;
+}
+
+export function ProfileModal({ userId, currentUserId, onClose, onMessage, onCall, onEdit }: Props) {
+    const [profile, setProfile] = useState<UserProfileDto | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [galleryOpen, setGalleryOpen] = useState(false);
+    const [galleryIndex, setGalleryIndex] = useState(0);
+
+    const isMe = userId === currentUserId;
+
+    useEffect(() => {
+        setLoading(true);
+        setError('');
+        api.getUserProfile(userId)
+            .then(p => setProfile(p))
+            .catch(e => setError(e.message || 'Ошибка загрузки'))
+            .finally(() => setLoading(false));
+    }, [userId]);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && !galleryOpen) onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose, galleryOpen]);
+
+    const openGallery = useCallback((index: number) => {
+        setGalleryIndex(index);
+        setGalleryOpen(true);
+    }, []);
+
+    const avatars = profile?.avatars || [];
+    const galleryUrls = avatars.map(a => fullUrl(a.url));
+    const galleryDates = avatars.map(a => a.set_at);
+
+    return (
+        <>
+            <div className="modal-overlay" onMouseDown={onClose}>
+                <div className="profile-modal" onMouseDown={e => e.stopPropagation()}>
+                    <button className="profile-modal-close" onClick={onClose}>
+                        {Icon.x(20)}
+                    </button>
+
+                    {loading && (
+                        <div className="profile-modal-loading">Загрузка…</div>
+                    )}
+
+                    {error && (
+                        <div className="profile-modal-error">{error}</div>
+                    )}
+
+                    {profile && !loading && (
+                        <>
+                            {/* Аватарка */}
+                            <div className="profile-avatar-section">
+                                <div
+                                    className={`profile-avatar-wrap ${avatars.length > 0 ? 'clickable' : ''}`}
+                                    onClick={() => avatars.length > 0 && openGallery(0)}
+                                >
+                                    <Avatar
+                                        name={profile.display_name}
+                                        size={120}
+                                        online={profile.online}
+                                        avatarUrl={profile.avatar_url}
+                                    />
+                                    {avatars.length > 1 && (
+                                        <span className="profile-avatar-count">
+                                            {avatars.length} фото
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Имя и юзернейм */}
+                            <div className="profile-name-section">
+                                <h2 className="profile-display-name">{profile.display_name}</h2>
+                                <span className="profile-username">@{profile.username}</span>
+                                <span className={`profile-online-status ${profile.online ? 'online' : ''}`}>
+                                    {profile.online ? 'в сети' : 'был(а) недавно'}
+                                </span>
+                            </div>
+
+                            {/* Био */}
+                            {profile.bio && (
+                                <div className="profile-info-section">
+                                    <div className="profile-info-label">О себе</div>
+                                    <div className="profile-info-value">{profile.bio}</div>
+                                </div>
+                            )}
+
+                            {/* Дата регистрации */}
+                            <div className="profile-info-section">
+                                <div className="profile-info-label">В мессенджере с</div>
+                                <div className="profile-info-value">{formatDate(profile.created_at)}</div>
+                            </div>
+
+                            {/* E2E */}
+                            {profile.public_keys && (
+                                <div className="profile-info-section">
+                                    <div className="profile-info-label">Шифрование</div>
+                                    <div className="profile-info-value profile-e2e-row">
+                                        {Icon.shield(14)}
+                                        <span>E2E включено</span>
+                                        <code className="profile-key-id">{profile.public_keys.key_id.slice(0, 16)}…</code>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Миниатюры аватарок */}
+                            {avatars.length > 1 && (
+                                <div className="profile-avatars-section">
+                                    <div className="profile-info-label">Фотографии ({avatars.length})</div>
+                                    <div className="profile-avatar-thumbs">
+                                        {avatars.map((a, i) => (
+                                            <div
+                                                key={a.id}
+                                                className={`profile-thumb ${a.is_current ? 'current' : ''}`}
+                                                onClick={() => openGallery(i)}
+                                            >
+                                                <img
+                                                    src={fullUrl(a.url)}
+                                                    alt=""
+                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Действия */}
+                            <div className="profile-actions">
+                                {isMe ? (
+                                    <button className="profile-action-btn" onClick={onEdit}>
+                                        {Icon.edit(16)} Редактировать
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button className="profile-action-btn primary" onClick={() => onMessage(userId)}>
+                                            {Icon.chat(16)} Сообщение
+                                        </button>
+                                        <button className="profile-action-btn" onClick={() => onCall(userId)}>
+                                            {Icon.phone(16)} Позвонить
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {galleryOpen && galleryUrls.length > 0 && (
+                <AvatarGallery
+                    urls={galleryUrls}
+                    dates={galleryDates}
+                    startIndex={galleryIndex}
+                    onClose={() => setGalleryOpen(false)}
+                />
+            )}
+        </>
     );
 }
 
@@ -8269,9 +9217,30 @@ export interface UserDto {
     id: string;
     username: string;
     display_name: string;
+    bio?: string;
     online: boolean;
     last_seen: string;
     avatar_url?: string;
+    public_keys?: PublicKeyBundle;
+}
+
+export interface AvatarHistoryDto {
+    id: string;
+    url: string;
+    set_at: string;
+    is_current: boolean;
+}
+
+export interface UserProfileDto {
+    id: string;
+    username: string;
+    display_name: string;
+    bio: string;
+    online: boolean;
+    last_seen: string;
+    avatar_url?: string;
+    avatars: AvatarHistoryDto[];
+    created_at: string;
     public_keys?: PublicKeyBundle;
 }
 
@@ -8337,14 +9306,12 @@ export type WsServerMsg =
     | { type: 'user_offline'; payload: { user_id: string } }
     | { type: 'user_updated'; payload: { user: UserDto } }
     | { type: 'error'; payload: { message: string } }
-    // ── Звонки ──
     | { type: 'call_incoming'; payload: { chat_id: string; call_id: string; caller_id: string; caller_name: string; sdp: string; encrypted: boolean } }
     | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute_changed'; payload: { chat_id: string; call_id: string; user_id: string; muted: boolean } }
     | { type: 'call_ended'; payload: { chat_id: string; call_id: string } }
-    // ── Медиа ──
     | { type: 'call_media_shared'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; user_name: string; file_id: string; file_name: string } }
     | { type: 'call_media_removed'; payload: { chat_id: string; call_id: string; media_id: string } }
     | { type: 'call_media_controlled'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; action: string; current_time: number } };
@@ -8356,14 +9323,12 @@ export type WsClientMsg =
     | { type: 'typing'; payload: { chat_id: string } }
     | { type: 'stop_typing'; payload: { chat_id: string } }
     | { type: 'mark_read'; payload: { chat_id: string; message_id: string } }
-    // ── Звонки ──
     | { type: 'call_offer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_answer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute'; payload: { chat_id: string; call_id: string; muted: boolean } }
     | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } }
-    // ── Медиа ──
     | { type: 'call_media_share'; payload: { chat_id: string; call_id: string; file_id: string; file_name: string } }
     | { type: 'call_media_remove'; payload: { chat_id: string; call_id: string; media_id: string } }
     | { type: 'call_media_control'; payload: { chat_id: string; call_id: string; media_id: string; action: string; current_time: number } };
@@ -8447,7 +9412,7 @@ export interface SharedMediaItem {
     fileName: string;
     title: string;
     isPlaying: boolean;
-    isLooping: boolean; // Добавлен флаг зацикливания
+    isLooping: boolean;
     currentTime: number;
     duration: number;
     localVolume: number;
@@ -8532,9 +9497,33 @@ export function formatTime(iso: string): string {
     }
 }
 
+const MONTH_NAMES = [
+    'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+    'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+];
+
+export function formatDate(iso: string): string {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    } catch {
+        return '';
+    }
+}
+
+export function formatDateFull(iso: string): string {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } catch {
+        return '';
+    }
+}
+
 /** Получить превью последнего сообщения для списка чатов */
 export function getChatPreview(chat: LocalChat): { text: string; time: string } {
-    // Если сообщения загружены — берём из них
     if (chat.messages.length > 0) {
         const m = chat.messages[chat.messages.length - 1];
         const prefix = chat.is_group && !m.own
@@ -8547,7 +9536,6 @@ export function getChatPreview(chat: LocalChat): { text: string; time: string } 
         };
     }
 
-    // Иначе — из серверного превью
     if (chat.lastMessageText) {
         return {
             text: chat.lastMessageText.length > 42
@@ -9053,6 +10041,7 @@ pub async fn register(
             id: user_id,
             username: req.username,
             display_name: req.display_name,
+            bio: String::new(),
             online: true,
             last_seen: now,
             avatar_url: None,
@@ -9107,6 +10096,7 @@ pub async fn login(
             id: user.id,
             username: user.username,
             display_name: user.display_name,
+            bio: user.bio,
             online: true,
             last_seen: Utc::now(),
             avatar_url,
@@ -9139,6 +10129,7 @@ pub async fn me(State(state): State<AppState>, auth: AuthUser) -> Result<Json<Us
         id: user.id,
         username: user.username,
         display_name: user.display_name,
+        bio: user.bio,
         online: state.is_online(&user.id).await,
         last_seen: user.last_seen,
         avatar_url,
@@ -9819,13 +10810,73 @@ use axum::{
     response::Response,
     Json,
 };
-use shared::{PublicKeyBundle, UpdateAvatarRes, UpdateProfileReq, UserDto};
+use shared::{
+    AvatarHistoryDto, PublicKeyBundle, UpdateAvatarRes, UpdateProfileReq, UserDto, UserProfileDto,
+};
 use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
 
 const MAX_AVATAR_SIZE: usize = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+/// GET /api/users/:user_id/profile
+pub async fn get_profile(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<UserProfileDto>, AppError> {
+    let user: models::User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Пользователь не найден".into()))?;
+
+    let avatar_url = user.avatar_id.map(|id| format!("/api/files/{}", id));
+
+    let public_keys = if user.identity_key.is_some() {
+        Some(PublicKeyBundle {
+            identity_key: user.identity_key.unwrap_or_default(),
+            signing_key: user.signing_key.unwrap_or_default(),
+            signature: user.key_signature.unwrap_or_default(),
+            key_id: user.key_id.unwrap_or_default(),
+        })
+    } else {
+        None
+    };
+
+    type AvatarRow = (Uuid, Uuid, chrono::DateTime<chrono::Utc>, bool);
+    let avatar_rows: Vec<AvatarRow> = sqlx::query_as(
+        "SELECT id, attachment_id, set_at, is_current FROM avatar_history
+         WHERE user_id = $1 ORDER BY set_at DESC LIMIT 50",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let avatars: Vec<AvatarHistoryDto> = avatar_rows
+        .into_iter()
+        .map(|(id, att_id, set_at, is_current)| AvatarHistoryDto {
+            id,
+            url: format!("/api/files/{}", att_id),
+            set_at,
+            is_current,
+        })
+        .collect();
+
+    Ok(Json(UserProfileDto {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        bio: user.bio,
+        online: state.is_online(&user.id).await,
+        last_seen: user.last_seen,
+        avatar_url,
+        avatars,
+        created_at: user.created_at,
+        public_keys,
+    }))
+}
 
 /// PUT /api/users/me
 pub async fn update_profile(
@@ -9839,6 +10890,17 @@ pub async fn update_profile(
         }
         sqlx::query("UPDATE users SET display_name = $1 WHERE id = $2")
             .bind(name)
+            .bind(auth.user_id)
+            .execute(&state.db)
+            .await?;
+    }
+
+    if let Some(ref bio) = req.bio {
+        if bio.len() > 200 {
+            return Err(AppError::BadRequest("bio: максимум 200 символов".into()));
+        }
+        sqlx::query("UPDATE users SET bio = $1 WHERE id = $2")
+            .bind(bio)
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
@@ -9861,7 +10923,7 @@ pub async fn update_profile(
 
     let user = get_user_dto(&state, auth.user_id).await?;
 
-    if req.public_keys.is_some() || req.display_name.is_some() {
+    if req.public_keys.is_some() || req.display_name.is_some() || req.bio.is_some() {
         broadcast_user_update(&state, auth.user_id, user.clone()).await;
     }
 
@@ -9902,34 +10964,15 @@ pub async fn upload_avatar(
             return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
-        // ── Удаление старой аватарки (порядок: сначала убираем FK, потом удаляем) ──
-        let old_avatar: Option<(Option<Uuid>,)> =
-            sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
-                .bind(auth.user_id)
-                .fetch_optional(&state.db)
-                .await?;
+        // Помечаем предыдущую аватарку как не текущую (сохраняем в истории)
+        sqlx::query(
+            "UPDATE avatar_history SET is_current = FALSE WHERE user_id = $1 AND is_current = TRUE",
+        )
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
 
-        let old_avatar_id = old_avatar.and_then(|r| r.0);
-
-        if let Some(old_id) = old_avatar_id {
-            // 1) Сначала убираем ссылку из users
-            sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
-                .bind(auth.user_id)
-                .execute(&state.db)
-                .await?;
-
-            // 2) Теперь безопасно удаляем attachment
-            sqlx::query("DELETE FROM attachments WHERE id = $1")
-                .bind(old_id)
-                .execute(&state.db)
-                .await?;
-
-            // 3) Удаляем файл с диска
-            let old_path = format!("{}/{}", state.config.upload_dir, old_id);
-            let _ = tokio::fs::remove_file(&old_path).await;
-        }
-
-        // ── Загрузка новой аватарки ──
+        // Загружаем новый файл
         let att_id = Uuid::new_v4();
         let filename = format!("avatar_{}.{}", auth.user_id, get_extension(&mime));
         let path = format!("{}/{}", state.config.upload_dir, att_id);
@@ -9952,11 +10995,21 @@ pub async fn upload_avatar(
         .execute(&state.db)
         .await?;
 
+        // Обновляем avatar_id пользователя
         sqlx::query("UPDATE users SET avatar_id = $1 WHERE id = $2")
             .bind(att_id)
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
+
+        // Добавляем в историю как текущую
+        sqlx::query(
+            "INSERT INTO avatar_history (user_id, attachment_id, is_current) VALUES ($1, $2, TRUE)",
+        )
+        .bind(auth.user_id)
+        .bind(att_id)
+        .execute(&state.db)
+        .await?;
 
         let avatar_url = format!("/api/files/{}", att_id);
 
@@ -9973,41 +11026,126 @@ pub async fn upload_avatar(
     ))
 }
 
-/// DELETE /api/users/me/avatar
+/// DELETE /api/users/me/avatar — снять текущую аватарку (оставить в истории)
 pub async fn delete_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<()>, AppError> {
-    let avatar: Option<(Option<Uuid>,)> =
-        sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
-            .bind(auth.user_id)
-            .fetch_optional(&state.db)
-            .await?;
+    // Помечаем текущую аватарку как не текущую
+    sqlx::query(
+        "UPDATE avatar_history SET is_current = FALSE WHERE user_id = $1 AND is_current = TRUE",
+    )
+    .bind(auth.user_id)
+    .execute(&state.db)
+    .await?;
 
-    let avatar_id = avatar.and_then(|r| r.0);
+    // Убираем ссылку из users
+    sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
 
-    if let Some(aid) = avatar_id {
-        // 1) Сначала убираем ссылку
+    let user = get_user_dto(&state, auth.user_id).await?;
+    broadcast_user_update(&state, auth.user_id, user).await;
+
+    Ok(Json(()))
+}
+
+/// DELETE /api/users/me/avatars/:avatar_id — удалить аватарку из истории навсегда
+pub async fn delete_avatar_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(avatar_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    // Находим запись в истории
+    type HistoryRow = (Uuid, bool);
+    let row: Option<HistoryRow> = sqlx::query_as(
+        "SELECT attachment_id, is_current FROM avatar_history WHERE id = $1 AND user_id = $2",
+    )
+    .bind(avatar_id)
+    .bind(auth.user_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let (attachment_id, was_current) =
+        row.ok_or_else(|| AppError::NotFound("Аватарка не найдена".into()))?;
+
+    // Если это текущая — убираем ссылку из users
+    if was_current {
         sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
+    }
 
-        // 2) Потом удаляем attachment
-        sqlx::query("DELETE FROM attachments WHERE id = $1")
-            .bind(aid)
-            .execute(&state.db)
-            .await?;
+    // Удаляем запись из истории
+    sqlx::query("DELETE FROM avatar_history WHERE id = $1")
+        .bind(avatar_id)
+        .execute(&state.db)
+        .await?;
 
-        // 3) Удаляем файл
-        let path = format!("{}/{}", state.config.upload_dir, aid);
-        let _ = tokio::fs::remove_file(&path).await;
+    // Удаляем attachment
+    sqlx::query("DELETE FROM attachments WHERE id = $1")
+        .bind(attachment_id)
+        .execute(&state.db)
+        .await?;
 
+    // Удаляем файл с диска
+    let file_path = format!("{}/{}", state.config.upload_dir, attachment_id);
+    let _ = tokio::fs::remove_file(&file_path).await;
+
+    if was_current {
         let user = get_user_dto(&state, auth.user_id).await?;
         broadcast_user_update(&state, auth.user_id, user).await;
     }
 
     Ok(Json(()))
+}
+
+/// POST /api/users/me/avatars/:avatar_id/set-current — поставить старую аватарку
+pub async fn set_avatar_from_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(avatar_id): Path<Uuid>,
+) -> Result<Json<UpdateAvatarRes>, AppError> {
+    // Проверяем что запись принадлежит пользователю
+    type HistoryRow = (Uuid,);
+    let row: Option<HistoryRow> =
+        sqlx::query_as("SELECT attachment_id FROM avatar_history WHERE id = $1 AND user_id = $2")
+            .bind(avatar_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let (attachment_id,) = row.ok_or_else(|| AppError::NotFound("Аватарка не найдена".into()))?;
+
+    // Снимаем текущую
+    sqlx::query(
+        "UPDATE avatar_history SET is_current = FALSE WHERE user_id = $1 AND is_current = TRUE",
+    )
+    .bind(auth.user_id)
+    .execute(&state.db)
+    .await?;
+
+    // Ставим выбранную как текущую
+    sqlx::query("UPDATE avatar_history SET is_current = TRUE WHERE id = $1")
+        .bind(avatar_id)
+        .execute(&state.db)
+        .await?;
+
+    // Обновляем пользователя
+    sqlx::query("UPDATE users SET avatar_id = $1 WHERE id = $2")
+        .bind(attachment_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    let avatar_url = format!("/api/files/{}", attachment_id);
+
+    let user = get_user_dto(&state, auth.user_id).await?;
+    broadcast_user_update(&state, auth.user_id, user).await;
+
+    Ok(Json(UpdateAvatarRes { avatar_url }))
 }
 
 /// GET /api/users/:user_id/avatar
@@ -10110,6 +11248,7 @@ pub async fn get_user_dto(state: &AppState, user_id: Uuid) -> Result<UserDto, Ap
         id: user.id,
         username: user.username,
         display_name: user.display_name,
+        bio: user.bio,
         online: state.is_online(&user.id).await,
         last_seen: user.last_seen,
         avatar_url,
@@ -10200,6 +11339,7 @@ pub async fn search(
             id: u.id,
             username: u.username,
             display_name: u.display_name,
+            bio: u.bio,
             online: state.is_online(&u.id).await,
             last_seen: u.last_seen,
             avatar_url,
@@ -10247,7 +11387,16 @@ pub fn create_app(state: AppState) -> Router {
             "/users/me/avatar",
             post(api::profile::upload_avatar).delete(api::profile::delete_avatar),
         )
+        .route(
+            "/users/me/avatars/:avatar_id",
+            delete(api::profile::delete_avatar_history),
+        )
+        .route(
+            "/users/me/avatars/:avatar_id/set-current",
+            post(api::profile::set_avatar_from_history),
+        )
         .route("/users/:user_id/avatar", get(api::profile::get_avatar))
+        .route("/users/:user_id/profile", get(api::profile::get_profile))
         .route("/users", get(api::users::search))
         .route("/chats", get(api::chats::list).post(api::chats::create))
         .route("/chats/:chat_id", get(api::chats::get))
@@ -10649,6 +11798,7 @@ pub struct Message {
 FILE PATH: ./server/src/models/mod.rs
 ================================================================================
 pub mod attachment;
+pub mod avatar_history;
 pub mod chat;
 pub mod invite;
 pub mod message;
@@ -10656,6 +11806,8 @@ pub mod user;
 
 #[allow(unused_imports)]
 pub use attachment::Attachment;
+#[allow(unused_imports)]
+pub use avatar_history::AvatarHistory;
 #[allow(unused_imports)]
 pub use chat::{Chat, ChatMember};
 #[allow(unused_imports)]
@@ -10686,6 +11838,7 @@ pub struct User {
     pub signing_key: Option<String>,
     pub key_signature: Option<String>,
     pub key_id: Option<String>,
+    pub bio: String,
 }
 
 
@@ -11481,7 +12634,6 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         message_id: Uuid,
     },
-    // ── Звонки ──────────────────────────────────────────────
     CallOffer {
         chat_id: Uuid,
         call_id: Uuid,
@@ -11588,7 +12740,6 @@ pub enum WsServerMsg {
     Error {
         message: String,
     },
-    // ── Звонки ──────────────────────────────────────────────
     CallIncoming {
         chat_id: Uuid,
         call_id: Uuid,
@@ -11680,10 +12831,36 @@ pub struct UserDto {
     pub id: Uuid,
     pub username: String,
     pub display_name: String,
+    #[serde(default)]
+    pub bio: String,
     pub online: bool,
     pub last_seen: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_keys: Option<PublicKeyBundle>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AvatarHistoryDto {
+    pub id: Uuid,
+    pub url: String,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserProfileDto {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub bio: String,
+    pub online: bool,
+    pub last_seen: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    pub avatars: Vec<AvatarHistoryDto>,
+    pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_keys: Option<PublicKeyBundle>,
 }
@@ -11725,7 +12902,7 @@ pub struct InviteDto {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Request types
+//  Request / Response types
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Deserialize)]
@@ -11764,6 +12941,7 @@ pub struct CreateInviteReq {
 #[derive(Debug, Deserialize)]
 pub struct UpdateProfileReq {
     pub display_name: Option<String>,
+    pub bio: Option<String>,
     pub public_keys: Option<PublicKeyBundle>,
 }
 
@@ -11775,50 +12953,6 @@ pub struct UpdateAvatarRes {
 #[derive(Debug, Deserialize)]
 pub struct UpdateChatKeysReq {
     pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserDto {
-    pub id: Uuid,
-    pub username: String,
-    pub display_name: String,
-    #[serde(default)]
-    pub bio: String, // Новое поле
-    pub online: bool,
-    pub last_seen: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avatar_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub public_keys: Option<PublicKeyBundle>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AvatarHistoryDto {
-    pub id: Uuid,
-    pub url: String,
-    pub set_at: DateTime<Utc>,
-    pub is_current: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserProfileDto {
-    pub id: Uuid,
-    pub username: String,
-    pub display_name: String,
-    pub bio: String,
-    pub online: bool,
-    pub last_seen: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avatar_url: Option<String>,
-    pub avatars: Vec<AvatarHistoryDto>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateProfileReq {
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
-    pub public_keys: Option<PublicKeyBundle>,
 }
 
 
