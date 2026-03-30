@@ -7,7 +7,10 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
-use shared::{AttachmentDto, EncryptedPayload, MessageDto, WsClientMsg, WsServerMsg};
+use shared::{
+    AttachmentDto, EncryptedPayload, ForwardInfoDto, MessageDto, ReplyInfoDto, WsClientMsg,
+    WsServerMsg,
+};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -86,7 +89,6 @@ async fn run(socket: WebSocket, state: AppState, user_id: Uuid, username: String
     tracing::info!(%user_id, "ws disconnected");
 }
 
-/// Достать display_name из БД (с fallback на username)
 async fn get_display_name(state: &AppState, uid: Uuid, fallback: &str) -> String {
     sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
         .bind(uid)
@@ -106,6 +108,9 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             client_id,
             attachment_id,
             encrypted,
+            reply_to_id,
+            forwarded_from_id,
+            forwarded_from_name,
         } => {
             on_send(
                 state,
@@ -116,6 +121,9 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
                 client_id,
                 attachment_id,
                 encrypted,
+                reply_to_id,
+                forwarded_from_id,
+                forwarded_from_name,
             )
             .await
         }
@@ -261,7 +269,7 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
     }
 }
 
-async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid, muted: bool) {
+async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String, muted: bool) {
     broadcast_to_chat(
         state,
         chat_id,
@@ -280,6 +288,7 @@ async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid,
 //  Обработчики сообщений
 // ═══════════════════════════════════════════════════════════
 
+#[allow(clippy::too_many_arguments)]
 async fn on_send(
     state: &AppState,
     uid: Uuid,
@@ -289,6 +298,9 @@ async fn on_send(
     client_id: String,
     attachment_id: Option<Uuid>,
     encrypted: Option<EncryptedPayload>,
+    reply_to_id: Option<Uuid>,
+    forwarded_from_id: Option<Uuid>,
+    forwarded_from_name: Option<String>,
 ) {
     let check: Option<(i64,)> =
         sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
@@ -352,8 +364,8 @@ async fn on_send(
         .and_then(|e| serde_json::to_value(e).ok());
 
     if sqlx::query(
-        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content, reply_to_id, forwarded_from_id, forwarded_from_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
     )
     .bind(msg_id)
     .bind(chat_id)
@@ -362,6 +374,9 @@ async fn on_send(
     .bind(attachment_id)
     .bind(now)
     .bind(&encrypted_json)
+    .bind(reply_to_id)
+    .bind(forwarded_from_id)
+    .bind(&forwarded_from_name)
     .execute(&state.db)
     .await
     .is_err()
@@ -377,6 +392,20 @@ async fn on_send(
         return;
     }
 
+    // Build reply_to info
+    let reply_to = if let Some(rid) = reply_to_id {
+        fetch_reply_info(state, rid).await
+    } else {
+        None
+    };
+
+    // Build forwarded_from info
+    let forwarded_from = forwarded_from_id.map(|fid| ForwardInfoDto {
+        original_message_id: fid,
+        original_sender_name: forwarded_from_name.clone().unwrap_or_default(),
+        original_chat_name: None,
+    });
+
     let dto = MessageDto {
         id: msg_id,
         chat_id,
@@ -387,6 +416,8 @@ async fn on_send(
         created_at: now,
         attachment,
         encrypted: encrypted.clone(),
+        reply_to,
+        forwarded_from,
     };
 
     state
@@ -417,6 +448,56 @@ async fn on_send(
             )
             .await;
     }
+}
+
+/// Fetch reply info for a message
+async fn fetch_reply_info(state: &AppState, reply_id: Uuid) -> Option<Box<ReplyInfoDto>> {
+    type ReplyRow = (
+        Uuid,
+        Uuid,
+        String,
+        String,
+        Option<serde_json::Value>,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+    );
+
+    let row: Option<ReplyRow> = sqlx::query_as(
+        "SELECT m.id, m.sender_id, u.display_name, m.content, m.encrypted_content,
+                a.id, a.filename, a.mime_type, a.size_bytes
+         FROM messages m
+         JOIN users u ON u.id = m.sender_id
+         LEFT JOIN attachments a ON a.id = m.attachment_id
+         WHERE m.id = $1",
+    )
+    .bind(reply_id)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+
+    row.map(
+        |(id, sender_id, sender_name, content, enc_json, att_id, att_fn, att_mime, att_size)| {
+            let attachment = att_id.map(|aid| AttachmentDto {
+                id: aid,
+                filename: att_fn.unwrap_or_default(),
+                mime_type: att_mime.unwrap_or_default(),
+                size_bytes: att_size.unwrap_or(0),
+            });
+            let encrypted: Option<EncryptedPayload> =
+                enc_json.and_then(|v| serde_json::from_value(v).ok());
+            Box::new(ReplyInfoDto {
+                id,
+                sender_id,
+                sender_name,
+                content,
+                attachment,
+                encrypted,
+            })
+        },
+    )
 }
 
 async fn on_edit(
@@ -496,7 +577,7 @@ async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Обработчики звонков (чистый relay, без хранения)
+//  Обработчики звонков — call_id теперь String
 // ═══════════════════════════════════════════════════════════
 
 async fn on_call_offer(
@@ -504,7 +585,7 @@ async fn on_call_offer(
     uid: Uuid,
     uname: &str,
     chat_id: Uuid,
-    call_id: Uuid,
+    call_id: String,
     sdp: String,
     encrypted: bool,
 ) {
@@ -530,7 +611,7 @@ async fn on_call_answer(
     state: &AppState,
     uid: Uuid,
     chat_id: Uuid,
-    call_id: Uuid,
+    call_id: String,
     sdp: String,
     encrypted: bool,
 ) {
@@ -553,7 +634,7 @@ async fn on_call_ice(
     state: &AppState,
     uid: Uuid,
     chat_id: Uuid,
-    call_id: Uuid,
+    call_id: String,
     candidate: String,
     encrypted: bool,
 ) {
@@ -571,7 +652,7 @@ async fn on_call_ice(
     .await;
 }
 
-async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String) {
     tracing::info!(%uid, %chat_id, %call_id, "call_reject");
     broadcast_to_chat(
         state,
@@ -582,7 +663,7 @@ async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uui
     .await;
 }
 
-async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String) {
     tracing::info!(%uid, %chat_id, %call_id, "call_hangup");
     broadcast_to_chat(
         state,

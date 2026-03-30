@@ -3,8 +3,8 @@ use axum::{
     Json,
 };
 use shared::{
-    AttachmentDto, ChatDto, ChatMemberDto, EncryptedChatKey, MessageDto, PublicKeyBundle,
-    UpdateChatKeysReq,
+    AttachmentDto, ChatDto, ChatMemberDto, EncryptedChatKey, ForwardInfoDto, MessageDto,
+    PublicKeyBundle, ReplyInfoDto, UpdateChatKeysReq,
 };
 use uuid::Uuid;
 
@@ -274,6 +274,8 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
                 created_at: at,
                 attachment,
                 encrypted: None,
+                reply_to: None,
+                forwarded_from: None,
             }
         },
     );
