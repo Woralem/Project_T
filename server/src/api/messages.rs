@@ -34,65 +34,75 @@ pub async fn list(
 
     let limit = p.limit.unwrap_or(50).min(200);
 
-    // 24 columns
+    // 14 columns — fits within sqlx tuple limit of 16
     type Row = (
-        Uuid,                          // m.id
-        Uuid,                          // m.sender_id
-        String,                        // u.display_name
-        String,                        // m.content
-        bool,                          // m.edited
-        chrono::DateTime<chrono::Utc>, // m.created_at
-        Option<Uuid>,                  // a.id
-        Option<String>,                // a.filename
-        Option<String>,                // a.mime_type
-        Option<i64>,                   // a.size_bytes
-        Option<serde_json::Value>,     // m.encrypted_content
-        Option<Uuid>,                  // m.reply_to_id
-        Option<Uuid>,                  // m.forwarded_from_id
-        Option<String>,                // m.forwarded_from_name
-        // reply message fields
-        Option<Uuid>,              // rm.sender_id
-        Option<String>,            // ru.display_name
-        Option<String>,            // rm.content
-        Option<serde_json::Value>, // rm.encrypted_content
-        Option<Uuid>,              // ra.id
-        Option<String>,            // ra.filename
-        Option<String>,            // ra.mime_type
-        Option<i64>,               // ra.size_bytes
+        Uuid,                          // 1  m.id
+        Uuid,                          // 2  m.sender_id
+        String,                        // 3  u.display_name
+        String,                        // 4  m.content
+        bool,                          // 5  m.edited
+        chrono::DateTime<chrono::Utc>, // 6  m.created_at
+        Option<Uuid>,                  // 7  a.id
+        Option<String>,                // 8  a.filename
+        Option<String>,                // 9  a.mime_type
+        Option<i64>,                   // 10 a.size_bytes
+        Option<serde_json::Value>,     // 11 m.encrypted_content
+        Option<Uuid>,                  // 12 m.reply_to_id
+        Option<Uuid>,                  // 13 m.forwarded_from_id
+        Option<String>,                // 14 m.forwarded_from_name
     );
 
-    let base_query = "
-        SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
-               a.id, a.filename, a.mime_type, a.size_bytes,
-               m.encrypted_content,
-               m.reply_to_id, m.forwarded_from_id, m.forwarded_from_name,
-               rm.sender_id, ru.display_name, rm.content, rm.encrypted_content,
-               ra.id, ra.filename, ra.mime_type, ra.size_bytes
-        FROM messages m
-        JOIN users u ON u.id = m.sender_id
-        LEFT JOIN attachments a ON a.id = m.attachment_id
-        LEFT JOIN messages rm ON rm.id = m.reply_to_id
-        LEFT JOIN users ru ON ru.id = rm.sender_id
-        LEFT JOIN attachments ra ON ra.id = rm.attachment_id
-    ";
-
     let rows: Vec<Row> = if let Some(before_id) = p.before {
-        let q = format!(
-            "{base_query} WHERE m.chat_id = $1 AND m.created_at < (SELECT created_at FROM messages WHERE id = $2) ORDER BY m.created_at DESC LIMIT $3"
-        );
-        sqlx::query_as(&q)
-            .bind(chat_id)
-            .bind(before_id)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await?
+        sqlx::query_as(
+            "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
+                    a.id, a.filename, a.mime_type, a.size_bytes,
+                    m.encrypted_content,
+                    m.reply_to_id, m.forwarded_from_id, m.forwarded_from_name
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             LEFT JOIN attachments a ON a.id = m.attachment_id
+             WHERE m.chat_id = $1
+               AND m.created_at < (SELECT created_at FROM messages WHERE id = $2)
+             ORDER BY m.created_at DESC
+             LIMIT $3",
+        )
+        .bind(chat_id)
+        .bind(before_id)
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await?
     } else {
-        let q = format!("{base_query} WHERE m.chat_id = $1 ORDER BY m.created_at DESC LIMIT $2");
-        sqlx::query_as(&q)
-            .bind(chat_id)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await?
+        sqlx::query_as(
+            "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
+                    a.id, a.filename, a.mime_type, a.size_bytes,
+                    m.encrypted_content,
+                    m.reply_to_id, m.forwarded_from_id, m.forwarded_from_name
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             LEFT JOIN attachments a ON a.id = m.attachment_id
+             WHERE m.chat_id = $1
+             ORDER BY m.created_at DESC
+             LIMIT $2",
+        )
+        .bind(chat_id)
+        .bind(limit)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    // Collect reply_to_ids to batch-fetch
+    let reply_ids: Vec<Uuid> = rows
+        .iter()
+        .filter_map(|r| r.11)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    // Fetch reply infos in batch
+    let reply_map = if !reply_ids.is_empty() {
+        fetch_reply_infos(&state, &reply_ids).await
+    } else {
+        std::collections::HashMap::new()
     };
 
     let mut msgs: Vec<MessageDto> = rows
@@ -113,14 +123,6 @@ pub async fn list(
                 reply_to_id,
                 fwd_from_id,
                 fwd_from_name,
-                r_sid,
-                r_sname,
-                r_content,
-                r_enc,
-                ra_id,
-                ra_fn,
-                ra_mime,
-                ra_size,
             )| {
                 let attachment = att_id.map(|aid| AttachmentDto {
                     id: aid,
@@ -131,28 +133,8 @@ pub async fn list(
                 let encrypted: Option<EncryptedPayload> =
                     enc_json.and_then(|v| serde_json::from_value(v).ok());
 
-                let reply_to = if let (Some(rid), Some(rsid), Some(rsname), Some(rcontent)) =
-                    (reply_to_id, r_sid, r_sname, r_content)
-                {
-                    let r_attachment = ra_id.map(|raid| AttachmentDto {
-                        id: raid,
-                        filename: ra_fn.unwrap_or_default(),
-                        mime_type: ra_mime.unwrap_or_default(),
-                        size_bytes: ra_size.unwrap_or(0),
-                    });
-                    let r_encrypted: Option<EncryptedPayload> =
-                        r_enc.and_then(|v| serde_json::from_value(v).ok());
-                    Some(Box::new(ReplyInfoDto {
-                        id: rid,
-                        sender_id: rsid,
-                        sender_name: rsname,
-                        content: rcontent,
-                        attachment: r_attachment,
-                        encrypted: r_encrypted,
-                    }))
-                } else {
-                    None
-                };
+                let reply_to =
+                    reply_to_id.and_then(|rid| reply_map.get(&rid).cloned().map(Box::new));
 
                 let forwarded_from = fwd_from_id.map(|fid| ForwardInfoDto {
                     original_message_id: fid,
@@ -179,4 +161,67 @@ pub async fn list(
 
     msgs.reverse();
     Ok(Json(msgs))
+}
+
+/// Batch-fetch reply info for a set of message IDs
+async fn fetch_reply_infos(
+    state: &AppState,
+    ids: &[Uuid],
+) -> std::collections::HashMap<Uuid, ReplyInfoDto> {
+    // sqlx doesn't support WHERE IN with bind directly for Vec<Uuid>,
+    // so we query one by one. For small batches this is fine.
+    let mut map = std::collections::HashMap::new();
+
+    for &id in ids {
+        // 8 columns — well within limit
+        type ReplyRow = (
+            Uuid,                      // m.id
+            Uuid,                      // m.sender_id
+            String,                    // u.display_name
+            String,                    // m.content
+            Option<serde_json::Value>, // m.encrypted_content
+            Option<Uuid>,              // a.id
+            Option<String>,            // a.filename
+            Option<String>,            // a.mime_type
+        );
+
+        let row: Option<ReplyRow> = sqlx::query_as(
+            "SELECT m.id, m.sender_id, u.display_name, m.content, m.encrypted_content,
+                    a.id, a.filename, a.mime_type
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             LEFT JOIN attachments a ON a.id = m.attachment_id
+             WHERE m.id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+
+        if let Some((mid, sid, sname, content, enc_json, att_id, att_fn, att_mime)) = row {
+            let attachment = att_id.map(|aid| AttachmentDto {
+                id: aid,
+                filename: att_fn.unwrap_or_default(),
+                mime_type: att_mime.unwrap_or_default(),
+                size_bytes: 0,
+            });
+            let encrypted: Option<EncryptedPayload> =
+                enc_json.and_then(|v| serde_json::from_value(v).ok());
+
+            map.insert(
+                mid,
+                ReplyInfoDto {
+                    id: mid,
+                    sender_id: sid,
+                    sender_name: sname,
+                    content,
+                    attachment,
+                    encrypted,
+                },
+            );
+        }
+    }
+
+    map
 }

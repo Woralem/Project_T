@@ -3,8 +3,8 @@ use axum::{
     Json,
 };
 use shared::{
-    AttachmentDto, ChatDto, ChatMemberDto, EncryptedChatKey, ForwardInfoDto, MessageDto,
-    PublicKeyBundle, ReplyInfoDto, UpdateChatKeysReq,
+    AttachmentDto, ChatDto, ChatMemberDto, EncryptedChatKey, MessageDto, PublicKeyBundle,
+    UpdateChatKeysReq,
 };
 use uuid::Uuid;
 
