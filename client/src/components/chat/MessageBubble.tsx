@@ -34,7 +34,7 @@ function isVideoMime(mime: string): boolean {
     return mime.startsWith('video/');
 }
 function isAudioMime(mime: string): boolean {
-    return mime.startsWith('audio/') || mime === 'application/octet-stream';
+    return mime.startsWith('audio/');
 }
 function formatFileSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' Б';

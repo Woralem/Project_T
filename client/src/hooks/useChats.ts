@@ -239,23 +239,22 @@ export function useChats(
         const now = new Date().toISOString();
         let attachmentId: string | null = null;
         let encMeta: EncryptedPayload | undefined;
-        let finalMime = blob.type || 'audio/webm';
+        const finalMime = blob.type || 'audio/webm';
+        const ext = finalMime.includes('webm') ? 'webm' : 'ogg';
 
         if (cryptoManager.hasChatKey(chatId)) {
             try {
                 const audioData = await blob.arrayBuffer();
                 const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, audioData);
-                const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
-                const att = await api.uploadFile(encBlob, 'voice.enc');
+                const encBlob = new Blob([encryptedData], { type: finalMime });
+                const att = await api.uploadFile(encBlob, `voice.${ext}`);
                 attachmentId = att.id;
-                finalMime = 'audio/encrypted';
                 encMeta = { ciphertext: '', nonce };
             } catch { attachmentId = null; }
         }
 
         if (!attachmentId) {
             try {
-                const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
                 const att = await api.uploadFile(blob, `voice.${ext}`);
                 attachmentId = att.id;
             } catch (e) { console.error('Voice upload failed:', e); return; }
@@ -266,7 +265,7 @@ export function useChats(
             sender_id: user.id, sender_name: user.display_name,
             content: '🎤 Голосовое сообщение', edited: false, created_at: now,
             own: true, status: 'pending',
-            attachment: { id: attachmentId, filename: 'voice', mime_type: finalMime, size_bytes: blob.size },
+            attachment: { id: attachmentId, filename: `voice.${ext}`, mime_type: finalMime, size_bytes: blob.size },
             encrypted: encMeta,
         };
 
@@ -299,8 +298,8 @@ export function useChats(
                 try {
                     const fileData = await file.arrayBuffer();
                     const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, fileData);
-                    const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
-                    const att = await api.uploadFile(encBlob, originalName + '.enc');
+                    const encBlob = new Blob([encryptedData], { type: finalMime });
+                    const att = await api.uploadFile(encBlob, originalName);
                     attachmentId = att.id;
                     encMeta = { ciphertext: '', nonce };
                 } catch (encErr) {

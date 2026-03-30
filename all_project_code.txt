@@ -3567,6 +3567,475 @@ input {
     text-decoration: underline;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   REPLY PREVIEW IN MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg-reply-preview {
+    display: flex;
+    gap: 8px;
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .06);
+    cursor: pointer;
+    transition: background .15s;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.msg:not(.own) .msg-reply-preview {
+    background: rgba(0, 0, 0, .06);
+}
+
+.light .msg:not(.own) .msg-reply-preview {
+    background: rgba(0, 0, 0, .04);
+}
+
+.msg-reply-preview:hover {
+    background: rgba(255, 255, 255, .1);
+}
+
+.msg-reply-line {
+    width: 3px;
+    min-height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.msg-reply-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+}
+
+.msg-reply-author {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.msg-reply-text {
+    font-size: 12px;
+    opacity: .7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FORWARD HEADER
+   ═══════════════════════════════════════════════════════════ */
+.msg-forward-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 0 4px;
+    margin-bottom: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FORWARD MODAL PREVIEW
+   ═══════════════════════════════════════════════════════════ */
+.forward-preview {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    margin: 12px 0;
+    border-radius: 10px;
+    background: var(--bg-surface);
+}
+
+.forward-preview-line {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.forward-preview-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.forward-preview-author {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.forward-preview-text {
+    font-size: 13px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IMAGE IN MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg-image-wrap {
+    margin: 4px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    max-width: 320px;
+}
+
+.msg-image {
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: opacity .15s;
+    display: block;
+}
+
+.msg-image:hover {
+    opacity: .9;
+}
+
+.msg-image-loading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 20px;
+    font-size: 12px;
+    opacity: .6;
+    color: currentColor;
+}
+
+.msg-image-error {
+    padding: 12px;
+    font-size: 12px;
+    opacity: .5;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FILE CARD IN MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg-file-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .06);
+    cursor: pointer;
+    transition: background .15s;
+    min-width: 200px;
+}
+
+.msg:not(.own) .msg-file-card {
+    background: rgba(0, 0, 0, .05);
+}
+
+.light .msg:not(.own) .msg-file-card {
+    background: rgba(0, 0, 0, .04);
+}
+
+.msg-file-card:hover {
+    background: rgba(255, 255, 255, .1);
+}
+
+.msg-file-icon {
+    display: flex;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.msg-file-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.msg-file-name {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.msg-file-size {
+    font-size: 11px;
+    opacity: .5;
+}
+
+.msg-file-dl {
+    display: flex;
+    color: var(--accent);
+    flex-shrink: 0;
+    opacity: .7;
+    transition: opacity .15s;
+}
+
+.msg-file-card:hover .msg-file-dl {
+    opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGE HIGHLIGHT (scroll to reply)
+   ═══════════════════════════════════════════════════════════ */
+.msg-highlight .msg-bubble {
+    animation: highlightPulse .8s ease 2;
+}
+
+@keyframes highlightPulse {
+
+    0%,
+    100% {
+        box-shadow: var(--shadow);
+    }
+
+    50% {
+        box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPLY BAR (input area)
+   ═══════════════════════════════════════════════════════════ */
+.reply-bar {
+    background: rgba(124, 106, 239, .06) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FILE BAR (input area)
+   ═══════════════════════════════════════════════════════════ */
+.file-bar {
+    background: rgba(34, 197, 94, .06) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DROP OVERLAY
+   ═══════════════════════════════════════════════════════════ */
+.input-drag-over {
+    position: relative;
+}
+
+.drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-dim);
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    animation: fadeIn .15s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIDEO IN MESSAGE
+   ═══════════════════════════════════════════════════════════ */
+.msg-video-wrap {
+    position: relative;
+    margin: 4px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    max-width: 320px;
+    cursor: pointer;
+}
+
+.msg-video {
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 10px;
+    display: block;
+}
+
+.msg-video-play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .3);
+    transition: background .15s;
+}
+
+.msg-video-wrap:hover .msg-video-play-overlay {
+    background: rgba(0, 0, 0, .45);
+}
+
+.msg-video-play-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .9);
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    transition: transform .15s;
+}
+
+.msg-video-wrap:hover .msg-video-play-icon {
+    transform: scale(1.1);
+}
+
+.msg-video-encrypted {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 32px 24px;
+    background: var(--bg-surface);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text2);
+    min-width: 200px;
+}
+
+.msg-video-enc-badge {
+    font-size: 11px;
+    opacity: .6;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MEDIA VIEWER (fullscreen)
+   ═══════════════════════════════════════════════════════════ */
+.media-viewer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    background: rgba(0, 0, 0, .92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn .2s ease;
+}
+
+.media-viewer-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.media-viewer-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s;
+    border: none;
+    cursor: pointer;
+}
+
+.media-viewer-close:hover {
+    background: rgba(255, 255, 255, .25);
+}
+
+.media-viewer-actions {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+}
+
+.media-viewer-action-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s;
+    border: none;
+    cursor: pointer;
+}
+
+.media-viewer-action-btn:hover {
+    background: rgba(255, 255, 255, .25);
+}
+
+.media-viewer-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.media-viewer-img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 4px;
+    animation: scaleIn .2s ease;
+    user-select: none;
+}
+
+.media-viewer-video {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 4px;
+    animation: scaleIn .2s ease;
+    outline: none;
+}
+
+.media-viewer-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: rgba(255, 255, 255, .6);
+    font-size: 16px;
+}
+
+.media-viewer-error {
+    color: rgba(255, 255, 255, .5);
+    font-size: 16px;
+}
+
+.media-viewer-filename {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 16px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .5);
+    color: rgba(255, 255, 255, .8);
+    font-size: 12px;
+    white-space: nowrap;
+    max-width: 80vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 
 ================================================================================
 FILE PATH: ./client/src/app.rs
@@ -3585,18 +4054,13 @@ pub fn default_window_title() -> &'static str {
 FILE PATH: ./client/src/App.tsx
 ================================================================================
 import React from 'react';
-import type { Tab, UserDto, NotificationData } from './types';
+import type { Tab, UserDto, NotificationData, LocalMessage } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useCall } from './hooks/useCall';
 import { useToast } from './hooks/useToast';
 import { cryptoManager } from './crypto';
-import {
-    initNotifications,
-    playNotificationSound,
-    sendSystemNotification,
-    showCallNotification,
-} from './notifications';
+import { initNotifications, playNotificationSound, sendSystemNotification, showCallNotification } from './notifications';
 import './App.css';
 
 import { ToastContainer } from './components/ui/Toast';
@@ -3607,18 +4071,15 @@ import { ChatListPanel } from './components/chat/ChatListPanel';
 import { ChatView } from './components/chat/ChatView';
 import { EmptyState } from './components/chat/EmptyState';
 import { NewChatModal } from './components/chat/NewChatModal';
+import { ForwardModal } from './components/chat/ForwardModal';
 import { CallsView } from './components/calls/CallsView';
 import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
 import { ProfileModal } from './components/ui/ProfileModal';
 
-function loadDark(): boolean {
-    try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; }
-}
-function saveDark(v: boolean) {
-    try { localStorage.setItem('dark_mode', String(v)); } catch { /* */ }
-}
+function loadDark(): boolean { try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; } }
+function saveDark(v: boolean) { try { localStorage.setItem('dark_mode', String(v)); } catch { } }
 
 const MAX_NOTIFICATIONS = 4;
 const NOTIFICATION_DURATION = 5000;
@@ -3628,22 +4089,17 @@ export default function App() {
     const [dark, setDark] = React.useState(loadDark);
     const [search, setSearch] = React.useState('');
     const [newChatOpen, setNewChatOpen] = React.useState(false);
+    const [forwardMsg, setForwardMsg] = React.useState<LocalMessage | null>(null);
     const [notifications, setNotifications] = React.useState<NotificationData[]>([]);
     const [profileUserId, setProfileUserId] = React.useState<string | null>(null);
     const { toasts, showToast } = useToast();
-
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
 
-    React.useEffect(() => {
-        if (!user) return;
-        initNotifications();
-    }, [user]);
+    React.useEffect(() => { if (!user) return; initNotifications(); }, [user]);
 
     const selectChatRef = React.useRef<(id: string) => void>(() => { });
 
-    const dismissNotification = React.useCallback((id: string) => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
-    }, []);
+    const dismissNotification = React.useCallback((id: string) => { setNotifications(prev => prev.filter(n => n.id !== id)); }, []);
 
     const handleNotifClick = React.useCallback((chatId: string) => {
         setTab('chats');
@@ -3653,58 +4109,38 @@ export default function App() {
 
     const handleNewMessage = React.useCallback((data: NotificationData) => {
         playNotificationSound();
-        setNotifications(prev => {
-            const next = [...prev, data];
-            return next.slice(-MAX_NOTIFICATIONS);
-        });
-        setTimeout(() => {
-            setNotifications(prev => prev.filter(n => n.id !== data.id));
-        }, NOTIFICATION_DURATION);
+        setNotifications(prev => [...prev, data].slice(-MAX_NOTIFICATIONS));
+        setTimeout(() => { setNotifications(prev => prev.filter(n => n.id !== data.id)); }, NOTIFICATION_DURATION);
         if (document.hidden || !document.hasFocus()) {
             const title = data.isGroup ? data.chatName : data.senderName;
             const body = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
-            sendSystemNotification(
-                title,
-                body.length > 100 ? body.slice(0, 100) + '…' : body,
-                `msg-${data.chatId}`,
-                () => handleNotifClick(data.chatId),
-            );
+            sendSystemNotification(title, body.length > 100 ? body.slice(0, 100) + '…' : body, `msg-${data.chatId}`, () => handleNotifClick(data.chatId));
         }
     }, [handleNotifClick]);
 
     const {
-        chats, selectedId, selectedChat,
-        loadingChats, loadingMessages,
-        selectChat, sendMessage, sendVoiceMessage,
+        chats, selectedId, selectedChat, loadingChats, loadingMessages,
+        selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, refreshChat,
     } = useChats(user, handleNewMessage);
 
     selectChatRef.current = selectChat;
 
     const {
-        callState, startCall, answerCall, rejectCall,
-        hangup, toggleMute, setPeerVolume, setMicGain, dismissCall,
-        toggleMediaPanel, shareMedia, removeMedia, controlMedia,
-        setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
+        callState, startCall, answerCall, rejectCall, hangup, toggleMute,
+        setPeerVolume, setMicGain, dismissCall, toggleMediaPanel, shareMedia,
+        removeMedia, controlMedia, setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
     } = useCall(user?.id || '', chats);
 
     React.useEffect(() => {
         if (callState.status === 'ringing' && callState.peerName) {
-            if (document.hidden || !document.hasFocus()) {
-                showCallNotification(callState.peerName);
-            }
+            if (document.hidden || !document.hasFocus()) showCallNotification(callState.peerName);
         }
     }, [callState.status, callState.peerName]);
 
-    React.useEffect(() => {
-        cryptoManager.initialize().then(keys => {
-            if (keys) console.log('[E2E] Keys loaded from storage');
-        }).catch(e => console.warn('[E2E] Init failed:', e));
-    }, []);
+    React.useEffect(() => { cryptoManager.initialize().then(keys => { if (keys) console.log('[E2E] Keys loaded'); }).catch(() => { }); }, []);
 
-    const toggleDark = React.useCallback(() => {
-        setDark(d => { const next = !d; saveDark(next); return next; });
-    }, []);
+    const toggleDark = React.useCallback(() => { setDark(d => { const next = !d; saveDark(next); return next; }); }, []);
 
     const handleLogout = React.useCallback(() => {
         if (callState.status !== 'idle' && callState.status !== 'ended') hangup();
@@ -3712,77 +4148,45 @@ export default function App() {
         logout();
     }, [logout, callState.status, hangup]);
 
-    const handleUserUpdate = React.useCallback((updated: UserDto) => {
-        setUser(updated);
-    }, [setUser]);
+    const handleUserUpdate = React.useCallback((updated: UserDto) => { setUser(updated); }, [setUser]);
 
     const handleStartCall = React.useCallback((chatId: string) => {
-        if (callState.status !== 'idle') {
-            showToast('Вы уже в звонке', 'error');
-            return;
-        }
+        if (callState.status !== 'idle') { showToast('Вы уже в звонке', 'error'); return; }
         startCall(chatId);
     }, [callState.status, startCall, showToast]);
 
-    // ── Profile handlers ─────────────────────────────────
-
-    const handleOpenProfile = React.useCallback((userId: string) => {
-        setProfileUserId(userId);
-    }, []);
+    const handleOpenProfile = React.useCallback((userId: string) => { setProfileUserId(userId); }, []);
 
     const handleProfileMessage = React.useCallback(async (userId: string) => {
         setProfileUserId(null);
         setTab('chats');
-
-        // Ищем существующий DM
         const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
-        if (dm) {
-            selectChat(dm.id);
-        } else {
-            try {
-                await createChat([userId], false);
-            } catch (e: any) {
-                showToast(e.message || 'Ошибка создания чата', 'error');
-            }
-        }
+        if (dm) { selectChat(dm.id); } else { try { await createChat([userId], false); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }
     }, [chats, selectChat, createChat, showToast]);
 
     const handleProfileCall = React.useCallback((userId: string) => {
         setProfileUserId(null);
         const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
-        if (dm) {
-            handleStartCall(dm.id);
-        } else {
-            showToast('Сначала начните чат с пользователем', 'info');
-        }
+        if (dm) { handleStartCall(dm.id); } else { showToast('Сначала начните чат', 'info'); }
     }, [chats, handleStartCall, showToast]);
 
-    const handleProfileEdit = React.useCallback(() => {
-        setProfileUserId(null);
-        setTab('settings');
-    }, []);
+    const handleProfileEdit = React.useCallback(() => { setProfileUserId(null); setTab('settings'); }, []);
+
+    const handleForwardMessage = React.useCallback((msg: LocalMessage) => { setForwardMsg(msg); }, []);
+
+    const handleForward = React.useCallback((msg: LocalMessage, targetChatId: string) => {
+        forwardMessage(msg, targetChatId);
+        showToast('Сообщение переслано', 'success');
+    }, [forwardMessage, showToast]);
 
     const theme = dark ? 'dark' : 'light';
 
     if (authLoading) {
-        return (
-            <div className={`root ${theme}`}>
-                <div className="auth-screen">
-                    <div className="auth-card" style={{ textAlign: 'center', padding: 40 }}>
-                        <p>Загрузка...</p>
-                    </div>
-                </div>
-            </div>
-        );
+        return <div className={`root ${theme}`}><div className="auth-screen"><div className="auth-card" style={{ textAlign: 'center', padding: 40 }}><p>Загрузка...</p></div></div></div>;
     }
 
     if (!user) {
-        return (
-            <div className={`root ${theme}`}>
-                <AuthScreen onLogin={login} onRegister={register} />
-                <ToastContainer toasts={toasts} />
-            </div>
-        );
+        return <div className={`root ${theme}`}><AuthScreen onLogin={login} onRegister={register} /><ToastContainer toasts={toasts} /></div>;
     }
 
     return (
@@ -3792,75 +4196,31 @@ export default function App() {
 
                 {tab === 'chats' && (
                     <>
-                        <ChatListPanel
-                            chats={chats} selectedId={selectedId} onSelect={selectChat}
-                            search={search} onSearch={setSearch}
-                            onNewChat={() => setNewChatOpen(true)}
-                            loading={loadingChats} currentUserId={user.id}
-                        />
+                        <ChatListPanel chats={chats} selectedId={selectedId} onSelect={selectChat} search={search} onSearch={setSearch} onNewChat={() => setNewChatOpen(true)} loading={loadingChats} currentUserId={user.id} />
                         {selectedChat ? (
                             <ChatView
-                                chat={selectedChat} currentUserId={user.id}
-                                loadingMessages={loadingMessages}
-                                onSendMessage={sendMessage} onSendVoice={sendVoiceMessage}
+                                chat={selectedChat} currentUserId={user.id} loadingMessages={loadingMessages}
+                                onSendMessage={sendMessage} onSendVoice={sendVoiceMessage} onSendFile={sendFileMessage}
                                 onDeleteMessage={deleteMessage} onEditMessage={editMessage}
                                 onRefreshChat={refreshChat} onStartCall={handleStartCall}
-                                onOpenProfile={handleOpenProfile}
+                                onOpenProfile={handleOpenProfile} onForwardMessage={handleForwardMessage}
                                 showToast={showToast}
                             />
-                        ) : (
-                            <EmptyState />
-                        )}
+                        ) : <EmptyState />}
                     </>
                 )}
                 {tab === 'calls' && <CallsView />}
-                {tab === 'settings' && (
-                    <SettingsView
-                        darkMode={dark} onToggleTheme={toggleDark} showToast={showToast}
-                        user={user} onUserUpdate={handleUserUpdate}
-                    />
-                )}
+                {tab === 'settings' && <SettingsView darkMode={dark} onToggleTheme={toggleDark} showToast={showToast} user={user} onUserUpdate={handleUserUpdate} />}
             </div>
 
             <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} onCreate={createChat} showToast={showToast} />
+            <ForwardModal open={!!forwardMsg} message={forwardMsg} chats={chats} currentUserId={user.id} onForward={handleForward} onClose={() => setForwardMsg(null)} />
             <IncomingCallModal callState={callState} onAccept={answerCall} onReject={rejectCall} />
-            <CallOverlay
-                callState={callState}
-                currentUserId={user.id}
-                onHangup={hangup}
-                onToggleMute={toggleMute}
-                onSetPeerVolume={setPeerVolume}
-                onSetMicGain={setMicGain}
-                onDismiss={dismissCall}
-                onToggleMediaPanel={toggleMediaPanel}
-                onShareMedia={shareMedia}
-                onRemoveMedia={removeMedia}
-                onControlMedia={controlMedia}
-                onMediaVolumeChange={setMediaVolume}
-                onMediaMuteToggle={toggleMediaMute}
-                onMediaTitleUpdate={updateMediaTitle}
-                onMediaTimeUpdate={updateMediaTime}
-                showToast={showToast}
-            />
+            <CallOverlay callState={callState} currentUserId={user.id} onHangup={hangup} onToggleMute={toggleMute} onSetPeerVolume={setPeerVolume} onSetMicGain={setMicGain} onDismiss={dismissCall} onToggleMediaPanel={toggleMediaPanel} onShareMedia={shareMedia} onRemoveMedia={removeMedia} onControlMedia={controlMedia} onMediaVolumeChange={setMediaVolume} onMediaMuteToggle={toggleMediaMute} onMediaTitleUpdate={updateMediaTitle} onMediaTimeUpdate={updateMediaTime} showToast={showToast} />
 
-            {/* Profile Modal */}
-            {profileUserId && (
-                <ProfileModal
-                    userId={profileUserId}
-                    currentUserId={user.id}
-                    onClose={() => setProfileUserId(null)}
-                    onMessage={handleProfileMessage}
-                    onCall={handleProfileCall}
-                    onEdit={handleProfileEdit}
-                />
-            )}
+            {profileUserId && <ProfileModal userId={profileUserId} currentUserId={user.id} onClose={() => setProfileUserId(null)} onMessage={handleProfileMessage} onCall={handleProfileCall} onEdit={handleProfileEdit} />}
 
-            <NotificationContainer
-                notifications={notifications}
-                onClickNotification={handleNotifClick}
-                onDismiss={dismissNotification}
-            />
-
+            <NotificationContainer notifications={notifications} onClickNotification={handleNotifClick} onDismiss={dismissNotification} />
             <ToastContainer toasts={toasts} />
         </div>
     );
@@ -4997,6 +5357,7 @@ FILE PATH: ./client/src/components/chat/ChatView.tsx
 ================================================================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { LocalChat, LocalMessage, ContextMenuItem } from '../../types';
+import type { MediaInfo } from './MessageBubble';
 import { formatTime } from '../../utils';
 import { Icon } from '../../icons';
 import { Avatar } from '../ui/Avatar';
@@ -5004,28 +5365,37 @@ import { ContextMenu } from '../ui/ContextMenu';
 import { MessageBubble } from './MessageBubble';
 import { InputBar } from './InputBar';
 import { ChatSecurityBanner } from './ChatSecurityBanner';
+import { MediaViewer } from '../ui/MediaViewer';
 
 interface Props {
     chat: LocalChat;
     currentUserId: string;
     loadingMessages?: boolean;
-    onSendMessage: (text: string) => void;
+    onSendMessage: (text: string, replyToId?: string) => void;
     onSendVoice: (chatId: string, blob: Blob) => void;
+    onSendFile: (chatId: string, file: File, caption: string, replyToId?: string) => Promise<void>;
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
     onRefreshChat: (chatId: string) => void;
     onStartCall: (chatId: string) => void;
     onOpenProfile?: (userId: string) => void;
+    onForwardMessage: (msg: LocalMessage) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
-    chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, onOpenProfile, showToast,
+    chat, currentUserId, loadingMessages,
+    onSendMessage, onSendVoice, onSendFile,
+    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall,
+    onOpenProfile, onForwardMessage, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
+    const [replyTo, setReplyTo] = useState<LocalMessage | null>(null);
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
+    const [mediaView, setMediaView] = useState<MediaInfo | null>(null);
+    const [sending, setSending] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     const getChatAvatar = (): string | undefined => {
@@ -5034,41 +5404,59 @@ export function ChatView({
     };
 
     const handleHeaderAvatarClick = () => {
-        if (!onOpenProfile) return;
-        if (!chat.is_group) {
-            const other = chat.members.find(m => m.user_id !== currentUserId);
-            if (other) onOpenProfile(other.user_id);
-        }
+        if (!onOpenProfile || chat.is_group) return;
+        const other = chat.members.find(m => m.user_id !== currentUserId);
+        if (other) onOpenProfile(other.user_id);
     };
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
-    useEffect(() => { setInputText(''); setEditingMsg(null); setCtxMenu(null); }, [chat.id]);
+    useEffect(() => { setInputText(''); setEditingMsg(null); setReplyTo(null); setPendingFile(null); setCtxMenu(null); setMediaView(null); }, [chat.id]);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                if (ctxMenu) setCtxMenu(null);
+                if (mediaView) setMediaView(null);
+                else if (ctxMenu) setCtxMenu(null);
                 else if (editingMsg) { setEditingMsg(null); setInputText(''); }
+                else if (replyTo) setReplyTo(null);
+                else if (pendingFile) setPendingFile(null);
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [ctxMenu, editingMsg]);
+    }, [ctxMenu, editingMsg, replyTo, pendingFile, mediaView]);
 
-    const handleSend = useCallback(() => {
+    const handleSend = useCallback(async () => {
+        if (sending) return;
+
+        if (editingMsg) {
+            const t = inputText.trim();
+            if (t && t !== editingMsg.content) onEditMessage(editingMsg.id, t);
+            setEditingMsg(null); setInputText('');
+            return;
+        }
+
+        if (pendingFile) {
+            setSending(true);
+            try {
+                await onSendFile(chat.id, pendingFile, inputText.trim(), replyTo?.id);
+                setPendingFile(null); setReplyTo(null); setInputText('');
+            } catch (e: any) {
+                showToast(e.message || 'Ошибка отправки файла', 'error');
+            } finally {
+                setSending(false);
+            }
+            return;
+        }
+
         const t = inputText.trim();
         if (!t) return;
-        if (editingMsg) {
-            if (t !== editingMsg.content) onEditMessage(editingMsg.id, t);
-            setEditingMsg(null);
-        } else {
-            onSendMessage(t);
-        }
-        setInputText('');
-    }, [inputText, editingMsg, onSendMessage, onEditMessage]);
+        onSendMessage(t, replyTo?.id);
+        setReplyTo(null); setInputText('');
+    }, [inputText, editingMsg, pendingFile, replyTo, chat.id, sending, onSendMessage, onEditMessage, onSendFile, showToast]);
 
-    const handleSendVoice = useCallback((blob: Blob) => {
-        onSendVoice(chat.id, blob);
-    }, [chat.id, onSendVoice]);
+    const handleSendVoice = useCallback((blob: Blob) => { onSendVoice(chat.id, blob); }, [chat.id, onSendVoice]);
+    const handleSendFile = useCallback((file: File) => { setPendingFile(file); }, []);
 
     const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
         e.preventDefault();
@@ -5077,40 +5465,29 @@ export function ChatView({
 
     const ctxItems = (msg: LocalMessage): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [];
-        if (msg.own && msg.status !== 'pending') {
-            items.push({
-                label: 'Редактировать', icon: Icon.edit(16),
-                onClick: () => { setEditingMsg(msg); setInputText(msg.content); },
-            });
+        items.push({ label: 'Ответить', icon: Icon.reply(16), onClick: () => { setReplyTo(msg); setEditingMsg(null); } });
+        items.push({ label: 'Переслать', icon: Icon.forward(16), onClick: () => onForwardMessage(msg) });
+        if (msg.own && msg.status !== 'pending' && !msg.attachment) {
+            items.push({ label: 'Редактировать', icon: Icon.edit(16), onClick: () => { setEditingMsg(msg); setInputText(msg.content); setReplyTo(null); } });
         }
-        items.push({
-            label: 'Копировать', icon: Icon.copy(16),
-            onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); },
-        });
-        if (msg.own) {
-            items.push({
-                label: 'Удалить', icon: Icon.trash(16), danger: true,
-                onClick: () => onDeleteMessage(msg.id),
-            });
-        }
+        items.push({ label: 'Копировать', icon: Icon.copy(16), onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); } });
+        if (msg.own) items.push({ label: 'Удалить', icon: Icon.trash(16), danger: true, onClick: () => onDeleteMessage(msg.id) });
         return items;
     };
 
-    const handleRefresh = useCallback(() => {
-        onRefreshChat(chat.id);
-    }, [onRefreshChat, chat.id]);
-
+    const handleRefresh = useCallback(() => { onRefreshChat(chat.id); }, [onRefreshChat, chat.id]);
     const handleCall = useCallback(() => {
-        if (chat.is_group) {
-            showToast('Групповые звонки пока не поддерживаются', 'info');
-            return;
-        }
+        if (chat.is_group) { showToast('Групповые звонки пока не поддерживаются', 'info'); return; }
         onStartCall(chat.id);
     }, [chat.id, chat.is_group, onStartCall, showToast]);
+    const handleAuthorClick = useCallback((userId: string) => { if (onOpenProfile) onOpenProfile(userId); }, [onOpenProfile]);
 
-    const handleAuthorClick = useCallback((userId: string) => {
-        if (onOpenProfile) onOpenProfile(userId);
-    }, [onOpenProfile]);
+    const handleClickReply = useCallback((messageId: string) => {
+        const el = document.getElementById(`msg-${messageId}`);
+        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('msg-highlight'); setTimeout(() => el.classList.remove('msg-highlight'), 1500); }
+    }, []);
+
+    const handleOpenMedia = useCallback((info: MediaInfo) => { setMediaView(info); }, []);
 
     return (
         <section className="chat-view">
@@ -5125,19 +5502,12 @@ export function ChatView({
                     </div>
                 </div>
                 <div className="chat-header-actions">
-                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>
-                        {Icon.phone(20)}
-                    </button>
+                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>{Icon.phone(20)}</button>
                     <button className="icon-btn" title="Поиск">{Icon.search(20)}</button>
                 </div>
             </div>
 
-            <ChatSecurityBanner
-                chat={chat}
-                currentUserId={currentUserId}
-                onRefresh={handleRefresh}
-                showToast={showToast}
-            />
+            <ChatSecurityBanner chat={chat} currentUserId={currentUserId} onRefresh={handleRefresh} showToast={showToast} />
 
             <div className="messages-scroll">
                 <div className="messages-inner">
@@ -5149,15 +5519,10 @@ export function ChatView({
                         const prev = chat.messages[i - 1];
                         const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
                         return (
-                            <MessageBubble
-                                key={msg.id}
-                                message={msg}
-                                isFirst={isFirst}
-                                isGroup={chat.is_group}
-                                chatId={chat.id}
-                                onContextMenu={e => handleContextMenu(e, msg)}
-                                onClickAuthor={handleAuthorClick}
-                            />
+                            <MessageBubble key={msg.id} message={msg} isFirst={isFirst} isGroup={chat.is_group}
+                                chatId={chat.id} onContextMenu={e => handleContextMenu(e, msg)}
+                                onClickAuthor={handleAuthorClick} onClickReply={handleClickReply}
+                                onOpenMedia={handleOpenMedia} />
                         );
                     })}
                     <div ref={bottomRef} />
@@ -5165,13 +5530,16 @@ export function ChatView({
             </div>
 
             <InputBar
-                value={inputText} onChange={setInputText} onSend={handleSend} onSendVoice={handleSendVoice}
+                value={inputText} onChange={setInputText}
+                onSend={handleSend} onSendVoice={handleSendVoice} onSendFile={handleSendFile}
                 editingMessage={editingMsg ? { id: editingMsg.id, text: editingMsg.content, author: editingMsg.sender_name, time: formatTime(editingMsg.created_at), own: editingMsg.own } : null}
                 onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
-                onAttach={() => showToast('Файлы будут доступны после обновления')}
-            />
+                replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
+                pendingFile={pendingFile} onCancelFile={() => setPendingFile(null)} />
 
             {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
+
+            {mediaView && <MediaViewer {...mediaView} onClose={() => setMediaView(null)} />}
         </section>
     );
 }
@@ -5195,9 +5563,94 @@ export function EmptyState() {
 
 
 ================================================================================
+FILE PATH: ./client/src/components/chat/ForwardModal.tsx
+================================================================================
+import React, { useState } from 'react';
+import type { LocalChat, LocalMessage } from '../../types';
+import { Icon } from '../../icons';
+import { Avatar } from '../ui/Avatar';
+
+interface Props {
+    open: boolean;
+    message: LocalMessage | null;
+    chats: LocalChat[];
+    currentUserId: string;
+    onForward: (msg: LocalMessage, targetChatId: string) => void;
+    onClose: () => void;
+}
+
+export function ForwardModal({ open, message, chats, currentUserId, onForward, onClose }: Props) {
+    const [search, setSearch] = useState('');
+
+    if (!open || !message) return null;
+
+    const filtered = chats.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const getChatAvatar = (chat: LocalChat): string | undefined => {
+        if (chat.is_group) return undefined;
+        return chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
+    };
+
+    const handleSelect = (chatId: string) => {
+        onForward(message, chatId);
+        onClose();
+    };
+
+    const previewText = message.attachment
+        ? `📎 ${message.attachment.filename}`
+        : message.content.length > 60
+            ? message.content.slice(0, 60) + '…'
+            : message.content;
+
+    return (
+        <div className="modal-overlay" onMouseDown={onClose}>
+            <div className="modal-card modal-wide" onMouseDown={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>Переслать сообщение</h3>
+                    <button className="icon-btn" onClick={onClose}>{Icon.x(18)}</button>
+                </div>
+
+                <div className="forward-preview">
+                    <div className="forward-preview-line" />
+                    <div className="forward-preview-body">
+                        <span className="forward-preview-author">{message.sender_name}</span>
+                        <span className="forward-preview-text">{previewText}</span>
+                    </div>
+                </div>
+
+                <div className="search-wrap" style={{ padding: '12px 0' }}>
+                    <span className="search-ico">{Icon.search(16)}</span>
+                    <input type="text" placeholder="Поиск чата..." value={search}
+                        onChange={e => setSearch(e.target.value)} autoFocus />
+                </div>
+
+                <div className="user-list">
+                    {filtered.map(chat => (
+                        <button key={chat.id} className="chat-item" onClick={() => handleSelect(chat.id)}>
+                            <Avatar name={chat.name} size={40} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar(chat)} />
+                            <div className="chat-item-body">
+                                <span className="chat-item-name">
+                                    {chat.is_group && <span className="group-badge">{Icon.users(13)}</span>}
+                                    {chat.name}
+                                </span>
+                            </div>
+                        </button>
+                    ))}
+                    {filtered.length === 0 && <div className="chat-list-empty">Чаты не найдены</div>}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+================================================================================
 FILE PATH: ./client/src/components/chat/InputBar.tsx
 ================================================================================
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import type { LocalMessage } from '../../types';
 import { Icon } from '../../icons';
 
 interface EditableMessage {
@@ -5213,23 +5666,36 @@ interface Props {
     onChange: (v: string) => void;
     onSend: () => void;
     onSendVoice: (blob: Blob) => void;
+    onSendFile: (file: File) => void;
     editingMessage: EditableMessage | null;
     onCancelEdit: () => void;
-    onAttach: () => void;
+    replyTo: LocalMessage | null;
+    onCancelReply: () => void;
+    pendingFile: File | null;
+    onCancelFile: () => void;
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
 }
 
 export function InputBar({
-    value, onChange, onSend, onSendVoice,
-    editingMessage, onCancelEdit, onAttach,
+    value, onChange, onSend, onSendVoice, onSendFile,
+    editingMessage, onCancelEdit,
+    replyTo, onCancelReply,
+    pendingFile, onCancelFile,
 }: Props) {
     const [recording, setRecording] = useState(false);
     const [recTime, setRecTime] = useState(0);
+    const [dragOver, setDragOver] = useState(false);
     const mediaRecorder = useRef<MediaRecorder | null>(null);
     const chunks = useRef<Blob[]>([]);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Таймер записи
     useEffect(() => {
         if (recording) {
             setRecTime(0);
@@ -5244,40 +5710,25 @@ export function InputBar({
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
-
             const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : 'audio/ogg;codecs=opus';
-
+                ? 'audio/webm;codecs=opus' : 'audio/ogg;codecs=opus';
             const recorder = new MediaRecorder(stream, { mimeType });
             chunks.current = [];
-
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.current.push(e.data);
-            };
-
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.current.push(e.data); };
             recorder.onstop = () => {
                 const blob = new Blob(chunks.current, { type: mimeType });
-                if (blob.size > 0) {
-                    onSendVoice(blob);
-                }
-                // Останавливаем микрофон
+                if (blob.size > 0) onSendVoice(blob);
                 stream.getTracks().forEach(t => t.stop());
                 streamRef.current = null;
             };
-
             recorder.start();
             mediaRecorder.current = recorder;
             setRecording(true);
-        } catch (e) {
-            console.error('Mic access denied', e);
-        }
+        } catch (e) { console.error('Mic access denied', e); }
     }, [onSendVoice]);
 
     const stopRecording = useCallback(() => {
-        if (mediaRecorder.current?.state === 'recording') {
-            mediaRecorder.current.stop();
-        }
+        if (mediaRecorder.current?.state === 'recording') mediaRecorder.current.stop();
         setRecording(false);
     }, []);
 
@@ -5287,49 +5738,91 @@ export function InputBar({
             mediaRecorder.current.onstop = null;
             mediaRecorder.current.stop();
         }
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-        }
+        if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
         chunks.current = [];
         setRecording(false);
     }, []);
 
+    const handleFileSelect = useCallback(() => { fileInputRef.current?.click(); }, []);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 25 * 1024 * 1024) { alert('Файл слишком большой (макс 25MB)'); return; }
+        onSendFile(file);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true); };
+    const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); };
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        if (file.size > 25 * 1024 * 1024) { alert('Файл слишком большой (макс 25MB)'); return; }
+        onSendFile(file);
+    };
+
+    const handleSendWithFile = () => {
+        if (pendingFile) {
+            onSend(); // ChatView handles the file+text send
+        } else {
+            onSend();
+        }
+    };
+
     const onKey = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendWithFile(); }
         if (e.key === 'Escape') {
             if (recording) cancelRecording();
             else if (editingMessage) onCancelEdit();
+            else if (replyTo) onCancelReply();
+            else if (pendingFile) onCancelFile();
         }
     };
 
     const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-    // ── UI записи ──────────────────────────────────────
     if (recording) {
         return (
             <div className="input-area">
                 <div className="input-bar recording-bar">
-                    <button className="icon-btn cancel-rec-btn" onClick={cancelRecording} title="Отменить">
-                        {Icon.x(20)}
-                    </button>
-
+                    <button className="icon-btn cancel-rec-btn" onClick={cancelRecording} title="Отменить">{Icon.x(20)}</button>
                     <div className="rec-indicator">
                         <span className="rec-dot" />
                         <span className="rec-timer">{fmtTime(recTime)}</span>
                     </div>
-
-                    <button className="send-btn" onClick={stopRecording} title="Отправить">
-                        {Icon.send(20)}
-                    </button>
+                    <button className="send-btn" onClick={stopRecording} title="Отправить">{Icon.send(20)}</button>
                 </div>
             </div>
         );
     }
 
-    // ── Обычный UI ─────────────────────────────────────
     return (
-        <div className="input-area">
+        <div className={`input-area ${dragOver ? 'input-drag-over' : ''}`}
+            onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+
+            <input ref={fileInputRef} type="file" style={{ display: 'none' }}
+                onChange={handleFileChange} />
+
+            {/* Reply bar */}
+            {replyTo && !editingMessage && (
+                <div className="edit-bar reply-bar">
+                    <span className="edit-bar-icon">{Icon.reply(15)}</span>
+                    <div className="edit-bar-body">
+                        <span className="edit-bar-label" style={{ color: 'var(--accent)' }}>
+                            {replyTo.sender_name}
+                        </span>
+                        <span className="edit-bar-text">
+                            {replyTo.attachment ? `📎 ${replyTo.attachment.filename}` : replyTo.content}
+                        </span>
+                    </div>
+                    <button className="icon-btn edit-bar-close" onClick={onCancelReply}>{Icon.x(16)}</button>
+                </div>
+            )}
+
+            {/* Edit bar */}
             {editingMessage && (
                 <div className="edit-bar">
                     <span className="edit-bar-icon">{Icon.edit(15)}</span>
@@ -5337,27 +5830,47 @@ export function InputBar({
                         <span className="edit-bar-label">Редактирование</span>
                         <span className="edit-bar-text">{editingMessage.text}</span>
                     </div>
-                    <button className="icon-btn edit-bar-close" onClick={onCancelEdit}>
-                        {Icon.x(16)}
-                    </button>
+                    <button className="icon-btn edit-bar-close" onClick={onCancelEdit}>{Icon.x(16)}</button>
                 </div>
             )}
 
+            {/* Pending file bar */}
+            {pendingFile && (
+                <div className="edit-bar file-bar">
+                    <span className="edit-bar-icon">
+                        {pendingFile.type.startsWith('image/') ? Icon.image(15) : Icon.file(15)}
+                    </span>
+                    <div className="edit-bar-body">
+                        <span className="edit-bar-label">Файл</span>
+                        <span className="edit-bar-text">
+                            {pendingFile.name} ({formatFileSize(pendingFile.size)})
+                        </span>
+                    </div>
+                    <button className="icon-btn edit-bar-close" onClick={onCancelFile}>{Icon.x(16)}</button>
+                </div>
+            )}
+
+            {dragOver && (
+                <div className="drop-overlay">Отпустите файл для отправки</div>
+            )}
+
             <div className="input-bar">
-                <button className="icon-btn attach-btn" onClick={onAttach} title="Прикрепить файл">
+                <button className="icon-btn attach-btn" onClick={handleFileSelect} title="Прикрепить файл">
                     {Icon.paperclip(21)}
                 </button>
                 <input
-                    className="msg-input"
-                    type="text"
-                    placeholder={editingMessage ? 'Редактировать сообщение...' : 'Написать сообщение...'}
+                    className="msg-input" type="text"
+                    placeholder={
+                        editingMessage ? 'Редактировать сообщение...' :
+                            pendingFile ? 'Подпись к файлу (необязательно)...' :
+                                'Написать сообщение...'}
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     onKeyDown={onKey}
                     autoFocus
                 />
-                {value.trim() ? (
-                    <button className="send-btn" onClick={onSend} title="Отправить">
+                {(value.trim() || pendingFile) ? (
+                    <button className="send-btn" onClick={handleSendWithFile} title="Отправить">
                         {editingMessage ? Icon.check(20) : Icon.send(20)}
                     </button>
                 ) : (
@@ -5374,12 +5887,23 @@ export function InputBar({
 ================================================================================
 FILE PATH: ./client/src/components/chat/MessageBubble.tsx
 ================================================================================
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { LocalMessage } from '../../types';
 import { getAvatarColor, formatTime } from '../../utils';
 import { getFileUrl } from '../../api';
+import { cryptoManager } from '../../crypto';
 import { MsgStatus } from '../ui/MsgStatus';
 import { AudioPlayer } from './AudioPlayer';
+import { Icon } from '../../icons';
+
+export interface MediaInfo {
+    src: string;
+    mediaType: 'image' | 'video';
+    filename?: string;
+    chatId?: string;
+    nonce?: string;
+    attachmentId?: string;
+}
 
 interface Props {
     message: LocalMessage;
@@ -5388,45 +5912,216 @@ interface Props {
     chatId: string;
     onContextMenu: (e: React.MouseEvent) => void;
     onClickAuthor?: (userId: string) => void;
+    onClickReply?: (messageId: string) => void;
+    onOpenMedia?: (info: MediaInfo) => void;
 }
 
-export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu, onClickAuthor }: Props) {
+function isImageMime(mime: string): boolean {
+    return mime.startsWith('image/');
+}
+function isVideoMime(mime: string): boolean {
+    return mime.startsWith('video/');
+}
+function isAudioMime(mime: string): boolean {
+    return mime.startsWith('audio/');
+}
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' Б';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
+}
+
+function SecureImage({ src, chatId, nonce, attachmentId, onClick }: {
+    src: string; chatId: string; nonce: string; attachmentId?: string; onClick?: () => void;
+}) {
+    const [url, setUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const urlRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true); setError(false);
+        (async () => {
+            try {
+                const resp = await fetch(src);
+                if (!resp.ok) throw new Error('fetch');
+                const enc = await resp.arrayBuffer();
+                if (cancelled) return;
+                const dec = await cryptoManager.decryptBuffer(chatId, enc, nonce, attachmentId);
+                if (cancelled) return;
+                const u = URL.createObjectURL(new Blob([dec]));
+                urlRef.current = u;
+                setUrl(u);
+            } catch { if (!cancelled) setError(true); }
+            finally { if (!cancelled) setLoading(false); }
+        })();
+        return () => { cancelled = true; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
+    }, [src, chatId, nonce, attachmentId]);
+
+    if (loading) return <div className="msg-image-loading">{Icon.lock(16)} Расшифровка…</div>;
+    if (error) return <div className="msg-image-error">🔒 Не удалось расшифровать</div>;
+    if (!url) return null;
+    return <img src={url} alt="" className="msg-image" onClick={onClick} />;
+}
+
+async function downloadFile(fileUrl: string, filename: string, chatId?: string, nonce?: string, attachmentId?: string) {
+    try {
+        const resp = await fetch(fileUrl);
+        if (!resp.ok) throw new Error('fetch');
+        let data = await resp.arrayBuffer();
+        if (chatId && nonce && cryptoManager.hasChatKey(chatId)) {
+            data = await cryptoManager.decryptBuffer(chatId, data, nonce, attachmentId);
+        }
+        const url = URL.createObjectURL(new Blob([data]));
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { console.error('Download failed:', e); }
+}
+
+export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu, onClickAuthor, onClickReply, onOpenMedia }: Props) {
     const showAuthor = isGroup && !message.own && isFirst;
     const isPending = message.status === 'pending';
-    const isVoice = message.attachment?.mime_type?.startsWith('audio/') || message.attachment?.mime_type === 'application/octet-stream';
-    const isEncVoice = isVoice && message.encrypted?.nonce;
+    const att = message.attachment;
+    const isEncrypted = !!message.encrypted?.nonce;
+
+    const isVoice = att && isAudioMime(att.mime_type) && (att.filename.startsWith('voice') || att.size_bytes < 5 * 1024 * 1024);
+    const isImage = att && isImageMime(att.mime_type);
+    const isVideo = att && isVideoMime(att.mime_type);
+    const isFile = att && !isVoice && !isImage && !isVideo;
 
     const hasText = message.content &&
         message.content !== '🎤 Голосовое сообщение' &&
         message.content !== '[Зашифрованное сообщение]' &&
-        message.content !== '🔒 Зашифровано';
+        message.content !== '🔒 Зашифровано' &&
+        !message.content.startsWith('📎 ');
 
     const handleAuthorClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (onClickAuthor) onClickAuthor(message.sender_id);
     };
 
+    const handleReplyClick = () => {
+        if (message.reply_to && onClickReply) onClickReply(message.reply_to.id);
+    };
+
+    const handleDownload = () => {
+        if (!att) return;
+        downloadFile(getFileUrl(att.id), att.filename,
+            isEncrypted ? chatId : undefined,
+            isEncrypted ? message.encrypted!.nonce : undefined, att.id);
+    };
+
+    const handleOpenImage = () => {
+        if (!att || !onOpenMedia) return;
+        onOpenMedia({
+            src: getFileUrl(att.id), mediaType: 'image', filename: att.filename,
+            chatId: isEncrypted ? chatId : undefined,
+            nonce: isEncrypted ? message.encrypted!.nonce : undefined,
+            attachmentId: att.id,
+        });
+    };
+
+    const handleOpenVideo = () => {
+        if (!att || !onOpenMedia) return;
+        onOpenMedia({
+            src: getFileUrl(att.id), mediaType: 'video', filename: att.filename,
+            chatId: isEncrypted ? chatId : undefined,
+            nonce: isEncrypted ? message.encrypted!.nonce : undefined,
+            attachmentId: att.id,
+        });
+    };
+
     return (
-        <div className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`} onContextMenu={onContextMenu}>
+        <div className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`}
+            onContextMenu={onContextMenu} id={`msg-${message.id}`}>
+
             {showAuthor && (
-                <span
-                    className="msg-author clickable-author"
+                <span className="msg-author clickable-author"
                     style={{ color: getAvatarColor(message.sender_name) }}
-                    onClick={handleAuthorClick}
-                >
+                    onClick={handleAuthorClick}>
                     {message.sender_name}
                 </span>
             )}
+
+            {message.forwarded_from && (
+                <div className="msg-forward-header">
+                    {Icon.forward(12)}
+                    <span>Переслано от {message.forwarded_from.original_sender_name}</span>
+                </div>
+            )}
+
             <div className={`msg-bubble ${isVoice && !hasText ? 'voice-bubble' : ''}`}>
-                {hasText && <span className="msg-text">{message.content}</span>}
-                {isVoice && message.attachment && (
-                    <AudioPlayer
-                        src={getFileUrl(message.attachment.id)}
-                        encryptedNonce={isEncVoice ? message.encrypted!.nonce : undefined}
-                        chatId={isEncVoice ? chatId : undefined}
-                        attachmentId={message.attachment.id}
-                    />
+                {message.reply_to && (
+                    <div className="msg-reply-preview" onClick={handleReplyClick}>
+                        <div className="msg-reply-line" />
+                        <div className="msg-reply-body">
+                            <span className="msg-reply-author" style={{ color: getAvatarColor(message.reply_to.sender_name) }}>
+                                {message.reply_to.sender_name}
+                            </span>
+                            <span className="msg-reply-text">
+                                {message.reply_to.attachment ? `📎 ${message.reply_to.attachment.filename}` : message.reply_to.content.slice(0, 80)}
+                            </span>
+                        </div>
+                    </div>
                 )}
+
+                {hasText && <span className="msg-text">{message.content}</span>}
+
+                {/* Image */}
+                {isImage && att && (
+                    <div className="msg-image-wrap">
+                        {isEncrypted ? (
+                            <SecureImage src={getFileUrl(att.id)} chatId={chatId}
+                                nonce={message.encrypted!.nonce} attachmentId={att.id}
+                                onClick={handleOpenImage} />
+                        ) : (
+                            <img src={getFileUrl(att.id)} alt={att.filename}
+                                className="msg-image" onClick={handleOpenImage} />
+                        )}
+                    </div>
+                )}
+
+                {/* Video */}
+                {isVideo && att && (
+                    <div className="msg-video-wrap" onClick={handleOpenVideo}>
+                        {isEncrypted ? (
+                            <div className="msg-video-encrypted">
+                                <div className="msg-video-play-icon">▶</div>
+                                <span>Видео · {formatFileSize(att.size_bytes)}</span>
+                                <span className="msg-video-enc-badge">🔒</span>
+                            </div>
+                        ) : (
+                            <>
+                                <video src={getFileUrl(att.id)} className="msg-video" preload="metadata" muted />
+                                <div className="msg-video-play-overlay">
+                                    <div className="msg-video-play-icon">▶</div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
+
+                {/* Voice/Audio */}
+                {isVoice && att && (
+                    <AudioPlayer src={getFileUrl(att.id)}
+                        encryptedNonce={isEncrypted ? message.encrypted!.nonce : undefined}
+                        chatId={isEncrypted ? chatId : undefined} attachmentId={att.id} />
+                )}
+
+                {/* Other files */}
+                {isFile && att && (
+                    <div className="msg-file-card" onClick={handleDownload}>
+                        <div className="msg-file-icon">{Icon.file(28)}</div>
+                        <div className="msg-file-info">
+                            <span className="msg-file-name">{att.filename}</span>
+                            <span className="msg-file-size">{formatFileSize(att.size_bytes)}</span>
+                        </div>
+                        <div className="msg-file-dl">{Icon.download(18)}</div>
+                    </div>
+                )}
+
                 <div className="msg-meta">
                     {message.encrypted && <span className="msg-encrypted-badge" title="E2E">🔒</span>}
                     {message.edited && <span className="msg-edited">ред.</span>}
@@ -6265,6 +6960,145 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
                 ))}
             </div>
         </>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/MediaViewer.tsx
+================================================================================
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { cryptoManager } from '../../crypto';
+import { Icon } from '../../icons';
+
+interface Props {
+    src: string;
+    mediaType: 'image' | 'video';
+    filename?: string;
+    chatId?: string;
+    nonce?: string;
+    attachmentId?: string;
+    onClose: () => void;
+}
+
+export function MediaViewer({ src, mediaType, filename, chatId, nonce, attachmentId, onClose }: Props) {
+    const [blobUrl, setBlobUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(false);
+    const urlRef = useRef<string | null>(null);
+
+    const isEncrypted = !!nonce && !!chatId;
+
+    useEffect(() => {
+        if (!isEncrypted) return;
+        let cancelled = false;
+        setLoading(true);
+        setError(false);
+
+        (async () => {
+            try {
+                const resp = await fetch(src);
+                if (!resp.ok) throw new Error('fetch');
+                const encData = await resp.arrayBuffer();
+                if (cancelled) return;
+                const decData = await cryptoManager.decryptBuffer(chatId!, encData, nonce!, attachmentId);
+                if (cancelled) return;
+                const blob = new Blob([decData]);
+                const url = URL.createObjectURL(blob);
+                urlRef.current = url;
+                setBlobUrl(url);
+            } catch {
+                if (!cancelled) setError(true);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
+        };
+    }, [src, isEncrypted, chatId, nonce, attachmentId]);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    const displayUrl = isEncrypted ? blobUrl : src;
+
+    const handleDownload = useCallback(async () => {
+        try {
+            let data: ArrayBuffer;
+            if (isEncrypted && blobUrl) {
+                const resp = await fetch(blobUrl);
+                data = await resp.arrayBuffer();
+            } else if (isEncrypted) {
+                const resp = await fetch(src);
+                const enc = await resp.arrayBuffer();
+                data = await cryptoManager.decryptBuffer(chatId!, enc, nonce!, attachmentId);
+            } else {
+                const resp = await fetch(src);
+                data = await resp.arrayBuffer();
+            }
+            const blob = new Blob([data]);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename || (mediaType === 'video' ? 'video.mp4' : 'image.jpg');
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (e) {
+            console.error('Download failed:', e);
+        }
+    }, [src, isEncrypted, blobUrl, chatId, nonce, attachmentId, filename, mediaType]);
+
+    return (
+        <div className="media-viewer-overlay" onMouseDown={onClose}>
+            <div className="media-viewer-inner" onMouseDown={e => e.stopPropagation()}>
+                <button className="media-viewer-close" onClick={onClose}>{Icon.x(24)}</button>
+
+                <div className="media-viewer-actions">
+                    <button className="media-viewer-action-btn" onClick={handleDownload} title="Скачать">
+                        {Icon.download(20)}
+                    </button>
+                </div>
+
+                {loading && (
+                    <div className="media-viewer-loading">
+                        {Icon.lock(24)}
+                        <span>Расшифровка…</span>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="media-viewer-error">
+                        🔒 Не удалось расшифровать
+                    </div>
+                )}
+
+                {!loading && !error && displayUrl && (
+                    <div className="media-viewer-content">
+                        {mediaType === 'image' ? (
+                            <img src={displayUrl} alt={filename || ''} className="media-viewer-img" />
+                        ) : (
+                            <video
+                                src={displayUrl}
+                                className="media-viewer-video"
+                                controls
+                                autoPlay
+                                playsInline
+                            />
+                        )}
+                    </div>
+                )}
+
+                {filename && (
+                    <div className="media-viewer-filename">{filename}</div>
+                )}
+            </div>
+        </div>
     );
 }
 
@@ -8048,6 +8882,7 @@ function serverMsgToLocal(msg: MessageDto, currentUserId: string): LocalMessage 
         sender_name: msg.sender_name, content: msg.content, edited: msg.edited,
         created_at: msg.created_at, own: msg.sender_id === currentUserId,
         status: 'delivered', attachment: msg.attachment, encrypted: msg.encrypted,
+        reply_to: msg.reply_to, forwarded_from: msg.forwarded_from,
     };
 }
 
@@ -8081,87 +8916,66 @@ function saveSelectedId(id: string | null) {
 async function ensureChatKey(chatId: string, currentUserId: string, members?: ChatMemberDto[]): Promise<boolean> {
     if (!cryptoManager.hasKeys()) return false;
     if (cryptoManager.hasChatKey(chatId)) return true;
-
     const cached = await cryptoManager.loadChatKeyFromCache(chatId);
     if (cached) return true;
 
     let freshMembers = members;
     if (!freshMembers) {
-        try {
-            const dto = await api.getChat(chatId);
-            freshMembers = dto.members;
-        } catch (e) {
-            console.warn('[E2E] Failed to fetch chat for key:', e);
-            return false;
-        }
+        try { const dto = await api.getChat(chatId); freshMembers = dto.members; }
+        catch { return false; }
     }
 
     const myMember = freshMembers.find(m => m.user_id === currentUserId);
     if (!myMember?.encrypted_chat_key) return false;
+    if (myMember.member_key_id && myMember.member_key_id !== cryptoManager.getKeyId()) return false;
 
-    if (myMember.member_key_id && myMember.member_key_id !== cryptoManager.getKeyId()) {
-        return false;
-    }
-
-    try {
-        await cryptoManager.unwrapChatKey(chatId, myMember.encrypted_chat_key);
-        return true;
-    } catch (e) {
-        console.error('[E2E] Failed to unwrap chat key:', chatId, e);
-        return false;
-    }
+    try { await cryptoManager.unwrapChatKey(chatId, myMember.encrypted_chat_key); return true; }
+    catch { return false; }
 }
 
 async function tryDecryptMessage(msg: LocalMessage, chatId: string): Promise<LocalMessage> {
     if (!msg.encrypted || !cryptoManager.hasKeys()) return msg;
-    if (msg.attachment) return msg;
+    if (msg.attachment && msg.content === '🎤 Голосовое сообщение') return msg;
 
     const cached = await keystore.getDecryptedMessage(msg.id);
-    if (cached !== undefined) {
-        return { ...msg, content: cached, decrypted_content: cached };
-    }
-
+    if (cached !== undefined) return { ...msg, content: cached, decrypted_content: cached };
     if (!cryptoManager.hasChatKey(chatId)) return msg;
 
     try {
         const dec = await cryptoManager.decrypt(chatId, msg.encrypted.ciphertext, msg.encrypted.nonce, msg.id);
         return { ...msg, content: dec, decrypted_content: dec };
-    } catch (e) {
-        console.warn('[E2E] Decrypt failed:', msg.id, e);
+    } catch {
         return { ...msg, content: '🔒 Не удалось расшифровать' };
     }
+}
+
+async function tryDecryptReply(msg: LocalMessage, chatId: string): Promise<LocalMessage> {
+    if (!msg.reply_to?.encrypted || !cryptoManager.hasChatKey(chatId)) return msg;
+    try {
+        const enc = msg.reply_to.encrypted;
+        const dec = await cryptoManager.decrypt(chatId, enc.ciphertext, enc.nonce);
+        return { ...msg, reply_to: { ...msg.reply_to, content: dec } };
+    } catch { return msg; }
 }
 
 async function setupNewChatEncryption(chatDto: ChatDto, currentUserId: string): Promise<void> {
     if (!cryptoManager.hasKeys()) return;
     if (cryptoManager.hasChatKey(chatDto.id)) return;
-
     const anyHasKey = chatDto.members.some(m => m.encrypted_chat_key);
-    if (anyHasKey) {
-        await ensureChatKey(chatDto.id, currentUserId, chatDto.members);
-        return;
-    }
-
+    if (anyHasKey) { await ensureChatKey(chatDto.id, currentUserId, chatDto.members); return; }
     const membersWithKeys = chatDto.members.filter(m => m.public_keys?.identity_key);
     if (membersWithKeys.length < 2) return;
 
     try {
         const chatKey = await cryptoManager.generateChatKey();
         const encryptedKeys: Record<string, any> = {};
-
         for (const member of membersWithKeys) {
-            encryptedKeys[member.user_id] = await cryptoManager.wrapChatKey(
-                chatKey,
-                member.public_keys!.identity_key,
-            );
+            encryptedKeys[member.user_id] = await cryptoManager.wrapChatKey(chatKey, member.public_keys!.identity_key);
         }
-
         await api.updateChatKeys(chatDto.id, encryptedKeys);
         cryptoManager.setChatKey(chatDto.id, chatKey);
         await cryptoManager.saveChatKeyToCache(chatDto.id, chatKey);
-    } catch (e) {
-        console.error('[E2E] Failed to setup chat encryption:', e);
-    }
+    } catch (e) { console.error('[E2E] Setup chat encryption failed:', e); }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8185,10 +8999,7 @@ export function useChats(
     onNewMessageRef.current = onNewMessage;
 
     const sendMarkRead = useCallback((chatId: string, messageId: string) => {
-        wsManager.send({
-            type: 'mark_read',
-            payload: { chat_id: chatId, message_id: messageId },
-        });
+        wsManager.send({ type: 'mark_read', payload: { chat_id: chatId, message_id: messageId } });
     }, []);
 
     const loadChats = useCallback(async () => {
@@ -8202,9 +9013,7 @@ export function useChats(
                 return sc.map(dto => {
                     const ex = m.get(dto.id);
                     const fr = chatDtoToLocal(dto, currentUserId);
-                    return (ex && ex.messagesLoaded)
-                        ? { ...fr, messages: ex.messages, messagesLoaded: true }
-                        : fr;
+                    return (ex && ex.messagesLoaded) ? { ...fr, messages: ex.messages, messagesLoaded: true } : fr;
                 });
             });
         } catch (e) { console.error('Load chats failed', e); }
@@ -8215,13 +9024,8 @@ export function useChats(
         try {
             const dto = await api.getChat(chatId);
             const local = chatDtoToLocal(dto, currentUserId);
-            setChats(prev => prev.map(c => {
-                if (c.id !== chatId) return c;
-                return { ...local, messages: c.messages, messagesLoaded: c.messagesLoaded };
-            }));
-        } catch (e) {
-            console.error('Refresh chat failed', e);
-        }
+            setChats(prev => prev.map(c => c.id !== chatId ? c : { ...local, messages: c.messages, messagesLoaded: c.messagesLoaded }));
+        } catch (e) { console.error('Refresh chat failed', e); }
     }, [currentUserId]);
 
     const selectChat = useCallback(async (chatId: string) => {
@@ -8238,41 +9042,30 @@ export function useChats(
                 try {
                     const freshDto = await api.getChat(chatId);
                     const freshLocal = chatDtoToLocal(freshDto, currentUserId);
-                    setChats(prev => prev.map(c => c.id !== chatId ? c : {
-                        ...c, members: freshLocal.members,
-                    }));
+                    setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, members: freshLocal.members }));
                     chat = { ...chat, members: freshLocal.members };
                     await ensureChatKey(chatId, currentUserId, freshLocal.members);
-                } catch (e) {
-                    console.warn('[E2E] Failed to refresh chat for key:', e);
-                }
+                } catch { }
             }
         }
 
         if (chat.messagesLoaded) {
-            if (chat.messages.length > 0) {
-                sendMarkRead(chatId, chat.messages[chat.messages.length - 1].id);
-            }
+            if (chat.messages.length > 0) sendMarkRead(chatId, chat.messages[chat.messages.length - 1].id);
             return;
         }
 
         setLoadingMessages(true);
         try {
             const msgs = await api.getMessages(chatId);
-            const local = await Promise.all(
-                msgs.map(m => tryDecryptMessage(serverMsgToLocal(m, currentUserId), chatId))
-            );
-            setChats(prev => prev.map(c => c.id !== chatId ? c : {
-                ...c, messages: local, messagesLoaded: true, unread_count: 0,
-            }));
-            if (local.length > 0) {
-                sendMarkRead(chatId, local[local.length - 1].id);
-            }
+            let local = await Promise.all(msgs.map(m => tryDecryptMessage(serverMsgToLocal(m, currentUserId), chatId)));
+            local = await Promise.all(local.map(m => tryDecryptReply(m, chatId)));
+            setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, messages: local, messagesLoaded: true, unread_count: 0 }));
+            if (local.length > 0) sendMarkRead(chatId, local[local.length - 1].id);
         } catch (e) { console.error('Load messages failed', e); }
         finally { setLoadingMessages(false); }
     }, [currentUserId, sendMarkRead]);
 
-    const sendMessage = useCallback(async (text: string) => {
+    const sendMessage = useCallback(async (text: string, replyToId?: string) => {
         if (!selectedId || !text.trim() || !user) return;
         const trimmed = text.trim();
         const clientId = uid();
@@ -8283,10 +9076,13 @@ export function useChats(
             try { enc = await cryptoManager.encrypt(selectedId, trimmed); } catch { }
         }
 
+        const replyInfo = replyToId ? chatsRef.current.find(c => c.id === selectedId)?.messages.find(m => m.id === replyToId) : undefined;
+
         const pending: LocalMessage = {
             id: clientId, client_id: clientId, chat_id: selectedId,
             sender_id: user.id, sender_name: user.display_name, content: trimmed,
             edited: false, created_at: now, own: true, status: 'pending', encrypted: enc,
+            reply_to: replyInfo ? { id: replyInfo.id, sender_id: replyInfo.sender_id, sender_name: replyInfo.sender_name, content: replyInfo.content, attachment: replyInfo.attachment } : undefined,
         };
 
         setChats(prev => prev.map(c => c.id !== selectedId ? c : {
@@ -8300,6 +9096,7 @@ export function useChats(
                 chat_id: selectedId,
                 content: enc ? '[Зашифрованное сообщение]' : trimmed,
                 client_id: clientId, encrypted: enc,
+                reply_to_id: replyToId,
             },
         });
     }, [selectedId, user]);
@@ -8308,26 +9105,24 @@ export function useChats(
         if (!user) return;
         const clientId = uid();
         const now = new Date().toISOString();
-
         let attachmentId: string | null = null;
         let encMeta: EncryptedPayload | undefined;
-        let finalMime = blob.type || 'audio/webm';
+        const finalMime = blob.type || 'audio/webm';
+        const ext = finalMime.includes('webm') ? 'webm' : 'ogg';
 
         if (cryptoManager.hasChatKey(chatId)) {
             try {
                 const audioData = await blob.arrayBuffer();
                 const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, audioData);
-                const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
-                const att = await api.uploadFile(encBlob, 'voice.enc');
+                const encBlob = new Blob([encryptedData], { type: finalMime });
+                const att = await api.uploadFile(encBlob, `voice.${ext}`);
                 attachmentId = att.id;
-                finalMime = 'audio/encrypted';
                 encMeta = { ciphertext: '', nonce };
             } catch { attachmentId = null; }
         }
 
         if (!attachmentId) {
             try {
-                const ext = blob.type.includes('webm') ? 'webm' : 'ogg';
                 const att = await api.uploadFile(blob, `voice.${ext}`);
                 attachmentId = att.id;
             } catch (e) { console.error('Voice upload failed:', e); return; }
@@ -8338,13 +9133,13 @@ export function useChats(
             sender_id: user.id, sender_name: user.display_name,
             content: '🎤 Голосовое сообщение', edited: false, created_at: now,
             own: true, status: 'pending',
-            attachment: { id: attachmentId, filename: 'voice', mime_type: finalMime, size_bytes: blob.size },
+            attachment: { id: attachmentId, filename: `voice.${ext}`, mime_type: finalMime, size_bytes: blob.size },
             encrypted: encMeta,
         };
 
         setChats(prev => prev.map(c => c.id !== chatId ? c : {
             ...c, messages: [...c.messages, pending],
-            lastMessageText: 'Вы: 🎤 Голосовое сообщение', lastMessageTime: formatTime(now),
+            lastMessageText: 'Вы: 🎤 Голосовое', lastMessageTime: formatTime(now),
         }));
 
         wsManager.send({
@@ -8356,36 +9151,134 @@ export function useChats(
         });
     }, [user]);
 
-    const editMessage = useCallback(async (messageId: string, newText: string) => {
-        if (!newText.trim() || !user) return;
-        const t = newText.trim();
+    const sendFileMessage = useCallback(async (chatId: string, file: File, caption: string, replyToId?: string) => {
+        if (!user) return;
+        const clientId = uid();
+        const now = new Date().toISOString();
+        let attachmentId: string;
+        let encMeta: EncryptedPayload | undefined;
+        const finalMime = file.type || 'application/octet-stream';
+        const originalName = file.name;
 
-        let enc: EncryptedPayload | undefined;
-        for (const chat of chatsRef.current) {
-            if (chat.messages.find(m => m.id === messageId)) {
-                if (cryptoManager.hasChatKey(chat.id)) {
-                    try { enc = await cryptoManager.encrypt(chat.id, t); } catch { }
+        // Upload with encryption if possible
+        try {
+            if (cryptoManager.hasChatKey(chatId)) {
+                try {
+                    const fileData = await file.arrayBuffer();
+                    const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, fileData);
+                    const encBlob = new Blob([encryptedData], { type: finalMime });
+                    const att = await api.uploadFile(encBlob, originalName);
+                    attachmentId = att.id;
+                    encMeta = { ciphertext: '', nonce };
+                } catch (encErr) {
+                    console.warn('[E2E] File encrypt failed, uploading plain:', encErr);
+                    const att = await api.uploadFile(file, originalName);
+                    attachmentId = att.id;
                 }
-                break;
+            } else {
+                const att = await api.uploadFile(file, originalName);
+                attachmentId = att.id;
             }
+        } catch (uploadErr: any) {
+            console.error('File upload failed:', uploadErr);
+            throw new Error(uploadErr.message || 'Ошибка загрузки файла');
         }
 
-        await keystore.saveDecryptedMessage(messageId, t);
+        const displayContent = caption || `📎 ${originalName}`;
+        let encContent: EncryptedPayload | undefined;
+        if (caption && cryptoManager.hasChatKey(chatId)) {
+            try { encContent = await cryptoManager.encrypt(chatId, caption); } catch { }
+        }
 
-        setChats(prev => prev.map(c => ({
-            ...c, messages: c.messages.map(m => m.id !== messageId ? m : { ...m, content: t, edited: true }),
-        })));
+        const replyInfo = replyToId
+            ? chatsRef.current.find(c => c.id === chatId)?.messages.find(m => m.id === replyToId)
+            : undefined;
+
+        const pending: LocalMessage = {
+            id: clientId, client_id: clientId, chat_id: chatId,
+            sender_id: user.id, sender_name: user.display_name,
+            content: displayContent, edited: false, created_at: now,
+            own: true, status: 'pending',
+            attachment: { id: attachmentId, filename: originalName, mime_type: finalMime, size_bytes: file.size },
+            encrypted: encMeta,
+            reply_to: replyInfo ? { id: replyInfo.id, sender_id: replyInfo.sender_id, sender_name: replyInfo.sender_name, content: replyInfo.content } : undefined,
+        };
+
+        setChats(prev => prev.map(c => c.id !== chatId ? c : {
+            ...c, messages: [...c.messages, pending],
+            lastMessageText: 'Вы: ' + displayContent, lastMessageTime: formatTime(now),
+        }));
 
         wsManager.send({
-            type: 'edit_message',
-            payload: { message_id: messageId, new_content: enc ? '[Зашифрованное сообщение]' : t, encrypted: enc },
+            type: 'send_message',
+            payload: {
+                chat_id: chatId,
+                content: encContent ? '[Зашифрованное сообщение]' : displayContent,
+                client_id: clientId, attachment_id: attachmentId,
+                encrypted: encMeta || encContent,
+                reply_to_id: replyToId,
+            },
         });
     }, [user]);
 
-    const deleteMessage = useCallback((messageId: string) => {
+    const forwardMessage = useCallback(async (msg: LocalMessage, targetChatId: string) => {
+        if (!user) return;
+        const clientId = uid();
+        const now = new Date().toISOString();
+
+        let content = msg.decrypted_content || msg.content;
+        let enc: EncryptedPayload | undefined;
+        if (cryptoManager.hasChatKey(targetChatId) && content && content !== '[Зашифрованное сообщение]') {
+            try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { }
+        }
+
+        const pending: LocalMessage = {
+            id: clientId, client_id: clientId, chat_id: targetChatId,
+            sender_id: user.id, sender_name: user.display_name,
+            content: content, edited: false, created_at: now,
+            own: true, status: 'pending', encrypted: enc,
+            forwarded_from: { original_message_id: msg.id, original_sender_name: msg.sender_name },
+        };
+
+        setChats(prev => prev.map(c => c.id !== targetChatId ? c : {
+            ...c, messages: [...c.messages, pending],
+            lastMessageText: 'Вы: ' + content, lastMessageTime: formatTime(now),
+        }));
+
+        wsManager.send({
+            type: 'send_message',
+            payload: {
+                chat_id: targetChatId,
+                content: enc ? '[Зашифрованное сообщение]' : content,
+                client_id: clientId, encrypted: enc,
+                forwarded_from_id: msg.id,
+                forwarded_from_name: msg.sender_name,
+            },
+        });
+
+        setSelectedId(targetChatId);
+        saveSelectedId(targetChatId);
+    }, [user]);
+
+    const editMessage = useCallback(async (messageId: string, newText: string) => {
+        if (!newText.trim() || !user) return;
+        const t = newText.trim();
+        let enc: EncryptedPayload | undefined;
+        for (const chat of chatsRef.current) {
+            if (chat.messages.find(m => m.id === messageId)) {
+                if (cryptoManager.hasChatKey(chat.id)) { try { enc = await cryptoManager.encrypt(chat.id, t); } catch { } }
+                break;
+            }
+        }
+        await keystore.saveDecryptedMessage(messageId, t);
         setChats(prev => prev.map(c => ({
-            ...c, messages: c.messages.filter(m => m.id !== messageId),
+            ...c, messages: c.messages.map(m => m.id !== messageId ? m : { ...m, content: t, edited: true }),
         })));
+        wsManager.send({ type: 'edit_message', payload: { message_id: messageId, new_content: enc ? '[Зашифрованное сообщение]' : t, encrypted: enc } });
+    }, [user]);
+
+    const deleteMessage = useCallback((messageId: string) => {
+        setChats(prev => prev.map(c => ({ ...c, messages: c.messages.filter(m => m.id !== messageId) })));
         wsManager.send({ type: 'delete_message', payload: { message_id: messageId } });
     }, []);
 
@@ -8409,20 +9302,13 @@ export function useChats(
                     const { client_id, message } = msg.payload;
                     const chat = chatsRef.current.find(c => c.id === message.chat_id);
                     const ownMsg = chat?.messages.find(m => m.client_id === client_id);
-                    if (ownMsg && ownMsg.encrypted) {
-                        await keystore.saveDecryptedMessage(message.id, ownMsg.content);
-                    }
+                    if (ownMsg && ownMsg.encrypted) await keystore.saveDecryptedMessage(message.id, ownMsg.content);
 
                     setChats(prev => prev.map(c => c.id !== message.chat_id ? c : {
                         ...c, messages: c.messages.map(m => {
                             if (m.client_id !== client_id) return m;
                             const u = serverMsgToLocal(message, currentUserId);
-                            return {
-                                ...u, status: 'sent' as const,
-                                content: m.content,
-                                attachment: m.attachment || u.attachment,
-                                encrypted: m.encrypted,
-                            };
+                            return { ...u, status: 'sent' as const, content: m.content, attachment: m.attachment || u.attachment, encrypted: m.encrypted, reply_to: m.reply_to || u.reply_to, forwarded_from: m.forwarded_from || u.forwarded_from };
                         }),
                         lastMessageText: 'Вы: ' + (c.messages.find(m => m.client_id === client_id)?.content || message.content),
                         lastMessageTime: formatTime(message.created_at),
@@ -8435,24 +9321,18 @@ export function useChats(
                     let lm = serverMsgToLocal(message, currentUserId);
 
                     if (message.encrypted && cryptoManager.hasKeys() && !message.attachment) {
-                        if (!cryptoManager.hasChatKey(message.chat_id)) {
-                            await ensureChatKey(message.chat_id, currentUserId);
-                        }
+                        if (!cryptoManager.hasChatKey(message.chat_id)) await ensureChatKey(message.chat_id, currentUserId);
                         if (cryptoManager.hasChatKey(message.chat_id)) {
                             try {
-                                const dec = await cryptoManager.decrypt(
-                                    message.chat_id, message.encrypted.ciphertext,
-                                    message.encrypted.nonce, message.id,
-                                );
+                                const dec = await cryptoManager.decrypt(message.chat_id, message.encrypted.ciphertext, message.encrypted.nonce, message.id);
                                 lm = { ...lm, content: dec, decrypted_content: dec };
                             } catch { lm = { ...lm, content: '🔒 Не удалось расшифровать' }; }
-                        } else {
-                            lm = { ...lm, content: '🔒 Зашифровано' };
-                        }
+                        } else { lm = { ...lm, content: '🔒 Зашифровано' }; }
                     }
 
+                    lm = await tryDecryptReply(lm, message.chat_id);
+
                     const isSelected = selectedIdRef.current === message.chat_id;
-                    // Окно активно И чат выбран → не показываем уведомление
                     const isWindowActive = document.hasFocus() && !document.hidden;
                     const shouldNotify = !isSelected || !isWindowActive;
 
@@ -8472,23 +9352,16 @@ export function useChats(
                         });
                     });
 
-                    // mark_read только если окно активно И чат выбран
-                    if (isSelected && isWindowActive) {
-                        sendMarkRead(message.chat_id, message.id);
-                    }
+                    if (isSelected && isWindowActive) sendMarkRead(message.chat_id, message.id);
 
-                    // Уведомление если нужно
                     if (shouldNotify && onNewMessageRef.current) {
                         const chat = chatsRef.current.find(c => c.id === message.chat_id);
                         const sender = chat?.members.find(m => m.user_id === message.sender_id);
                         onNewMessageRef.current({
-                            id: message.id,
-                            chatId: message.chat_id,
+                            id: message.id, chatId: message.chat_id,
                             chatName: chat?.name || message.sender_name,
-                            senderName: message.sender_name,
-                            senderAvatarUrl: sender?.avatar_url,
-                            text: lm.content,
-                            isGroup: chat?.is_group || false,
+                            senderName: message.sender_name, senderAvatarUrl: sender?.avatar_url,
+                            text: lm.content, isGroup: chat?.is_group || false,
                         });
                     }
                     break;
@@ -8498,8 +9371,7 @@ export function useChats(
                     const { chat_id, message_id, new_content, encrypted } = msg.payload;
                     let d = new_content;
                     if (encrypted && cryptoManager.hasChatKey(chat_id)) {
-                        try { d = await cryptoManager.decrypt(chat_id, encrypted.ciphertext, encrypted.nonce, message_id); }
-                        catch { d = '🔒 Не удалось расшифровать'; }
+                        try { d = await cryptoManager.decrypt(chat_id, encrypted.ciphertext, encrypted.nonce, message_id); } catch { d = '🔒'; }
                     }
                     setChats(prev => prev.map(c => c.id !== chat_id ? c : {
                         ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content: d, edited: true }),
@@ -8509,77 +9381,50 @@ export function useChats(
 
                 case 'message_deleted': {
                     const { chat_id, message_id } = msg.payload;
-                    setChats(prev => prev.map(c => c.id !== chat_id ? c : {
-                        ...c, messages: c.messages.filter(m => m.id !== message_id),
-                    }));
+                    setChats(prev => prev.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.filter(m => m.id !== message_id) }));
                     break;
                 }
 
                 case 'messages_read': {
                     const { chat_id, user_id, message_id } = msg.payload;
                     if (user_id === currentUserId) break;
-
                     setChats(prev => prev.map(c => {
                         if (c.id !== chat_id) return c;
                         const readIdx = c.messages.findIndex(m => m.id === message_id);
                         if (readIdx === -1) {
                             const hasUnread = c.messages.some(m => m.own && (m.status === 'sent' || m.status === 'delivered'));
                             if (!hasUnread) return c;
-                            return {
-                                ...c, messages: c.messages.map(m =>
-                                    m.own && (m.status === 'sent' || m.status === 'delivered')
-                                        ? { ...m, status: 'read' as const } : m
-                                ),
-                            };
+                            return { ...c, messages: c.messages.map(m => m.own && (m.status === 'sent' || m.status === 'delivered') ? { ...m, status: 'read' as const } : m) };
                         }
-                        return {
-                            ...c, messages: c.messages.map((m, idx) => {
-                                if (m.own && idx <= readIdx && (m.status === 'sent' || m.status === 'delivered')) {
-                                    return { ...m, status: 'read' as const };
-                                }
-                                return m;
-                            }),
-                        };
+                        return { ...c, messages: c.messages.map((m, idx) => m.own && idx <= readIdx && (m.status === 'sent' || m.status === 'delivered') ? { ...m, status: 'read' as const } : m) };
                     }));
                     break;
                 }
 
                 case 'user_online': {
                     const { user_id } = msg.payload;
-                    setChats(prev => prev.map(c => c.is_group ? c :
-                        c.members.some(m => m.user_id === user_id) ? { ...c, online: true } : c
-                    ));
+                    setChats(prev => prev.map(c => c.is_group ? c : c.members.some(m => m.user_id === user_id) ? { ...c, online: true } : c));
                     break;
                 }
                 case 'user_offline': {
                     const { user_id } = msg.payload;
-                    setChats(prev => prev.map(c => c.is_group ? c :
-                        c.members.some(m => m.user_id === user_id) ? { ...c, online: false } : c
-                    ));
+                    setChats(prev => prev.map(c => c.is_group ? c : c.members.some(m => m.user_id === user_id) ? { ...c, online: false } : c));
                     break;
                 }
                 case 'user_updated': {
                     const { user: uu } = msg.payload;
                     setChats(prev => prev.map(c => ({
                         ...c,
-                        members: c.members.map(m => m.user_id !== uu.id ? m : {
-                            ...m, display_name: uu.display_name, avatar_url: uu.avatar_url, public_keys: uu.public_keys,
-                        }),
-                        name: !c.is_group && c.members.some(m => m.user_id === uu.id && m.user_id !== currentUserId)
-                            ? uu.display_name : c.name,
+                        members: c.members.map(m => m.user_id !== uu.id ? m : { ...m, display_name: uu.display_name, avatar_url: uu.avatar_url, public_keys: uu.public_keys }),
+                        name: !c.is_group && c.members.some(m => m.user_id === uu.id && m.user_id !== currentUserId) ? uu.display_name : c.name,
                     })));
                     break;
                 }
-                case 'error': {
-                    console.error('[WS]', msg.payload.message);
-                    break;
-                }
+                case 'error': { console.error('[WS]', msg.payload.message); break; }
             }
         });
         return unsub;
     }, [user, currentUserId, loadChats, sendMarkRead]);
-
-    // ── mark_read при возврате фокуса в окно ─────────────
 
     useEffect(() => {
         const onFocus = () => {
@@ -8587,21 +9432,12 @@ export function useChats(
             if (!chatId) return;
             const chat = chatsRef.current.find(c => c.id === chatId);
             if (!chat || !chat.messagesLoaded || chat.messages.length === 0) return;
-
             const lastMsg = chat.messages[chat.messages.length - 1];
-            if (!lastMsg.own) {
-                sendMarkRead(chatId, lastMsg.id);
-                setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, unread_count: 0 }));
-            }
+            if (!lastMsg.own) { sendMarkRead(chatId, lastMsg.id); setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, unread_count: 0 })); }
         };
-
         window.addEventListener('focus', onFocus);
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) onFocus();
-        });
-        return () => {
-            window.removeEventListener('focus', onFocus);
-        };
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) onFocus(); });
+        return () => { window.removeEventListener('focus', onFocus); };
     }, [sendMarkRead]);
 
     useEffect(() => {
@@ -8610,20 +9446,14 @@ export function useChats(
         return u;
     }, [user, loadChats]);
 
-    useEffect(() => {
-        if (user) loadChats();
-        else { setChats([]); setSelectedId(null); }
-    }, [user, loadChats]);
+    useEffect(() => { if (user) loadChats(); else { setChats([]); setSelectedId(null); } }, [user, loadChats]);
 
     useEffect(() => {
         if (chats.length > 0 && selectedId) {
             if (chats.some(c => c.id === selectedId)) {
                 const ch = chats.find(c => c.id === selectedId);
                 if (ch && !ch.messagesLoaded) selectChat(selectedId);
-            } else {
-                setSelectedId(null);
-                saveSelectedId(null);
-            }
+            } else { setSelectedId(null); saveSelectedId(null); }
         }
     }, [chats.length]);
 
@@ -8631,8 +9461,8 @@ export function useChats(
         chats, selectedId,
         selectedChat: chats.find(c => c.id === selectedId) ?? null,
         loadingChats, loadingMessages,
-        selectChat, sendMessage, sendVoiceMessage, editMessage, deleteMessage,
-        createChat, loadChats, refreshChat,
+        selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
+        editMessage, deleteMessage, createChat, loadChats, refreshChat,
     };
 }
 
@@ -8796,9 +9626,9 @@ FILE PATH: ./client/src/icons.tsx
 ================================================================================
 import React from 'react';
 
-/* Каждая иконка — функция, принимающая размер */
-
 export const Icon = {
+    // ... ВСЕ СУЩЕСТВУЮЩИЕ ИКОНКИ ОСТАЮТСЯ ...
+
     chat: (s = 20) => (
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -8809,10 +9639,7 @@ export const Icon = {
     phone: (s = 20) => (
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5
-        19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1
-        2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0
-        6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
         </svg>
     ),
 
@@ -8820,17 +9647,7 @@ export const Icon = {
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2
-        0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1
-        1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65
-        1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65
-        1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1
-        2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1
-        0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0
-        1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65
-        1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65
-        1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65
-        1.65 0 0 0-1.51 1z" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
     ),
 
@@ -8843,8 +9660,7 @@ export const Icon = {
     paperclip: (s = 20) => (
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1
-        5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
         </svg>
     ),
 
@@ -8950,8 +9766,7 @@ export const Icon = {
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2
-        2 0 0 1 2 2v2" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </svg>
     ),
 
@@ -8975,10 +9790,7 @@ export const Icon = {
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             <g transform="rotate(135 12 12)">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5
-                    19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1
-                    2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0
-                    6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
             </g>
         </svg>
     ),
@@ -9027,6 +9839,50 @@ export const Icon = {
         <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+    ),
+
+    // ═══════════════ НОВЫЕ ИКОНКИ ═══════════════
+
+    reply: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 17 4 12 9 7" />
+            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+        </svg>
+    ),
+
+    forward: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 17 20 12 15 7" />
+            <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+        </svg>
+    ),
+
+    download: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+    ),
+
+    file: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+        </svg>
+    ),
+
+    image: (s = 20) => (
+        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
         </svg>
     ),
 };
@@ -9213,6 +10069,21 @@ export interface AttachmentDto {
     size_bytes: number;
 }
 
+export interface ReplyInfoDto {
+    id: string;
+    sender_id: string;
+    sender_name: string;
+    content: string;
+    attachment?: AttachmentDto;
+    encrypted?: EncryptedPayload;
+}
+
+export interface ForwardInfoDto {
+    original_message_id: string;
+    original_sender_name: string;
+    original_chat_name?: string;
+}
+
 export interface UserDto {
     id: string;
     username: string;
@@ -9254,6 +10125,8 @@ export interface MessageDto {
     created_at: string;
     attachment?: AttachmentDto;
     encrypted?: EncryptedPayload;
+    reply_to?: ReplyInfoDto;
+    forwarded_from?: ForwardInfoDto;
 }
 
 export interface ChatMemberDto {
@@ -9317,7 +10190,7 @@ export type WsServerMsg =
     | { type: 'call_media_controlled'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; action: string; current_time: number } };
 
 export type WsClientMsg =
-    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
+    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload; reply_to_id?: string; forwarded_from_id?: string; forwarded_from_name?: string } }
     | { type: 'edit_message'; payload: { message_id: string; new_content: string; encrypted?: EncryptedPayload } }
     | { type: 'delete_message'; payload: { message_id: string } }
     | { type: 'typing'; payload: { chat_id: string } }
@@ -9355,6 +10228,8 @@ export interface LocalMessage {
     attachment?: AttachmentDto;
     encrypted?: EncryptedPayload;
     decrypted_content?: string;
+    reply_to?: ReplyInfoDto;
+    forwarded_from?: ForwardInfoDto;
 }
 
 export interface LocalChat {
@@ -9914,6 +10789,18 @@ WHERE avatar_id IS NOT NULL;
 
 
 ================================================================================
+FILE PATH: ./server/migrations/0007_reply_forward.sql
+================================================================================
+-- server/migrations/0007_reply_forward.sql
+
+ALTER TABLE messages ADD COLUMN reply_to_id UUID REFERENCES messages(id) ON DELETE SET NULL;
+ALTER TABLE messages ADD COLUMN forwarded_from_id UUID REFERENCES messages(id) ON DELETE SET NULL;
+ALTER TABLE messages ADD COLUMN forwarded_from_name TEXT;
+
+CREATE INDEX idx_messages_reply ON messages(reply_to_id) WHERE reply_to_id IS NOT NULL;
+
+
+================================================================================
 FILE PATH: ./server/src/api/auth.rs
 ================================================================================
 use axum::{extract::State, Json};
@@ -9934,13 +10821,15 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterReq>,
 ) -> Result<Json<AuthRes>, AppError> {
-    if req.username.len() < 3 || req.username.len() > 32 {
+    let un_len = req.username.chars().count();
+    if un_len < 3 || un_len > 32 {
         return Err(AppError::BadRequest("username: 3‑32 символов".into()));
     }
-    if req.password.len() < 6 {
+    if req.password.chars().count() < 6 {
         return Err(AppError::BadRequest("пароль: минимум 6 символов".into()));
     }
-    if req.display_name.is_empty() || req.display_name.len() > 64 {
+    let dn_len = req.display_name.chars().count();
+    if dn_len == 0 || dn_len > 64 {
         return Err(AppError::BadRequest("display_name: 1‑64 символов".into()));
     }
 
@@ -10418,6 +11307,8 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
                 created_at: at,
                 attachment,
                 encrypted: None,
+                reply_to: None,
+                forwarded_from: None,
             }
         },
     );
@@ -10450,7 +11341,7 @@ use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, state::AppState};
 
-const MAX_FILE_SIZE: usize = 25 * 1024 * 1024; // 25MB
+const MAX_FILE_SIZE: usize = 25 * 1024 * 1024;
 
 /// POST /api/upload
 pub async fn upload(
@@ -10459,7 +11350,8 @@ pub async fn upload(
     mut multipart: Multipart,
 ) -> Result<Json<AttachmentDto>, AppError> {
     while let Some(field) = multipart.next_field().await? {
-        if field.name() != Some("file") {
+        let name = field.name().unwrap_or("").to_string();
+        if name != "file" {
             continue;
         }
 
@@ -10472,12 +11364,11 @@ pub async fn upload(
 
         if data.len() > MAX_FILE_SIZE {
             return Err(AppError::BadRequest(
-                "файл слишком большой (макс 25MB)".into(),
+                "Файл слишком большой (макс 25MB)".into(),
             ));
         }
-
         if data.is_empty() {
-            return Err(AppError::BadRequest("пустой файл".into()));
+            return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
         let att_id = Uuid::new_v4();
@@ -10485,13 +11376,13 @@ pub async fn upload(
 
         tokio::fs::write(&path, &data)
             .await
-            .map_err(|e| AppError::Internal(format!("write file: {e}")))?;
+            .map_err(|e| AppError::Internal(format!("write: {e}")))?;
 
         let size = data.len() as i64;
 
         sqlx::query(
             "INSERT INTO attachments (id, uploader_id, filename, mime_type, size_bytes)
-             VALUES ($1, $2, $3, $4, $5)",
+             VALUES ($1,$2,$3,$4,$5)",
         )
         .bind(att_id)
         .bind(auth.user_id)
@@ -10501,7 +11392,14 @@ pub async fn upload(
         .execute(&state.db)
         .await?;
 
-        tracing::info!(%att_id, %filename, size, "file uploaded");
+        tracing::info!(
+            user_id = %auth.user_id,
+            %att_id,
+            %filename,
+            %mime,
+            size_bytes = size,
+            "file uploaded"
+        );
 
         return Ok(Json(AttachmentDto {
             id: att_id,
@@ -10511,31 +11409,34 @@ pub async fn upload(
         }));
     }
 
-    Err(AppError::BadRequest("no file in request".into()))
+    Err(AppError::BadRequest("Файл не найден в запросе".into()))
 }
 
-/// GET /api/files/:file_id — без авторизации (UUID = capability token)
+/// GET /api/files/:file_id
 pub async fn download(
     State(state): State<AppState>,
     Path(file_id): Path<Uuid>,
 ) -> Result<Response, AppError> {
-    let row: Option<(String, i64)> =
-        sqlx::query_as("SELECT mime_type, size_bytes FROM attachments WHERE id = $1")
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT filename, mime_type FROM attachments WHERE id = $1")
             .bind(file_id)
             .fetch_optional(&state.db)
             .await?;
 
-    let (mime, size) = row.ok_or_else(|| AppError::NotFound("file not found".into()))?;
+    let (filename, mime) = row.ok_or_else(|| AppError::NotFound("Файл не найден".into()))?;
 
     let path = format!("{}/{}", state.config.upload_dir, file_id);
     let data = tokio::fs::read(&path)
         .await
-        .map_err(|e| AppError::NotFound(format!("file missing: {e}")))?;
+        .map_err(|e| AppError::NotFound(format!("Файл не найден: {e}")))?;
 
     Response::builder()
-        .header(header::CONTENT_TYPE, mime)
-        .header(header::CONTENT_LENGTH, size)
-        .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
+        .header(header::CONTENT_TYPE, &mime)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("inline; filename=\"{}\"", filename),
+        )
+        .header(header::CACHE_CONTROL, "public, max-age=86400")
         .body(Body::from(data))
         .map_err(|e| AppError::Internal(format!("response: {e}")))
 }
@@ -10621,7 +11522,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use shared::{AttachmentDto, MessageDto};
+use shared::{AttachmentDto, EncryptedPayload, ForwardInfoDto, MessageDto, ReplyInfoDto};
 use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, state::AppState};
@@ -10652,25 +11553,30 @@ pub async fn list(
 
     let limit = p.limit.unwrap_or(50).min(200);
 
+    // 14 columns — fits within sqlx tuple limit of 16
     type Row = (
-        Uuid,
-        Uuid,
-        String,
-        String,
-        bool,
-        chrono::DateTime<chrono::Utc>,
-        Option<Uuid>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-        Option<serde_json::Value>,
+        Uuid,                          // 1  m.id
+        Uuid,                          // 2  m.sender_id
+        String,                        // 3  u.display_name
+        String,                        // 4  m.content
+        bool,                          // 5  m.edited
+        chrono::DateTime<chrono::Utc>, // 6  m.created_at
+        Option<Uuid>,                  // 7  a.id
+        Option<String>,                // 8  a.filename
+        Option<String>,                // 9  a.mime_type
+        Option<i64>,                   // 10 a.size_bytes
+        Option<serde_json::Value>,     // 11 m.encrypted_content
+        Option<Uuid>,                  // 12 m.reply_to_id
+        Option<Uuid>,                  // 13 m.forwarded_from_id
+        Option<String>,                // 14 m.forwarded_from_name
     );
 
     let rows: Vec<Row> = if let Some(before_id) = p.before {
         sqlx::query_as(
             "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
                     a.id, a.filename, a.mime_type, a.size_bytes,
-                    m.encrypted_content
+                    m.encrypted_content,
+                    m.reply_to_id, m.forwarded_from_id, m.forwarded_from_name
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              LEFT JOIN attachments a ON a.id = m.attachment_id
@@ -10688,7 +11594,8 @@ pub async fn list(
         sqlx::query_as(
             "SELECT m.id, m.sender_id, u.display_name, m.content, m.edited, m.created_at,
                     a.id, a.filename, a.mime_type, a.size_bytes,
-                    m.encrypted_content
+                    m.encrypted_content,
+                    m.reply_to_id, m.forwarded_from_id, m.forwarded_from_name
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              LEFT JOIN attachments a ON a.id = m.attachment_id
@@ -10700,6 +11607,21 @@ pub async fn list(
         .bind(limit)
         .fetch_all(&state.db)
         .await?
+    };
+
+    // Collect reply_to_ids to batch-fetch
+    let reply_ids: Vec<Uuid> = rows
+        .iter()
+        .filter_map(|r| r.11)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    // Fetch reply infos in batch
+    let reply_map = if !reply_ids.is_empty() {
+        fetch_reply_infos(&state, &reply_ids).await
+    } else {
+        std::collections::HashMap::new()
     };
 
     let mut msgs: Vec<MessageDto> = rows
@@ -10717,6 +11639,9 @@ pub async fn list(
                 att_mime,
                 att_size,
                 enc_json,
+                reply_to_id,
+                fwd_from_id,
+                fwd_from_name,
             )| {
                 let attachment = att_id.map(|aid| AttachmentDto {
                     id: aid,
@@ -10724,7 +11649,18 @@ pub async fn list(
                     mime_type: att_mime.unwrap_or_default(),
                     size_bytes: att_size.unwrap_or(0),
                 });
-                let encrypted = enc_json.and_then(|v| serde_json::from_value(v).ok());
+                let encrypted: Option<EncryptedPayload> =
+                    enc_json.and_then(|v| serde_json::from_value(v).ok());
+
+                let reply_to =
+                    reply_to_id.and_then(|rid| reply_map.get(&rid).cloned().map(Box::new));
+
+                let forwarded_from = fwd_from_id.map(|fid| ForwardInfoDto {
+                    original_message_id: fid,
+                    original_sender_name: fwd_from_name.unwrap_or_default(),
+                    original_chat_name: None,
+                });
+
                 MessageDto {
                     id,
                     chat_id,
@@ -10735,6 +11671,8 @@ pub async fn list(
                     created_at: at,
                     attachment,
                     encrypted,
+                    reply_to,
+                    forwarded_from,
                 }
             },
         )
@@ -10742,6 +11680,69 @@ pub async fn list(
 
     msgs.reverse();
     Ok(Json(msgs))
+}
+
+/// Batch-fetch reply info for a set of message IDs
+async fn fetch_reply_infos(
+    state: &AppState,
+    ids: &[Uuid],
+) -> std::collections::HashMap<Uuid, ReplyInfoDto> {
+    // sqlx doesn't support WHERE IN with bind directly for Vec<Uuid>,
+    // so we query one by one. For small batches this is fine.
+    let mut map = std::collections::HashMap::new();
+
+    for &id in ids {
+        // 8 columns — well within limit
+        type ReplyRow = (
+            Uuid,                      // m.id
+            Uuid,                      // m.sender_id
+            String,                    // u.display_name
+            String,                    // m.content
+            Option<serde_json::Value>, // m.encrypted_content
+            Option<Uuid>,              // a.id
+            Option<String>,            // a.filename
+            Option<String>,            // a.mime_type
+        );
+
+        let row: Option<ReplyRow> = sqlx::query_as(
+            "SELECT m.id, m.sender_id, u.display_name, m.content, m.encrypted_content,
+                    a.id, a.filename, a.mime_type
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             LEFT JOIN attachments a ON a.id = m.attachment_id
+             WHERE m.id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+
+        if let Some((mid, sid, sname, content, enc_json, att_id, att_fn, att_mime)) = row {
+            let attachment = att_id.map(|aid| AttachmentDto {
+                id: aid,
+                filename: att_fn.unwrap_or_default(),
+                mime_type: att_mime.unwrap_or_default(),
+                size_bytes: 0,
+            });
+            let encrypted: Option<EncryptedPayload> =
+                enc_json.and_then(|v| serde_json::from_value(v).ok());
+
+            map.insert(
+                mid,
+                ReplyInfoDto {
+                    id: mid,
+                    sender_id: sid,
+                    sender_name: sname,
+                    content,
+                    attachment,
+                    encrypted,
+                },
+            );
+        }
+    }
+
+    map
 }
 
 
@@ -10885,7 +11886,8 @@ pub async fn update_profile(
     Json(req): Json<UpdateProfileReq>,
 ) -> Result<Json<UserDto>, AppError> {
     if let Some(ref name) = req.display_name {
-        if name.is_empty() || name.len() > 64 {
+        let char_count = name.chars().count();
+        if char_count == 0 || char_count > 64 {
             return Err(AppError::BadRequest("display_name: 1-64 символов".into()));
         }
         sqlx::query("UPDATE users SET display_name = $1 WHERE id = $2")
@@ -10896,7 +11898,7 @@ pub async fn update_profile(
     }
 
     if let Some(ref bio) = req.bio {
-        if bio.len() > 200 {
+        if bio.chars().count() > 200 {
             return Err(AppError::BadRequest("bio: максимум 200 символов".into()));
         }
         sqlx::query("UPDATE users SET bio = $1 WHERE id = $2")
@@ -11354,8 +12356,8 @@ pub async fn search(
 ================================================================================
 FILE PATH: ./server/src/app.rs
 ================================================================================
-use axum::http::{HeaderName, Method};
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{delete, get, post, put},
     Router,
 };
@@ -11366,22 +12368,16 @@ use crate::{api, state::AppState, ws};
 pub fn create_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers([
-            HeaderName::from_static("content-type"),
-            HeaderName::from_static("authorization"),
-        ]);
+        .allow_methods(Any)
+        .allow_headers(Any);
 
-    let api = Router::new()
+    let api_routes = Router::new()
+        // Auth
         .route("/auth/register", post(api::auth::register))
         .route("/auth/login", post(api::auth::login))
         .route("/auth/me", get(api::auth::me))
+        // Users
+        .route("/users", get(api::users::search))
         .route("/users/me", put(api::profile::update_profile))
         .route(
             "/users/me/avatar",
@@ -11397,28 +12393,26 @@ pub fn create_app(state: AppState) -> Router {
         )
         .route("/users/:user_id/avatar", get(api::profile::get_avatar))
         .route("/users/:user_id/profile", get(api::profile::get_profile))
-        .route("/users", get(api::users::search))
+        // Chats
         .route("/chats", get(api::chats::list).post(api::chats::create))
         .route("/chats/:chat_id", get(api::chats::get))
-        .route("/chats/:chat_id/messages", get(api::messages::list))
         .route("/chats/:chat_id/keys", put(api::chats::update_keys))
+        .route("/chats/:chat_id/messages", get(api::messages::list))
+        // Files — 26MB limit
+        .route("/upload", post(api::files::upload))
+        .route("/files/:file_id", get(api::files::download))
+        // Invites
         .route(
             "/invites",
             get(api::invites::list).post(api::invites::create),
-        )
-        .route("/upload", post(api::files::upload))
-        .route("/files/:file_id", get(api::files::download));
+        );
 
     Router::new()
-        .route("/health", get(health))
+        .nest("/api", api_routes)
         .route("/ws", get(ws::upgrade))
-        .nest("/api", api)
+        .layer(DefaultBodyLimit::max(26 * 1024 * 1024))
         .layer(cors)
         .with_state(state)
-}
-
-async fn health() -> &'static str {
-    "ok"
 }
 
 
@@ -11688,6 +12682,102 @@ async fn shutdown_signal() {
 
 
 ================================================================================
+FILE PATH: ./server/src/models.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct User {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub password_hash: String,
+    pub bio: String,
+    pub created_at: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+    pub avatar_id: Option<Uuid>,
+    pub identity_key: Option<String>,
+    pub signing_key: Option<String>,
+    pub key_signature: Option<String>,
+    pub key_id: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct Invite {
+    pub id: Uuid,
+    pub code: String,
+    pub created_by: Uuid,
+    pub used_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub used: bool,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct Chat {
+    pub id: Uuid,
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ChatMember {
+    pub chat_id: Uuid,
+    pub user_id: Uuid,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+    pub encrypted_chat_key: Option<serde_json::Value>,
+    pub member_key_id: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct Message {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub sender_id: Uuid,
+    pub content: String,
+    pub edited: bool,
+    pub created_at: DateTime<Utc>,
+    pub attachment_id: Option<Uuid>,
+    pub encrypted_content: Option<serde_json::Value>,
+    pub reply_to_id: Option<Uuid>,
+    pub forwarded_from_id: Option<Uuid>,
+    pub forwarded_from_name: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct Attachment {
+    pub id: Uuid,
+    pub uploader_id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AvatarHistory {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub attachment_id: Uuid,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ReadReceipt {
+    pub chat_id: Uuid,
+    pub user_id: Uuid,
+    pub last_read_message_id: Uuid,
+    pub updated_at: DateTime<Utc>,
+}
+
+
+
+================================================================================
 FILE PATH: ./server/src/models/attachment.rs
 ================================================================================
 use chrono::{DateTime, Utc};
@@ -11795,30 +12885,6 @@ pub struct Message {
 
 
 ================================================================================
-FILE PATH: ./server/src/models/mod.rs
-================================================================================
-pub mod attachment;
-pub mod avatar_history;
-pub mod chat;
-pub mod invite;
-pub mod message;
-pub mod user;
-
-#[allow(unused_imports)]
-pub use attachment::Attachment;
-#[allow(unused_imports)]
-pub use avatar_history::AvatarHistory;
-#[allow(unused_imports)]
-pub use chat::{Chat, ChatMember};
-#[allow(unused_imports)]
-pub use invite::Invite;
-#[allow(unused_imports)]
-pub use message::Message;
-pub use user::User;
-
-
-
-================================================================================
 FILE PATH: ./server/src/models/user.rs
 ================================================================================
 use chrono::{DateTime, Utc};
@@ -11912,7 +12978,10 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
-use shared::{AttachmentDto, EncryptedPayload, MessageDto, WsClientMsg, WsServerMsg};
+use shared::{
+    AttachmentDto, EncryptedPayload, ForwardInfoDto, MessageDto, ReplyInfoDto, WsClientMsg,
+    WsServerMsg,
+};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -11991,7 +13060,6 @@ async fn run(socket: WebSocket, state: AppState, user_id: Uuid, username: String
     tracing::info!(%user_id, "ws disconnected");
 }
 
-/// Достать display_name из БД (с fallback на username)
 async fn get_display_name(state: &AppState, uid: Uuid, fallback: &str) -> String {
     sqlx::query_as::<_, (String,)>("SELECT display_name FROM users WHERE id=$1")
         .bind(uid)
@@ -12011,6 +13079,9 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             client_id,
             attachment_id,
             encrypted,
+            reply_to_id,
+            forwarded_from_id,
+            forwarded_from_name,
         } => {
             on_send(
                 state,
@@ -12021,6 +13092,9 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
                 client_id,
                 attachment_id,
                 encrypted,
+                reply_to_id,
+                forwarded_from_id,
+                forwarded_from_name,
             )
             .await
         }
@@ -12166,7 +13240,7 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
     }
 }
 
-async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid, muted: bool) {
+async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String, muted: bool) {
     broadcast_to_chat(
         state,
         chat_id,
@@ -12185,6 +13259,7 @@ async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid,
 //  Обработчики сообщений
 // ═══════════════════════════════════════════════════════════
 
+#[allow(clippy::too_many_arguments)]
 async fn on_send(
     state: &AppState,
     uid: Uuid,
@@ -12194,6 +13269,9 @@ async fn on_send(
     client_id: String,
     attachment_id: Option<Uuid>,
     encrypted: Option<EncryptedPayload>,
+    reply_to_id: Option<Uuid>,
+    forwarded_from_id: Option<Uuid>,
+    forwarded_from_name: Option<String>,
 ) {
     let check: Option<(i64,)> =
         sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
@@ -12257,8 +13335,8 @@ async fn on_send(
         .and_then(|e| serde_json::to_value(e).ok());
 
     if sqlx::query(
-        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content, reply_to_id, forwarded_from_id, forwarded_from_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
     )
     .bind(msg_id)
     .bind(chat_id)
@@ -12267,6 +13345,9 @@ async fn on_send(
     .bind(attachment_id)
     .bind(now)
     .bind(&encrypted_json)
+    .bind(reply_to_id)
+    .bind(forwarded_from_id)
+    .bind(&forwarded_from_name)
     .execute(&state.db)
     .await
     .is_err()
@@ -12282,6 +13363,20 @@ async fn on_send(
         return;
     }
 
+    // Build reply_to info
+    let reply_to = if let Some(rid) = reply_to_id {
+        fetch_reply_info(state, rid).await
+    } else {
+        None
+    };
+
+    // Build forwarded_from info
+    let forwarded_from = forwarded_from_id.map(|fid| ForwardInfoDto {
+        original_message_id: fid,
+        original_sender_name: forwarded_from_name.clone().unwrap_or_default(),
+        original_chat_name: None,
+    });
+
     let dto = MessageDto {
         id: msg_id,
         chat_id,
@@ -12292,6 +13387,8 @@ async fn on_send(
         created_at: now,
         attachment,
         encrypted: encrypted.clone(),
+        reply_to,
+        forwarded_from,
     };
 
     state
@@ -12322,6 +13419,56 @@ async fn on_send(
             )
             .await;
     }
+}
+
+/// Fetch reply info for a message
+async fn fetch_reply_info(state: &AppState, reply_id: Uuid) -> Option<Box<ReplyInfoDto>> {
+    type ReplyRow = (
+        Uuid,
+        Uuid,
+        String,
+        String,
+        Option<serde_json::Value>,
+        Option<Uuid>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+    );
+
+    let row: Option<ReplyRow> = sqlx::query_as(
+        "SELECT m.id, m.sender_id, u.display_name, m.content, m.encrypted_content,
+                a.id, a.filename, a.mime_type, a.size_bytes
+         FROM messages m
+         JOIN users u ON u.id = m.sender_id
+         LEFT JOIN attachments a ON a.id = m.attachment_id
+         WHERE m.id = $1",
+    )
+    .bind(reply_id)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+
+    row.map(
+        |(id, sender_id, sender_name, content, enc_json, att_id, att_fn, att_mime, att_size)| {
+            let attachment = att_id.map(|aid| AttachmentDto {
+                id: aid,
+                filename: att_fn.unwrap_or_default(),
+                mime_type: att_mime.unwrap_or_default(),
+                size_bytes: att_size.unwrap_or(0),
+            });
+            let encrypted: Option<EncryptedPayload> =
+                enc_json.and_then(|v| serde_json::from_value(v).ok());
+            Box::new(ReplyInfoDto {
+                id,
+                sender_id,
+                sender_name,
+                content,
+                attachment,
+                encrypted,
+            })
+        },
+    )
 }
 
 async fn on_edit(
@@ -12401,7 +13548,7 @@ async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Обработчики звонков (чистый relay, без хранения)
+//  Обработчики звонков — call_id теперь String
 // ═══════════════════════════════════════════════════════════
 
 async fn on_call_offer(
@@ -12409,7 +13556,7 @@ async fn on_call_offer(
     uid: Uuid,
     uname: &str,
     chat_id: Uuid,
-    call_id: Uuid,
+    call_id: String,
     sdp: String,
     encrypted: bool,
 ) {
@@ -12435,7 +13582,7 @@ async fn on_call_answer(
     state: &AppState,
     uid: Uuid,
     chat_id: Uuid,
-    call_id: Uuid,
+    call_id: String,
     sdp: String,
     encrypted: bool,
 ) {
@@ -12458,7 +13605,7 @@ async fn on_call_ice(
     state: &AppState,
     uid: Uuid,
     chat_id: Uuid,
-    call_id: Uuid,
+    call_id: String,
     candidate: String,
     encrypted: bool,
 ) {
@@ -12476,7 +13623,7 @@ async fn on_call_ice(
     .await;
 }
 
-async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String) {
     tracing::info!(%uid, %chat_id, %call_id, "call_reject");
     broadcast_to_chat(
         state,
@@ -12487,7 +13634,7 @@ async fn on_call_reject(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uui
     .await;
 }
 
-async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Uuid) {
+async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String) {
     tracing::info!(%uid, %chat_id, %call_id, "call_hangup");
     broadcast_to_chat(
         state,
@@ -12558,6 +13705,7 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 uuid = { version = "1", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -12565,32 +13713,41 @@ chrono = { version = "0.4", features = ["serde"] }
 ================================================================================
 FILE PATH: ./shared/src/lib.rs
 ================================================================================
-use std::collections::HashMap;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // ═══════════════════════════════════════════════════════════
-//  E2E Encryption types
+//  Auth
 // ═══════════════════════════════════════════════════════════
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct EncryptedPayload {
-    pub ciphertext: String,
-    pub nonce: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sender_key_id: Option<String>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterReq {
+    pub username: String,
+    pub password: String,
+    pub display_name: String,
+    pub invite_code: Option<String>,
+    pub public_keys: Option<PublicKeyBundle>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct EncryptedChatKey {
-    pub ephemeral_pub: String,
-    pub ciphertext: String,
-    pub nonce: String,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginReq {
+    pub username: String,
+    pub password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuthRes {
+    pub token: String,
+    pub user: UserDto,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Users
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicKeyBundle {
     pub identity_key: String,
     pub signing_key: String,
@@ -12598,240 +13755,11 @@ pub struct PublicKeyBundle {
     pub key_id: String,
 }
 
-// ═══════════════════════════════════════════════════════════
-//  WS: клиент → сервер
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload")]
-#[serde(rename_all = "snake_case")]
-pub enum WsClientMsg {
-    SendMessage {
-        chat_id: Uuid,
-        content: String,
-        client_id: String,
-        #[serde(default)]
-        attachment_id: Option<Uuid>,
-        #[serde(default)]
-        encrypted: Option<EncryptedPayload>,
-    },
-    EditMessage {
-        message_id: Uuid,
-        new_content: String,
-        #[serde(default)]
-        encrypted: Option<EncryptedPayload>,
-    },
-    DeleteMessage {
-        message_id: Uuid,
-    },
-    Typing {
-        chat_id: Uuid,
-    },
-    StopTyping {
-        chat_id: Uuid,
-    },
-    MarkRead {
-        chat_id: Uuid,
-        message_id: Uuid,
-    },
-    CallOffer {
-        chat_id: Uuid,
-        call_id: Uuid,
-        sdp: String,
-        #[serde(default)]
-        encrypted: bool,
-    },
-    CallAnswer {
-        chat_id: Uuid,
-        call_id: Uuid,
-        sdp: String,
-        #[serde(default)]
-        encrypted: bool,
-    },
-    #[serde(rename = "call_ice")]
-    CallIce {
-        chat_id: Uuid,
-        call_id: Uuid,
-        candidate: String,
-        #[serde(default)]
-        encrypted: bool,
-    },
-    CallReject {
-        chat_id: Uuid,
-        call_id: Uuid,
-    },
-    CallHangup {
-        chat_id: Uuid,
-        call_id: Uuid,
-    },
-    CallMute {
-        chat_id: Uuid,
-        call_id: Uuid,
-        muted: bool,
-    },
-    CallMediaShare {
-        chat_id: Uuid,
-        call_id: Uuid,
-        file_id: Uuid,
-        file_name: String,
-    },
-    CallMediaRemove {
-        chat_id: Uuid,
-        call_id: Uuid,
-        media_id: String,
-    },
-    CallMediaControl {
-        chat_id: Uuid,
-        call_id: Uuid,
-        media_id: String,
-        action: String,
-        current_time: f64,
-    },
-}
-
-// ═══════════════════════════════════════════════════════════
-//  WS: сервер → клиент
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", content = "payload")]
-#[serde(rename_all = "snake_case")]
-pub enum WsServerMsg {
-    NewMessage {
-        message: MessageDto,
-    },
-    MessageSent {
-        client_id: String,
-        message: MessageDto,
-    },
-    MessageEdited {
-        chat_id: Uuid,
-        message_id: Uuid,
-        new_content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        encrypted: Option<EncryptedPayload>,
-    },
-    MessageDeleted {
-        chat_id: Uuid,
-        message_id: Uuid,
-    },
-    Typing {
-        chat_id: Uuid,
-        user_id: Uuid,
-    },
-    StopTyping {
-        chat_id: Uuid,
-        user_id: Uuid,
-    },
-    MessagesRead {
-        chat_id: Uuid,
-        user_id: Uuid,
-        message_id: Uuid,
-    },
-    UserOnline {
-        user_id: Uuid,
-    },
-    UserOffline {
-        user_id: Uuid,
-    },
-    UserUpdated {
-        user: UserDto,
-    },
-    Error {
-        message: String,
-    },
-    CallIncoming {
-        chat_id: Uuid,
-        call_id: Uuid,
-        caller_id: Uuid,
-        caller_name: String,
-        sdp: String,
-        encrypted: bool,
-    },
-    CallAccepted {
-        chat_id: Uuid,
-        call_id: Uuid,
-        sdp: String,
-        encrypted: bool,
-    },
-    #[serde(rename = "call_ice")]
-    CallIce {
-        chat_id: Uuid,
-        call_id: Uuid,
-        candidate: String,
-        encrypted: bool,
-    },
-    CallRejected {
-        chat_id: Uuid,
-        call_id: Uuid,
-    },
-    CallEnded {
-        chat_id: Uuid,
-        call_id: Uuid,
-    },
-    CallMuteChanged {
-        chat_id: Uuid,
-        call_id: Uuid,
-        user_id: Uuid,
-        muted: bool,
-    },
-    CallMediaShared {
-        chat_id: Uuid,
-        call_id: Uuid,
-        media_id: String,
-        user_id: Uuid,
-        user_name: String,
-        file_id: Uuid,
-        file_name: String,
-    },
-    CallMediaRemoved {
-        chat_id: Uuid,
-        call_id: Uuid,
-        media_id: String,
-    },
-    CallMediaControlled {
-        chat_id: Uuid,
-        call_id: Uuid,
-        media_id: String,
-        user_id: Uuid,
-        action: String,
-        current_time: f64,
-    },
-}
-
-// ═══════════════════════════════════════════════════════════
-//  DTOs
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AttachmentDto {
-    pub id: Uuid,
-    pub filename: String,
-    pub mime_type: String,
-    pub size_bytes: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MessageDto {
-    pub id: Uuid,
-    pub chat_id: Uuid,
-    pub sender_id: Uuid,
-    pub sender_name: String,
-    pub content: String,
-    pub edited: bool,
-    pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attachment: Option<AttachmentDto>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted: Option<EncryptedPayload>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDto {
     pub id: Uuid,
     pub username: String,
     pub display_name: String,
-    #[serde(default)]
     pub bio: String,
     pub online: bool,
     pub last_seen: DateTime<Utc>,
@@ -12841,15 +13769,7 @@ pub struct UserDto {
     pub public_keys: Option<PublicKeyBundle>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AvatarHistoryDto {
-    pub id: Uuid,
-    pub url: String,
-    pub set_at: DateTime<Utc>,
-    pub is_current: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfileDto {
     pub id: Uuid,
     pub username: String,
@@ -12865,18 +13785,105 @@ pub struct UserProfileDto {
     pub public_keys: Option<PublicKeyBundle>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ChatDto {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AvatarHistoryDto {
     pub id: Uuid,
-    pub is_group: bool,
-    pub name: Option<String>,
-    pub members: Vec<ChatMemberDto>,
-    pub last_message: Option<MessageDto>,
-    pub unread_count: i64,
-    pub created_at: DateTime<Utc>,
+    pub url: String,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateProfileReq {
+    pub display_name: Option<String>,
+    pub bio: Option<String>,
+    pub public_keys: Option<PublicKeyBundle>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAvatarRes {
+    pub avatar_url: String,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Encryption
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedPayload {
+    pub ciphertext: String,
+    pub nonce: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_key_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedChatKey {
+    pub ephemeral_pub: String,
+    pub ciphertext: String,
+    pub nonce: String,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Attachments
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttachmentDto {
+    pub id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Messages
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplyInfoDto {
+    pub id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<AttachmentDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<EncryptedPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForwardInfoDto {
+    pub original_message_id: Uuid,
+    pub original_sender_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_chat_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageDto {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub content: String,
+    pub edited: bool,
+    pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<AttachmentDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<EncryptedPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<Box<ReplyInfoDto>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forwarded_from: Option<ForwardInfoDto>,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Chats
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMemberDto {
     pub user_id: Uuid,
     pub username: String,
@@ -12893,66 +13900,255 @@ pub struct ChatMemberDto {
     pub member_key_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatDto {
+    pub id: Uuid,
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub members: Vec<ChatMemberDto>,
+    pub last_message: Option<MessageDto>,
+    pub unread_count: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateChatReq {
+    pub member_ids: Vec<Uuid>,
+    pub is_group: bool,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateChatKeysReq {
+    pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Invites
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InviteDto {
     pub code: String,
     pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
     pub used: bool,
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Request / Response types
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterReq {
-    pub username: String,
-    pub password: String,
-    pub display_name: String,
-    pub invite_code: Option<String>,
-    pub public_keys: Option<PublicKeyBundle>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LoginReq {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct AuthRes {
-    pub token: String,
-    pub user: UserDto,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateChatReq {
-    pub is_group: bool,
-    pub name: Option<String>,
-    pub member_ids: Vec<Uuid>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateInviteReq {
     pub expires_in_hours: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct UpdateProfileReq {
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
-    pub public_keys: Option<PublicKeyBundle>,
+// ═══════════════════════════════════════════════════════════
+//  WebSocket
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum WsServerMsg {
+    #[serde(rename = "new_message")]
+    NewMessage { message: MessageDto },
+
+    #[serde(rename = "message_sent")]
+    MessageSent {
+        client_id: String,
+        message: MessageDto,
+    },
+
+    #[serde(rename = "message_edited")]
+    MessageEdited {
+        chat_id: Uuid,
+        message_id: Uuid,
+        new_content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        encrypted: Option<EncryptedPayload>,
+    },
+
+    #[serde(rename = "message_deleted")]
+    MessageDeleted { chat_id: Uuid, message_id: Uuid },
+
+    #[serde(rename = "typing")]
+    Typing { chat_id: Uuid, user_id: Uuid },
+
+    #[serde(rename = "stop_typing")]
+    StopTyping { chat_id: Uuid, user_id: Uuid },
+
+    #[serde(rename = "messages_read")]
+    MessagesRead {
+        chat_id: Uuid,
+        user_id: Uuid,
+        message_id: Uuid,
+    },
+
+    #[serde(rename = "user_online")]
+    UserOnline { user_id: Uuid },
+
+    #[serde(rename = "user_offline")]
+    UserOffline { user_id: Uuid },
+
+    #[serde(rename = "user_updated")]
+    UserUpdated { user: UserDto },
+
+    #[serde(rename = "error")]
+    Error { message: String },
+
+    // Call
+    #[serde(rename = "call_incoming")]
+    CallIncoming {
+        chat_id: Uuid,
+        call_id: String,
+        caller_id: Uuid,
+        caller_name: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_accepted")]
+    CallAccepted {
+        chat_id: Uuid,
+        call_id: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_ice")]
+    CallIce {
+        chat_id: Uuid,
+        call_id: String,
+        candidate: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_rejected")]
+    CallRejected { chat_id: Uuid, call_id: String },
+    #[serde(rename = "call_ended")]
+    CallEnded { chat_id: Uuid, call_id: String },
+    #[serde(rename = "call_mute_changed")]
+    CallMuteChanged {
+        chat_id: Uuid,
+        call_id: String,
+        user_id: Uuid,
+        muted: bool,
+    },
+    #[serde(rename = "call_media_shared")]
+    CallMediaShared {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+        user_id: Uuid,
+        user_name: String,
+        file_id: String,
+        file_name: String,
+    },
+    #[serde(rename = "call_media_removed")]
+    CallMediaRemoved {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+    },
+    #[serde(rename = "call_media_controlled")]
+    CallMediaControlled {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+        user_id: Uuid,
+        action: String,
+        current_time: f64,
+    },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateAvatarRes {
-    pub avatar_url: String,
-}
-
 #[derive(Debug, Deserialize)]
-pub struct UpdateChatKeysReq {
-    pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
+#[serde(tag = "type", content = "payload")]
+pub enum WsClientMsg {
+    #[serde(rename = "send_message")]
+    SendMessage {
+        chat_id: Uuid,
+        content: String,
+        client_id: String,
+        #[serde(default)]
+        attachment_id: Option<Uuid>,
+        #[serde(default)]
+        encrypted: Option<EncryptedPayload>,
+        #[serde(default)]
+        reply_to_id: Option<Uuid>,
+        #[serde(default)]
+        forwarded_from_id: Option<Uuid>,
+        #[serde(default)]
+        forwarded_from_name: Option<String>,
+    },
+
+    #[serde(rename = "edit_message")]
+    EditMessage {
+        message_id: Uuid,
+        new_content: String,
+        #[serde(default)]
+        encrypted: Option<EncryptedPayload>,
+    },
+
+    #[serde(rename = "delete_message")]
+    DeleteMessage { message_id: Uuid },
+
+    #[serde(rename = "typing")]
+    Typing { chat_id: Uuid },
+
+    #[serde(rename = "stop_typing")]
+    StopTyping { chat_id: Uuid },
+
+    #[serde(rename = "mark_read")]
+    MarkRead { chat_id: Uuid, message_id: Uuid },
+
+    // Call
+    #[serde(rename = "call_offer")]
+    CallOffer {
+        chat_id: Uuid,
+        call_id: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_answer")]
+    CallAnswer {
+        chat_id: Uuid,
+        call_id: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_ice")]
+    CallIce {
+        chat_id: Uuid,
+        call_id: String,
+        candidate: String,
+        encrypted: bool,
+    },
+    #[serde(rename = "call_reject")]
+    CallReject { chat_id: Uuid, call_id: String },
+    #[serde(rename = "call_mute")]
+    CallMute {
+        chat_id: Uuid,
+        call_id: String,
+        muted: bool,
+    },
+    #[serde(rename = "call_hangup")]
+    CallHangup { chat_id: Uuid, call_id: String },
+    #[serde(rename = "call_media_share")]
+    CallMediaShare {
+        chat_id: Uuid,
+        call_id: String,
+        file_id: String,
+        file_name: String,
+    },
+    #[serde(rename = "call_media_remove")]
+    CallMediaRemove {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+    },
+    #[serde(rename = "call_media_control")]
+    CallMediaControl {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+        action: String,
+        current_time: f64,
+    },
 }
 
 
