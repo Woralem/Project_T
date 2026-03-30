@@ -290,24 +290,31 @@ export function useChats(
         const now = new Date().toISOString();
         let attachmentId: string;
         let encMeta: EncryptedPayload | undefined;
-        let finalMime = file.type || 'application/octet-stream';
+        const finalMime = file.type || 'application/octet-stream';
         const originalName = file.name;
 
-        if (cryptoManager.hasChatKey(chatId)) {
-            try {
-                const fileData = await file.arrayBuffer();
-                const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, fileData);
-                const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
-                const att = await api.uploadFile(encBlob, originalName + '.enc');
-                attachmentId = att.id;
-                encMeta = { ciphertext: '', nonce };
-            } catch {
+        // Upload with encryption if possible
+        try {
+            if (cryptoManager.hasChatKey(chatId)) {
+                try {
+                    const fileData = await file.arrayBuffer();
+                    const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, fileData);
+                    const encBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
+                    const att = await api.uploadFile(encBlob, originalName + '.enc');
+                    attachmentId = att.id;
+                    encMeta = { ciphertext: '', nonce };
+                } catch (encErr) {
+                    console.warn('[E2E] File encrypt failed, uploading plain:', encErr);
+                    const att = await api.uploadFile(file, originalName);
+                    attachmentId = att.id;
+                }
+            } else {
                 const att = await api.uploadFile(file, originalName);
                 attachmentId = att.id;
             }
-        } else {
-            const att = await api.uploadFile(file, originalName);
-            attachmentId = att.id;
+        } catch (uploadErr: any) {
+            console.error('File upload failed:', uploadErr);
+            throw new Error(uploadErr.message || 'Ошибка загрузки файла');
         }
 
         const displayContent = caption || `📎 ${originalName}`;
@@ -316,7 +323,9 @@ export function useChats(
             try { encContent = await cryptoManager.encrypt(chatId, caption); } catch { }
         }
 
-        const replyInfo = replyToId ? chatsRef.current.find(c => c.id === chatId)?.messages.find(m => m.id === replyToId) : undefined;
+        const replyInfo = replyToId
+            ? chatsRef.current.find(c => c.id === chatId)?.messages.find(m => m.id === replyToId)
+            : undefined;
 
         const pending: LocalMessage = {
             id: clientId, client_id: clientId, chat_id: chatId,
