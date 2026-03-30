@@ -137,6 +137,7 @@ export type WsServerMsg =
     | { type: 'user_online'; payload: { user_id: string } }
     | { type: 'user_offline'; payload: { user_id: string } }
     | { type: 'user_updated'; payload: { user: UserDto } }
+    | { type: 'chat_deleted'; payload: { chat_id: string } }
     | { type: 'error'; payload: { message: string } }
     | { type: 'call_incoming'; payload: { chat_id: string; call_id: string; caller_id: string; caller_name: string; sdp: string; encrypted: boolean } }
     | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
@@ -203,6 +204,7 @@ export interface LocalChat {
     created_at: string;
     lastMessageText: string;
     lastMessageTime: string;
+    hasMore?: boolean;
 }
 
 export interface ToastData {
@@ -282,4 +284,14 @@ export interface NotificationData {
     senderAvatarUrl?: string;
     text: string;
     isGroup: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Voice Player типы
+// ═══════════════════════════════════════════════════════════
+
+export interface ActiveVoice {
+    audio: HTMLAudioElement;
+    messageId: string;
+    senderName: string;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Tab, UserDto, NotificationData, LocalMessage } from './types';
+import type { Tab, UserDto, NotificationData, LocalMessage, ActiveVoice } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useCall } from './hooks/useCall';
@@ -22,6 +22,7 @@ import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
 import { ProfileModal } from './components/ui/ProfileModal';
+import { VoicePlayerBar } from './components/chat/VoicePlayerBar';
 
 function loadDark(): boolean { try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; } }
 function saveDark(v: boolean) { try { localStorage.setItem('dark_mode', String(v)); } catch { } }
@@ -37,6 +38,7 @@ export default function App() {
     const [forwardMsg, setForwardMsg] = React.useState<LocalMessage | null>(null);
     const [notifications, setNotifications] = React.useState<NotificationData[]>([]);
     const [profileUserId, setProfileUserId] = React.useState<string | null>(null);
+    const [activeVoice, setActiveVoice] = React.useState<ActiveVoice | null>(null);
     const { toasts, showToast } = useToast();
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
 
@@ -67,6 +69,7 @@ export default function App() {
         chats, selectedId, selectedChat, loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, refreshChat,
+        loadMoreMessages, deleteChatAction, leaveChatAction,
     } = useChats(user, handleNewMessage);
 
     selectChatRef.current = selectChat;
@@ -89,9 +92,10 @@ export default function App() {
 
     const handleLogout = React.useCallback(() => {
         if (callState.status !== 'idle' && callState.status !== 'ended') hangup();
+        if (activeVoice) { activeVoice.audio.pause(); setActiveVoice(null); }
         cryptoManager.clear();
         logout();
-    }, [logout, callState.status, hangup]);
+    }, [logout, callState.status, hangup, activeVoice]);
 
     const handleUserUpdate = React.useCallback((updated: UserDto) => { setUser(updated); }, [setUser]);
 
@@ -103,8 +107,7 @@ export default function App() {
     const handleOpenProfile = React.useCallback((userId: string) => { setProfileUserId(userId); }, []);
 
     const handleProfileMessage = React.useCallback(async (userId: string) => {
-        setProfileUserId(null);
-        setTab('chats');
+        setProfileUserId(null); setTab('chats');
         const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
         if (dm) { selectChat(dm.id); } else { try { await createChat([userId], false); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }
     }, [chats, selectChat, createChat, showToast]);
@@ -116,13 +119,22 @@ export default function App() {
     }, [chats, handleStartCall, showToast]);
 
     const handleProfileEdit = React.useCallback(() => { setProfileUserId(null); setTab('settings'); }, []);
-
     const handleForwardMessage = React.useCallback((msg: LocalMessage) => { setForwardMsg(msg); }, []);
 
     const handleForward = React.useCallback((msg: LocalMessage, targetChatId: string) => {
         forwardMessage(msg, targetChatId);
         showToast('Сообщение переслано', 'success');
     }, [forwardMessage, showToast]);
+
+    // Voice player handlers — живут на уровне App, не сбрасываются при смене чата
+    const handleVoiceActivate = React.useCallback((v: ActiveVoice) => {
+        if (activeVoice && activeVoice.audio !== v.audio) {
+            activeVoice.audio.pause(); activeVoice.audio.currentTime = 0;
+        }
+        setActiveVoice(v);
+    }, [activeVoice]);
+
+    const handleVoiceDeactivate = React.useCallback(() => { setActiveVoice(null); }, []);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -149,7 +161,13 @@ export default function App() {
                                 onDeleteMessage={deleteMessage} onEditMessage={editMessage}
                                 onRefreshChat={refreshChat} onStartCall={handleStartCall}
                                 onOpenProfile={handleOpenProfile} onForwardMessage={handleForwardMessage}
+                                onLoadMore={loadMoreMessages}
+                                onDeleteChat={async (id) => { try { await deleteChatAction(id); showToast('Чат удалён', 'success'); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }}
+                                onLeaveChat={async (id) => { try { await leaveChatAction(id); showToast('Вы покинули чат', 'success'); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }}
                                 showToast={showToast}
+                                activeVoice={activeVoice}
+                                onVoiceActivate={handleVoiceActivate}
+                                onVoiceDeactivate={handleVoiceDeactivate}
                             />
                         ) : <EmptyState />}
                     </>
@@ -157,6 +175,13 @@ export default function App() {
                 {tab === 'calls' && <CallsView />}
                 {tab === 'settings' && <SettingsView darkMode={dark} onToggleTheme={toggleDark} showToast={showToast} user={user} onUserUpdate={handleUserUpdate} />}
             </div>
+
+            {/* Глобальный voice player — показывается даже если не на вкладке чатов */}
+            {activeVoice && tab !== 'chats' && (
+                <div className="global-voice-bar">
+                    <VoicePlayerBar voice={activeVoice} onClose={handleVoiceDeactivate} />
+                </div>
+            )}
 
             <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} onCreate={createChat} showToast={showToast} />
             <ForwardModal open={!!forwardMsg} message={forwardMsg} chats={chats} currentUserId={user.id} onForward={handleForward} onClose={() => setForwardMsg(null)} />

@@ -290,3 +290,79 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         created_at: chat.created_at,
     })
 }
+
+/// DELETE /api/chats/:chat_id
+pub async fn delete_chat(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    // Проверяем что пользователь — владелец
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let role = role.ok_or_else(|| AppError::Forbidden("не участник чата".into()))?;
+    if role.0 != "owner" {
+        return Err(AppError::Forbidden(
+            "только создатель может удалить чат".into(),
+        ));
+    }
+
+    // Получаем участников для уведомления
+    let member_ids: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id = $1")
+            .bind(chat_id)
+            .fetch_all(&state.db)
+            .await?;
+
+    // Удаляем (каскадно удалит messages и chat_members)
+    sqlx::query("DELETE FROM chats WHERE id = $1")
+        .bind(chat_id)
+        .execute(&state.db)
+        .await?;
+
+    // Уведомляем
+    let msg = shared::WsServerMsg::ChatDeleted { chat_id };
+    for (uid,) in member_ids {
+        if uid != auth.user_id {
+            state.send_to_user(&uid, msg.clone()).await;
+        }
+    }
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/leave
+pub async fn leave_chat(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    sqlx::query("DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+        .bind(chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    // Если больше нет участников — удаляем чат
+    let (remaining,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id = $1")
+            .bind(chat_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if remaining == 0 {
+        sqlx::query("DELETE FROM chats WHERE id = $1")
+            .bind(chat_id)
+            .execute(&state.db)
+            .await?;
+    }
+
+    Ok(Json(()))
+}

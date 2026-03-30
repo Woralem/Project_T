@@ -553,6 +553,12 @@ export function useChats(
                     break;
                 }
                 case 'error': { console.error('[WS]', msg.payload.message); break; }
+                case 'chat_deleted': {
+                    const { chat_id } = msg.payload;
+                    setChats(prev => prev.filter(c => c.id !== chat_id));
+                    if (selectedIdRef.current === chat_id) { setSelectedId(null); saveSelectedId(null); }
+                    break;
+                }
             }
         });
         return unsub;
@@ -589,11 +595,46 @@ export function useChats(
         }
     }, [chats.length]);
 
+    const loadMoreMessages = useCallback(async (chatId: string) => {
+        const chat = chatsRef.current.find(c => c.id === chatId);
+        if (!chat || !chat.messagesLoaded || chat.messages.length === 0) return;
+        const oldest = chat.messages[0];
+        try {
+            const msgs = await api.getMessages(chatId, 50, oldest.id);
+            if (msgs.length === 0) {
+                setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, hasMore: false }));
+                return;
+            }
+            let local = await Promise.all(msgs.map(m => tryDecryptMessage(serverMsgToLocal(m, currentUserId), chatId)));
+            local = await Promise.all(local.map(m => tryDecryptReply(m, chatId)));
+            setChats(prev => prev.map(c => c.id !== chatId ? c : {
+                ...c, messages: [...local, ...c.messages], hasMore: msgs.length >= 50,
+            }));
+        } catch (e) { console.error('Load more failed', e); }
+    }, [currentUserId]);
+
+    const deleteChatAction = useCallback(async (chatId: string) => {
+        try {
+            await api.deleteChat(chatId);
+            setChats(prev => prev.filter(c => c.id !== chatId));
+            if (selectedIdRef.current === chatId) { setSelectedId(null); saveSelectedId(null); }
+        } catch (e: any) { console.error('Delete chat failed:', e); throw e; }
+    }, []);
+
+    const leaveChatAction = useCallback(async (chatId: string) => {
+        try {
+            await api.leaveChat(chatId);
+            setChats(prev => prev.filter(c => c.id !== chatId));
+            if (selectedIdRef.current === chatId) { setSelectedId(null); saveSelectedId(null); }
+        } catch (e: any) { console.error('Leave chat failed:', e); throw e; }
+    }, []);
+
     return {
         chats, selectedId,
         selectedChat: chats.find(c => c.id === selectedId) ?? null,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, loadChats, refreshChat,
+        loadMoreMessages, deleteChatAction, leaveChatAction,
     };
 }

@@ -43,6 +43,11 @@ pub fn create_app(state: AppState) -> Router {
         // Files — 26MB limit
         .route("/upload", post(api::files::upload))
         .route("/files/:file_id", get(api::files::download))
+        .route(
+            "/chats/:chat_id",
+            get(api::chats::get).delete(api::chats::delete_chat),
+        )
+        .route("/chats/:chat_id/leave", post(api::chats::leave_chat))
         // Invites
         .route(
             "/invites",
