@@ -12,22 +12,28 @@ interface Props {
     chat: LocalChat;
     currentUserId: string;
     loadingMessages?: boolean;
-    onSendMessage: (text: string) => void;
+    onSendMessage: (text: string, replyToId?: string) => void;
     onSendVoice: (chatId: string, blob: Blob) => void;
+    onSendFile: (chatId: string, file: File, caption: string, replyToId?: string) => void;
     onDeleteMessage: (msgId: string) => void;
     onEditMessage: (msgId: string, newText: string) => void;
     onRefreshChat: (chatId: string) => void;
     onStartCall: (chatId: string) => void;
     onOpenProfile?: (userId: string) => void;
+    onForwardMessage: (msg: LocalMessage) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
-    chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, onOpenProfile, showToast,
+    chat, currentUserId, loadingMessages,
+    onSendMessage, onSendVoice, onSendFile,
+    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall,
+    onOpenProfile, onForwardMessage, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
+    const [replyTo, setReplyTo] = useState<LocalMessage | null>(null);
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -45,33 +51,51 @@ export function ChatView({
     };
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
-    useEffect(() => { setInputText(''); setEditingMsg(null); setCtxMenu(null); }, [chat.id]);
+    useEffect(() => { setInputText(''); setEditingMsg(null); setReplyTo(null); setPendingFile(null); setCtxMenu(null); }, [chat.id]);
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 if (ctxMenu) setCtxMenu(null);
                 else if (editingMsg) { setEditingMsg(null); setInputText(''); }
+                else if (replyTo) setReplyTo(null);
+                else if (pendingFile) setPendingFile(null);
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [ctxMenu, editingMsg]);
+    }, [ctxMenu, editingMsg, replyTo, pendingFile]);
 
     const handleSend = useCallback(() => {
+        if (editingMsg) {
+            const t = inputText.trim();
+            if (t && t !== editingMsg.content) onEditMessage(editingMsg.id, t);
+            setEditingMsg(null);
+            setInputText('');
+            return;
+        }
+
+        if (pendingFile) {
+            onSendFile(chat.id, pendingFile, inputText.trim(), replyTo?.id);
+            setPendingFile(null);
+            setReplyTo(null);
+            setInputText('');
+            return;
+        }
+
         const t = inputText.trim();
         if (!t) return;
-        if (editingMsg) {
-            if (t !== editingMsg.content) onEditMessage(editingMsg.id, t);
-            setEditingMsg(null);
-        } else {
-            onSendMessage(t);
-        }
+        onSendMessage(t, replyTo?.id);
+        setReplyTo(null);
         setInputText('');
-    }, [inputText, editingMsg, onSendMessage, onEditMessage]);
+    }, [inputText, editingMsg, pendingFile, replyTo, chat.id, onSendMessage, onEditMessage, onSendFile]);
 
     const handleSendVoice = useCallback((blob: Blob) => {
         onSendVoice(chat.id, blob);
     }, [chat.id, onSendVoice]);
+
+    const handleSendFile = useCallback((file: File) => {
+        setPendingFile(file);
+    }, []);
 
     const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
         e.preventDefault();
@@ -80,16 +104,29 @@ export function ChatView({
 
     const ctxItems = (msg: LocalMessage): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [];
-        if (msg.own && msg.status !== 'pending') {
+
+        items.push({
+            label: 'Ответить', icon: Icon.reply(16),
+            onClick: () => { setReplyTo(msg); setEditingMsg(null); },
+        });
+
+        items.push({
+            label: 'Переслать', icon: Icon.forward(16),
+            onClick: () => onForwardMessage(msg),
+        });
+
+        if (msg.own && msg.status !== 'pending' && !msg.attachment) {
             items.push({
                 label: 'Редактировать', icon: Icon.edit(16),
-                onClick: () => { setEditingMsg(msg); setInputText(msg.content); },
+                onClick: () => { setEditingMsg(msg); setInputText(msg.content); setReplyTo(null); },
             });
         }
+
         items.push({
             label: 'Копировать', icon: Icon.copy(16),
             onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); },
         });
+
         if (msg.own) {
             items.push({
                 label: 'Удалить', icon: Icon.trash(16), danger: true,
@@ -99,21 +136,25 @@ export function ChatView({
         return items;
     };
 
-    const handleRefresh = useCallback(() => {
-        onRefreshChat(chat.id);
-    }, [onRefreshChat, chat.id]);
+    const handleRefresh = useCallback(() => { onRefreshChat(chat.id); }, [onRefreshChat, chat.id]);
 
     const handleCall = useCallback(() => {
-        if (chat.is_group) {
-            showToast('Групповые звонки пока не поддерживаются', 'info');
-            return;
-        }
+        if (chat.is_group) { showToast('Групповые звонки пока не поддерживаются', 'info'); return; }
         onStartCall(chat.id);
     }, [chat.id, chat.is_group, onStartCall, showToast]);
 
     const handleAuthorClick = useCallback((userId: string) => {
         if (onOpenProfile) onOpenProfile(userId);
     }, [onOpenProfile]);
+
+    const handleClickReply = useCallback((messageId: string) => {
+        const el = document.getElementById(`msg-${messageId}`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('msg-highlight');
+            setTimeout(() => el.classList.remove('msg-highlight'), 1500);
+        }
+    }, []);
 
     return (
         <section className="chat-view">
@@ -128,19 +169,12 @@ export function ChatView({
                     </div>
                 </div>
                 <div className="chat-header-actions">
-                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>
-                        {Icon.phone(20)}
-                    </button>
+                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>{Icon.phone(20)}</button>
                     <button className="icon-btn" title="Поиск">{Icon.search(20)}</button>
                 </div>
             </div>
 
-            <ChatSecurityBanner
-                chat={chat}
-                currentUserId={currentUserId}
-                onRefresh={handleRefresh}
-                showToast={showToast}
-            />
+            <ChatSecurityBanner chat={chat} currentUserId={currentUserId} onRefresh={handleRefresh} showToast={showToast} />
 
             <div className="messages-scroll">
                 <div className="messages-inner">
@@ -160,6 +194,7 @@ export function ChatView({
                                 chatId={chat.id}
                                 onContextMenu={e => handleContextMenu(e, msg)}
                                 onClickAuthor={handleAuthorClick}
+                                onClickReply={handleClickReply}
                             />
                         );
                     })}
@@ -168,10 +203,14 @@ export function ChatView({
             </div>
 
             <InputBar
-                value={inputText} onChange={setInputText} onSend={handleSend} onSendVoice={handleSendVoice}
+                value={inputText} onChange={setInputText}
+                onSend={handleSend} onSendVoice={handleSendVoice} onSendFile={handleSendFile}
                 editingMessage={editingMsg ? { id: editingMsg.id, text: editingMsg.content, author: editingMsg.sender_name, time: formatTime(editingMsg.created_at), own: editingMsg.own } : null}
                 onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
-                onAttach={() => showToast('Файлы будут доступны после обновления')}
+                replyTo={replyTo}
+                onCancelReply={() => setReplyTo(null)}
+                pendingFile={pendingFile}
+                onCancelFile={() => setPendingFile(null)}
             />
 
             {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}

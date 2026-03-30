@@ -28,6 +28,21 @@ export interface AttachmentDto {
     size_bytes: number;
 }
 
+export interface ReplyInfoDto {
+    id: string;
+    sender_id: string;
+    sender_name: string;
+    content: string;
+    attachment?: AttachmentDto;
+    encrypted?: EncryptedPayload;
+}
+
+export interface ForwardInfoDto {
+    original_message_id: string;
+    original_sender_name: string;
+    original_chat_name?: string;
+}
+
 export interface UserDto {
     id: string;
     username: string;
@@ -69,6 +84,8 @@ export interface MessageDto {
     created_at: string;
     attachment?: AttachmentDto;
     encrypted?: EncryptedPayload;
+    reply_to?: ReplyInfoDto;
+    forwarded_from?: ForwardInfoDto;
 }
 
 export interface ChatMemberDto {
@@ -132,7 +149,7 @@ export type WsServerMsg =
     | { type: 'call_media_controlled'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; action: string; current_time: number } };
 
 export type WsClientMsg =
-    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
+    | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload; reply_to_id?: string; forwarded_from_id?: string; forwarded_from_name?: string } }
     | { type: 'edit_message'; payload: { message_id: string; new_content: string; encrypted?: EncryptedPayload } }
     | { type: 'delete_message'; payload: { message_id: string } }
     | { type: 'typing'; payload: { chat_id: string } }
@@ -170,6 +187,8 @@ export interface LocalMessage {
     attachment?: AttachmentDto;
     encrypted?: EncryptedPayload;
     decrypted_content?: string;
+    reply_to?: ReplyInfoDto;
+    forwarded_from?: ForwardInfoDto;
 }
 
 export interface LocalChat {
