@@ -1,3 +1,5 @@
+// FILE: ./shared/src/lib.rs
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -320,7 +322,9 @@ pub enum WsClientMsg {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+#[serde(rename_all = "snake_case")]
 pub enum WsServerMsg {
     NewMessage {
         message: MessageDto,
@@ -425,130 +429,4 @@ pub enum WsServerMsg {
         action: String,
         current_time: f64,
     },
-}
-
-impl WsServerMsg {
-    pub fn to_json(&self) -> serde_json::Value {
-        use serde_json::json;
-        match self {
-            WsServerMsg::NewMessage { message } => {
-                json!({"type": "new_message", "payload": {"message": message}})
-            }
-            WsServerMsg::MessageSent { client_id, message } => {
-                json!({"type": "message_sent", "payload": {"client_id": client_id, "message": message}})
-            }
-            WsServerMsg::MessageEdited {
-                chat_id,
-                message_id,
-                new_content,
-                encrypted,
-            } => {
-                json!({"type": "message_edited", "payload": {"chat_id": chat_id, "message_id": message_id, "new_content": new_content, "encrypted": encrypted}})
-            }
-            WsServerMsg::MessageDeleted {
-                chat_id,
-                message_id,
-            } => {
-                json!({"type": "message_deleted", "payload": {"chat_id": chat_id, "message_id": message_id}})
-            }
-            WsServerMsg::Typing { chat_id, user_id } => {
-                json!({"type": "typing", "payload": {"chat_id": chat_id, "user_id": user_id}})
-            }
-            WsServerMsg::StopTyping { chat_id, user_id } => {
-                json!({"type": "stop_typing", "payload": {"chat_id": chat_id, "user_id": user_id}})
-            }
-            WsServerMsg::MessagesRead {
-                chat_id,
-                user_id,
-                message_id,
-            } => {
-                json!({"type": "messages_read", "payload": {"chat_id": chat_id, "user_id": user_id, "message_id": message_id}})
-            }
-            WsServerMsg::UserOnline { user_id } => {
-                json!({"type": "user_online", "payload": {"user_id": user_id}})
-            }
-            WsServerMsg::UserOffline { user_id } => {
-                json!({"type": "user_offline", "payload": {"user_id": user_id}})
-            }
-            WsServerMsg::UserUpdated { user } => {
-                json!({"type": "user_updated", "payload": {"user": user}})
-            }
-            WsServerMsg::ChatDeleted { chat_id } => {
-                json!({"type": "chat_deleted", "payload": {"chat_id": chat_id}})
-            }
-            WsServerMsg::Error { message } => {
-                json!({"type": "error", "payload": {"message": message}})
-            }
-            // ── Calls ────────────────────────────────────
-            WsServerMsg::CallIncoming {
-                chat_id,
-                call_id,
-                caller_id,
-                caller_name,
-                sdp,
-                encrypted,
-            } => {
-                json!({"type": "call_incoming", "payload": {"chat_id": chat_id, "call_id": call_id, "caller_id": caller_id, "caller_name": caller_name, "sdp": sdp, "encrypted": encrypted}})
-            }
-            WsServerMsg::CallAccepted {
-                chat_id,
-                call_id,
-                sdp,
-                encrypted,
-            } => {
-                json!({"type": "call_accepted", "payload": {"chat_id": chat_id, "call_id": call_id, "sdp": sdp, "encrypted": encrypted}})
-            }
-            WsServerMsg::CallIce {
-                chat_id,
-                call_id,
-                candidate,
-                encrypted,
-            } => {
-                json!({"type": "call_ice", "payload": {"chat_id": chat_id, "call_id": call_id, "candidate": candidate, "encrypted": encrypted}})
-            }
-            WsServerMsg::CallRejected { chat_id, call_id } => {
-                json!({"type": "call_rejected", "payload": {"chat_id": chat_id, "call_id": call_id}})
-            }
-            WsServerMsg::CallMuteChanged {
-                chat_id,
-                call_id,
-                user_id,
-                muted,
-            } => {
-                json!({"type": "call_mute_changed", "payload": {"chat_id": chat_id, "call_id": call_id, "user_id": user_id, "muted": muted}})
-            }
-            WsServerMsg::CallEnded { chat_id, call_id } => {
-                json!({"type": "call_ended", "payload": {"chat_id": chat_id, "call_id": call_id}})
-            }
-            // ── Shared Media ─────────────────────────────
-            WsServerMsg::CallMediaShared {
-                chat_id,
-                call_id,
-                media_id,
-                user_id,
-                user_name,
-                file_id,
-                file_name,
-            } => {
-                json!({"type": "call_media_shared", "payload": {"chat_id": chat_id, "call_id": call_id, "media_id": media_id, "user_id": user_id, "user_name": user_name, "file_id": file_id, "file_name": file_name}})
-            }
-            WsServerMsg::CallMediaRemoved {
-                chat_id,
-                call_id,
-                media_id,
-            } => {
-                json!({"type": "call_media_removed", "payload": {"chat_id": chat_id, "call_id": call_id, "media_id": media_id}})
-            }
-            WsServerMsg::CallMediaControlled {
-                chat_id,
-                call_id,
-                media_id,
-                user_id,
-                action,
-                current_time,
-            } => {
-                json!({"type": "call_media_controlled", "payload": {"chat_id": chat_id, "call_id": call_id, "media_id": media_id, "user_id": user_id, "action": action, "current_time": current_time}})
-            }
-        }
-    }
 }
