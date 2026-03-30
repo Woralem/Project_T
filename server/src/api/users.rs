@@ -56,6 +56,7 @@ pub async fn search(
             id: u.id,
             username: u.username,
             display_name: u.display_name,
+            bio: u.bio,
             online: state.is_online(&u.id).await,
             last_seen: u.last_seen,
             avatar_url,

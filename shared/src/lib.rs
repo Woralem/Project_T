@@ -67,7 +67,6 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         message_id: Uuid,
     },
-    // ── Звонки ──────────────────────────────────────────────
     CallOffer {
         chat_id: Uuid,
         call_id: Uuid,
@@ -174,7 +173,6 @@ pub enum WsServerMsg {
     Error {
         message: String,
     },
-    // ── Звонки ──────────────────────────────────────────────
     CallIncoming {
         chat_id: Uuid,
         call_id: Uuid,
@@ -266,10 +264,36 @@ pub struct UserDto {
     pub id: Uuid,
     pub username: String,
     pub display_name: String,
+    #[serde(default)]
+    pub bio: String,
     pub online: bool,
     pub last_seen: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_keys: Option<PublicKeyBundle>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AvatarHistoryDto {
+    pub id: Uuid,
+    pub url: String,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserProfileDto {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub bio: String,
+    pub online: bool,
+    pub last_seen: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    pub avatars: Vec<AvatarHistoryDto>,
+    pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_keys: Option<PublicKeyBundle>,
 }
@@ -311,7 +335,7 @@ pub struct InviteDto {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Request types
+//  Request / Response types
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Deserialize)]
@@ -350,6 +374,7 @@ pub struct CreateInviteReq {
 #[derive(Debug, Deserialize)]
 pub struct UpdateProfileReq {
     pub display_name: Option<String>,
+    pub bio: Option<String>,
     pub public_keys: Option<PublicKeyBundle>,
 }
 

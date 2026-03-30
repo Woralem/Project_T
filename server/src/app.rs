@@ -31,7 +31,16 @@ pub fn create_app(state: AppState) -> Router {
             "/users/me/avatar",
             post(api::profile::upload_avatar).delete(api::profile::delete_avatar),
         )
+        .route(
+            "/users/me/avatars/:avatar_id",
+            delete(api::profile::delete_avatar_history),
+        )
+        .route(
+            "/users/me/avatars/:avatar_id/set-current",
+            post(api::profile::set_avatar_from_history),
+        )
         .route("/users/:user_id/avatar", get(api::profile::get_avatar))
+        .route("/users/:user_id/profile", get(api::profile::get_profile))
         .route("/users", get(api::users::search))
         .route("/chats", get(api::chats::list).post(api::chats::create))
         .route("/chats/:chat_id", get(api::chats::get))

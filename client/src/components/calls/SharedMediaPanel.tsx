@@ -8,7 +8,7 @@ interface Props {
     currentUserId: string;
     onShare: (fileId: string, fileName: string) => void;
     onRemove: (mediaId: string) => void;
-    onControl: (mediaId: string, action: 'play' | 'pause' | 'seek', time?: number) => void;
+    onControl: (mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => void;
     onLocalVolumeChange: (mediaId: string, volume: number) => void;
     onLocalMuteToggle: (mediaId: string) => void;
     onTitleUpdate: (mediaId: string, title: string) => void;
@@ -97,19 +97,22 @@ export function SharedMediaPanel({
         });
     }, [media.map(m => m.id).join(',')]);
 
-    // ── Синхронизация play/pause ─────────────────────────
+    // ── Синхронизация play/pause и loop ──────────────────
 
     useEffect(() => {
         media.forEach(item => {
             const audio = audioRefs.current.get(item.id);
             if (!audio) return;
+
+            audio.loop = item.isLooping;
+
             if (item.isPlaying && audio.paused) {
                 audio.play().catch(() => { });
             } else if (!item.isPlaying && !audio.paused) {
                 audio.pause();
             }
         });
-    }, [media.map(m => `${m.id}:${m.isPlaying}`).join(',')]);
+    }, [media.map(m => `${m.id}:${m.isPlaying}:${m.isLooping}`).join(',')]);
 
     // ── Синхронизация громкости ──────────────────────────
 
@@ -120,22 +123,6 @@ export function SharedMediaPanel({
             audio.volume = item.localMuted ? 0 : item.localVolume / 100;
         });
     }, [media.map(m => `${m.id}:${m.localVolume}:${m.localMuted}`).join(',')]);
-
-    // ── Внешний seek (от другого пользователя) ──────────
-
-    const externalSeek = useCallback((mediaId: string, time: number) => {
-        const audio = audioRefs.current.get(mediaId);
-        if (!audio) return;
-        if (Math.abs(audio.currentTime - time) > 2) {
-            audio.currentTime = time;
-        }
-    }, []);
-
-    // Экспорт для вызова из useCall
-    useEffect(() => {
-        (window as any).__mediaSeek = externalSeek;
-        return () => { delete (window as any).__mediaSeek; };
-    }, [externalSeek]);
 
     // ── Загрузка файла ──────────────────────────────────
 
@@ -188,7 +175,7 @@ export function SharedMediaPanel({
         if (file) handleUpload(file);
     };
 
-    // ── Seek по клику ───────────────────────────────────
+    // ── Seek по клику (только локально) ─────────────────
 
     const handleSeek = (item: SharedMediaItem, e: React.MouseEvent<HTMLDivElement>) => {
         if (!item.duration) return;
@@ -281,6 +268,7 @@ export function SharedMediaPanel({
                             <button
                                 className="media-ctrl-btn"
                                 onClick={() => onControl(item.id, item.isPlaying ? 'pause' : 'play')}
+                                title={item.isPlaying ? 'Пауза' : 'Плей'}
                             >
                                 {item.isPlaying ? (
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -294,6 +282,20 @@ export function SharedMediaPanel({
                                 )}
                             </button>
 
+                            <button
+                                className="media-ctrl-btn"
+                                style={{ color: item.isLooping ? 'var(--accent)' : 'inherit' }}
+                                onClick={() => onControl(item.id, 'loop')}
+                                title={item.isLooping ? 'Выключить повтор' : 'Включить повтор'}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="17 1 21 5 17 9"></polyline>
+                                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                                    <polyline points="7 23 3 19 7 15"></polyline>
+                                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                                </svg>
+                            </button>
+
                             <span className="media-time">
                                 {fmt(item.currentTime)} / {fmt(item.duration)}
                             </span>
@@ -301,7 +303,7 @@ export function SharedMediaPanel({
                             <button
                                 className={`media-ctrl-btn ${item.localMuted ? 'muted' : ''}`}
                                 onClick={() => onLocalMuteToggle(item.id)}
-                                title={item.localMuted ? 'Включить' : 'Выключить'}
+                                title={item.localMuted ? 'Включить звук' : 'Выключить звук'}
                             >
                                 {item.localMuted ? Icon.volumeOff(14) : Icon.volumeHigh(14)}
                             </button>

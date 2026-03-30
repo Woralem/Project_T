@@ -2764,3 +2764,506 @@ input {
 .call-ctrl-btn {
     position: relative;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PROFILE MODAL
+   ═══════════════════════════════════════════════════════════ */
+.profile-modal {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 28px 24px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    animation: scaleIn .2s ease;
+}
+
+.profile-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    transition: background .12s, color .12s;
+}
+
+.profile-modal-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.profile-modal-loading,
+.profile-modal-error {
+    text-align: center;
+    padding: 40px 16px;
+    color: var(--text3);
+    font-size: 14px;
+}
+
+.profile-modal-error {
+    color: var(--red);
+}
+
+/* ── Avatar Section ─────────────────────────────────────── */
+.profile-avatar-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.profile-avatar-wrap {
+    position: relative;
+}
+
+.profile-avatar-wrap.clickable {
+    cursor: pointer;
+}
+
+.profile-avatar-wrap.clickable:hover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .15);
+    transition: background .15s;
+}
+
+.profile-avatar-count {
+    position: absolute;
+    bottom: 2px;
+    right: -4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Name Section ───────────────────────────────────────── */
+.profile-name-section {
+    text-align: center;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.profile-display-name {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.profile-username {
+    font-size: 14px;
+    color: var(--text2);
+}
+
+.profile-online-status {
+    font-size: 12px;
+    color: var(--text3);
+}
+
+.profile-online-status.online {
+    color: var(--green);
+}
+
+/* ── Info Sections ──────────────────────────────────────── */
+.profile-info-section {
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+}
+
+.profile-info-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text3);
+    margin-bottom: 4px;
+}
+
+.profile-info-value {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.profile-e2e-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.profile-key-id {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text3);
+}
+
+/* ── Avatar Thumbs ──────────────────────────────────────── */
+.profile-avatars-section {
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+}
+
+.profile-avatar-thumbs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.profile-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s, transform .1s;
+}
+
+.profile-thumb:hover {
+    transform: scale(1.06);
+}
+
+.profile-thumb.current {
+    border-color: var(--accent);
+}
+
+.profile-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* ── Actions ────────────────────────────────────────────── */
+.profile-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.profile-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--bg-surface);
+    color: var(--text);
+    transition: background .15s, transform .1s;
+}
+
+.profile-action-btn:hover {
+    background: var(--bg-hover);
+    transform: scale(1.02);
+}
+
+.profile-action-btn.primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.profile-action-btn.primary:hover {
+    background: var(--accent-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AVATAR GALLERY
+   ═══════════════════════════════════════════════════════════ */
+.avatar-gallery-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    background: rgba(0, 0, 0, .85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn .2s ease;
+}
+
+.avatar-gallery-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar-gallery-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s;
+}
+
+.avatar-gallery-close:hover {
+    background: rgba(255, 255, 255, .25);
+}
+
+.avatar-gallery-counter {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    padding: 4px 14px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .5);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.avatar-gallery-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .1);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    transition: background .15s, transform .12s;
+}
+
+.avatar-gallery-nav:hover {
+    background: rgba(255, 255, 255, .2);
+    transform: translateY(-50%) scale(1.08);
+}
+
+.avatar-gallery-nav.prev {
+    left: 16px;
+}
+
+.avatar-gallery-nav.next {
+    right: 16px;
+}
+
+.avatar-gallery-image-wrap {
+    max-width: 80vw;
+    max-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar-gallery-image {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: 12px;
+    object-fit: contain;
+    animation: scaleIn .2s ease;
+}
+
+.avatar-gallery-error {
+    color: rgba(255, 255, 255, .5);
+    font-size: 16px;
+}
+
+.avatar-gallery-date {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 16px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .5);
+    color: rgba(255, 255, 255, .8);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS: BIO FIELD
+   ═══════════════════════════════════════════════════════════ */
+.s-bio-field {
+    margin-top: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--bg-surface);
+}
+
+.s-bio-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    margin-bottom: 6px;
+    display: block;
+}
+
+.s-bio-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid transparent;
+    resize: vertical;
+    min-height: 60px;
+    max-height: 120px;
+    transition: border .2s, background .2s;
+}
+
+.s-bio-input::placeholder {
+    color: var(--text3);
+}
+
+.s-bio-input:focus {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+    outline: none;
+}
+
+.s-bio-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.s-bio-counter {
+    font-size: 11px;
+    color: var(--text3);
+}
+
+.s-bio-save {
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    transition: background .15s, transform .1s;
+}
+
+.s-bio-save:hover {
+    background: var(--accent-hover);
+    transform: scale(1.03);
+}
+
+.s-bio-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS: AVATAR HISTORY
+   ═══════════════════════════════════════════════════════════ */
+.s-avatar-history {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.s-avatar-item {
+    position: relative;
+    width: 72px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.s-avatar-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    object-fit: cover;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color .15s, transform .1s;
+}
+
+.s-avatar-item.current .s-avatar-thumb {
+    border-color: var(--accent);
+}
+
+.s-avatar-thumb:hover {
+    transform: scale(1.05);
+}
+
+.s-avatar-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.s-avatar-action-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: var(--bg-surface);
+    border: none;
+    cursor: pointer;
+    transition: color .12s, background .12s;
+}
+
+.s-avatar-action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent);
+}
+
+.s-avatar-action-btn.danger:hover {
+    color: var(--red);
+    background: rgba(239, 68, 68, .1);
+}
+
+.s-avatar-current-badge {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLICKABLE AUTHOR NAME
+   ═══════════════════════════════════════════════════════════ */
+.clickable-author {
+    cursor: pointer;
+    transition: opacity .15s;
+}
+
+.clickable-author:hover {
+    opacity: 0.75;
+    text-decoration: underline;
+}

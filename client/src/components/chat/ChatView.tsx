@@ -18,12 +18,13 @@ interface Props {
     onEditMessage: (msgId: string, newText: string) => void;
     onRefreshChat: (chatId: string) => void;
     onStartCall: (chatId: string) => void;
+    onOpenProfile?: (userId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages, onSendMessage, onSendVoice,
-    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, showToast,
+    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall, onOpenProfile, showToast,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
@@ -33,6 +34,14 @@ export function ChatView({
     const getChatAvatar = (): string | undefined => {
         if (chat.is_group) return undefined;
         return chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
+    };
+
+    const handleHeaderAvatarClick = () => {
+        if (!onOpenProfile) return;
+        if (!chat.is_group) {
+            const other = chat.members.find(m => m.user_id !== currentUserId);
+            if (other) onOpenProfile(other.user_id);
+        }
     };
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
@@ -102,10 +111,14 @@ export function ChatView({
         onStartCall(chat.id);
     }, [chat.id, chat.is_group, onStartCall, showToast]);
 
+    const handleAuthorClick = useCallback((userId: string) => {
+        if (onOpenProfile) onOpenProfile(userId);
+    }, [onOpenProfile]);
+
     return (
         <section className="chat-view">
             <div className="chat-header">
-                <div className="chat-header-left">
+                <div className="chat-header-left" style={{ cursor: !chat.is_group ? 'pointer' : undefined }} onClick={handleHeaderAvatarClick}>
                     <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar()} />
                     <div className="chat-header-info">
                         <h3>{chat.name}</h3>
@@ -146,6 +159,7 @@ export function ChatView({
                                 isGroup={chat.is_group}
                                 chatId={chat.id}
                                 onContextMenu={e => handleContextMenu(e, msg)}
+                                onClickAuthor={handleAuthorClick}
                             />
                         );
                     })}

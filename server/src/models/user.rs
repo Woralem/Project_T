@@ -15,4 +15,5 @@ pub struct User {
     pub signing_key: Option<String>,
     pub key_signature: Option<String>,
     pub key_id: Option<String>,
+    pub bio: String,
 }

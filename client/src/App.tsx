@@ -25,6 +25,7 @@ import { CallsView } from './components/calls/CallsView';
 import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
+import { ProfileModal } from './components/ui/ProfileModal';
 
 function loadDark(): boolean {
     try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; }
@@ -42,55 +43,37 @@ export default function App() {
     const [search, setSearch] = React.useState('');
     const [newChatOpen, setNewChatOpen] = React.useState(false);
     const [notifications, setNotifications] = React.useState<NotificationData[]>([]);
+    const [profileUserId, setProfileUserId] = React.useState<string | null>(null);
     const { toasts, showToast } = useToast();
 
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
-
-    // ── Инициализация уведомлений ─────────────────────────
 
     React.useEffect(() => {
         if (!user) return;
         initNotifications();
     }, [user]);
 
-    // ── Ref для selectChat ───────────────────────────────
-
     const selectChatRef = React.useRef<(id: string) => void>(() => { });
-
-    // ── Dismiss notification ─────────────────────────────
 
     const dismissNotification = React.useCallback((id: string) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
     }, []);
 
-    // ── Клик по уведомлению ──────────────────────────────
-
     const handleNotifClick = React.useCallback((chatId: string) => {
         setTab('chats');
         selectChatRef.current(chatId);
-        // Удаляем все уведомления этого чата
         setNotifications(prev => prev.filter(n => n.chatId !== chatId));
     }, []);
 
-    // ── Обработчик нового сообщения ──────────────────────
-
     const handleNewMessage = React.useCallback((data: NotificationData) => {
-        // 1. ВСЕГДА звук
         playNotificationSound();
-
-        // 2. ВСЕГДА in-app уведомление (плашка в правом нижнем углу)
         setNotifications(prev => {
             const next = [...prev, data];
-            // Максимум 4, убираем старые
             return next.slice(-MAX_NOTIFICATIONS);
         });
-
-        // Автоудаление через 5 сек
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== data.id));
         }, NOTIFICATION_DURATION);
-
-        // 3. Системное уведомление (если окно не в фокусе)
         if (document.hidden || !document.hasFocus()) {
             const title = data.isGroup ? data.chatName : data.senderName;
             const body = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
@@ -102,8 +85,6 @@ export default function App() {
             );
         }
     }, [handleNotifClick]);
-
-    // ── Хуки ─────────────────────────────────────────────
 
     const {
         chats, selectedId, selectedChat,
@@ -120,8 +101,6 @@ export default function App() {
         toggleMediaPanel, shareMedia, removeMedia, controlMedia,
         setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
     } = useCall(user?.id || '', chats);
-
-    // ── Уведомление о звонке ─────────────────────────────
 
     React.useEffect(() => {
         if (callState.status === 'ringing' && callState.peerName) {
@@ -158,6 +137,44 @@ export default function App() {
         }
         startCall(chatId);
     }, [callState.status, startCall, showToast]);
+
+    // ── Profile handlers ─────────────────────────────────
+
+    const handleOpenProfile = React.useCallback((userId: string) => {
+        setProfileUserId(userId);
+    }, []);
+
+    const handleProfileMessage = React.useCallback(async (userId: string) => {
+        setProfileUserId(null);
+        setTab('chats');
+
+        // Ищем существующий DM
+        const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
+        if (dm) {
+            selectChat(dm.id);
+        } else {
+            try {
+                await createChat([userId], false);
+            } catch (e: any) {
+                showToast(e.message || 'Ошибка создания чата', 'error');
+            }
+        }
+    }, [chats, selectChat, createChat, showToast]);
+
+    const handleProfileCall = React.useCallback((userId: string) => {
+        setProfileUserId(null);
+        const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
+        if (dm) {
+            handleStartCall(dm.id);
+        } else {
+            showToast('Сначала начните чат с пользователем', 'info');
+        }
+    }, [chats, handleStartCall, showToast]);
+
+    const handleProfileEdit = React.useCallback(() => {
+        setProfileUserId(null);
+        setTab('settings');
+    }, []);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -202,6 +219,7 @@ export default function App() {
                                 onSendMessage={sendMessage} onSendVoice={sendVoiceMessage}
                                 onDeleteMessage={deleteMessage} onEditMessage={editMessage}
                                 onRefreshChat={refreshChat} onStartCall={handleStartCall}
+                                onOpenProfile={handleOpenProfile}
                                 showToast={showToast}
                             />
                         ) : (
@@ -239,7 +257,18 @@ export default function App() {
                 showToast={showToast}
             />
 
-            {/* In-app уведомления — ВСЕГДА видны */}
+            {/* Profile Modal */}
+            {profileUserId && (
+                <ProfileModal
+                    userId={profileUserId}
+                    currentUserId={user.id}
+                    onClose={() => setProfileUserId(null)}
+                    onMessage={handleProfileMessage}
+                    onCall={handleProfileCall}
+                    onEdit={handleProfileEdit}
+                />
+            )}
+
             <NotificationContainer
                 notifications={notifications}
                 onClickNotification={handleNotifClick}

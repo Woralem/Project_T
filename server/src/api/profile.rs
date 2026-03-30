@@ -5,13 +5,73 @@ use axum::{
     response::Response,
     Json,
 };
-use shared::{PublicKeyBundle, UpdateAvatarRes, UpdateProfileReq, UserDto};
+use shared::{
+    AvatarHistoryDto, PublicKeyBundle, UpdateAvatarRes, UpdateProfileReq, UserDto, UserProfileDto,
+};
 use uuid::Uuid;
 
 use crate::{api::AuthUser, error::AppError, models, state::AppState};
 
 const MAX_AVATAR_SIZE: usize = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+/// GET /api/users/:user_id/profile
+pub async fn get_profile(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<UserProfileDto>, AppError> {
+    let user: models::User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Пользователь не найден".into()))?;
+
+    let avatar_url = user.avatar_id.map(|id| format!("/api/files/{}", id));
+
+    let public_keys = if user.identity_key.is_some() {
+        Some(PublicKeyBundle {
+            identity_key: user.identity_key.unwrap_or_default(),
+            signing_key: user.signing_key.unwrap_or_default(),
+            signature: user.key_signature.unwrap_or_default(),
+            key_id: user.key_id.unwrap_or_default(),
+        })
+    } else {
+        None
+    };
+
+    type AvatarRow = (Uuid, Uuid, chrono::DateTime<chrono::Utc>, bool);
+    let avatar_rows: Vec<AvatarRow> = sqlx::query_as(
+        "SELECT id, attachment_id, set_at, is_current FROM avatar_history
+         WHERE user_id = $1 ORDER BY set_at DESC LIMIT 50",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let avatars: Vec<AvatarHistoryDto> = avatar_rows
+        .into_iter()
+        .map(|(id, att_id, set_at, is_current)| AvatarHistoryDto {
+            id,
+            url: format!("/api/files/{}", att_id),
+            set_at,
+            is_current,
+        })
+        .collect();
+
+    Ok(Json(UserProfileDto {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        bio: user.bio,
+        online: state.is_online(&user.id).await,
+        last_seen: user.last_seen,
+        avatar_url,
+        avatars,
+        created_at: user.created_at,
+        public_keys,
+    }))
+}
 
 /// PUT /api/users/me
 pub async fn update_profile(
@@ -25,6 +85,17 @@ pub async fn update_profile(
         }
         sqlx::query("UPDATE users SET display_name = $1 WHERE id = $2")
             .bind(name)
+            .bind(auth.user_id)
+            .execute(&state.db)
+            .await?;
+    }
+
+    if let Some(ref bio) = req.bio {
+        if bio.len() > 200 {
+            return Err(AppError::BadRequest("bio: максимум 200 символов".into()));
+        }
+        sqlx::query("UPDATE users SET bio = $1 WHERE id = $2")
+            .bind(bio)
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
@@ -47,7 +118,7 @@ pub async fn update_profile(
 
     let user = get_user_dto(&state, auth.user_id).await?;
 
-    if req.public_keys.is_some() || req.display_name.is_some() {
+    if req.public_keys.is_some() || req.display_name.is_some() || req.bio.is_some() {
         broadcast_user_update(&state, auth.user_id, user.clone()).await;
     }
 
@@ -88,34 +159,15 @@ pub async fn upload_avatar(
             return Err(AppError::BadRequest("Пустой файл".into()));
         }
 
-        // ── Удаление старой аватарки (порядок: сначала убираем FK, потом удаляем) ──
-        let old_avatar: Option<(Option<Uuid>,)> =
-            sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
-                .bind(auth.user_id)
-                .fetch_optional(&state.db)
-                .await?;
+        // Помечаем предыдущую аватарку как не текущую (сохраняем в истории)
+        sqlx::query(
+            "UPDATE avatar_history SET is_current = FALSE WHERE user_id = $1 AND is_current = TRUE",
+        )
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
 
-        let old_avatar_id = old_avatar.and_then(|r| r.0);
-
-        if let Some(old_id) = old_avatar_id {
-            // 1) Сначала убираем ссылку из users
-            sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
-                .bind(auth.user_id)
-                .execute(&state.db)
-                .await?;
-
-            // 2) Теперь безопасно удаляем attachment
-            sqlx::query("DELETE FROM attachments WHERE id = $1")
-                .bind(old_id)
-                .execute(&state.db)
-                .await?;
-
-            // 3) Удаляем файл с диска
-            let old_path = format!("{}/{}", state.config.upload_dir, old_id);
-            let _ = tokio::fs::remove_file(&old_path).await;
-        }
-
-        // ── Загрузка новой аватарки ──
+        // Загружаем новый файл
         let att_id = Uuid::new_v4();
         let filename = format!("avatar_{}.{}", auth.user_id, get_extension(&mime));
         let path = format!("{}/{}", state.config.upload_dir, att_id);
@@ -138,11 +190,21 @@ pub async fn upload_avatar(
         .execute(&state.db)
         .await?;
 
+        // Обновляем avatar_id пользователя
         sqlx::query("UPDATE users SET avatar_id = $1 WHERE id = $2")
             .bind(att_id)
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
+
+        // Добавляем в историю как текущую
+        sqlx::query(
+            "INSERT INTO avatar_history (user_id, attachment_id, is_current) VALUES ($1, $2, TRUE)",
+        )
+        .bind(auth.user_id)
+        .bind(att_id)
+        .execute(&state.db)
+        .await?;
 
         let avatar_url = format!("/api/files/{}", att_id);
 
@@ -159,41 +221,126 @@ pub async fn upload_avatar(
     ))
 }
 
-/// DELETE /api/users/me/avatar
+/// DELETE /api/users/me/avatar — снять текущую аватарку (оставить в истории)
 pub async fn delete_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<()>, AppError> {
-    let avatar: Option<(Option<Uuid>,)> =
-        sqlx::query_as("SELECT avatar_id FROM users WHERE id = $1")
-            .bind(auth.user_id)
-            .fetch_optional(&state.db)
-            .await?;
+    // Помечаем текущую аватарку как не текущую
+    sqlx::query(
+        "UPDATE avatar_history SET is_current = FALSE WHERE user_id = $1 AND is_current = TRUE",
+    )
+    .bind(auth.user_id)
+    .execute(&state.db)
+    .await?;
 
-    let avatar_id = avatar.and_then(|r| r.0);
+    // Убираем ссылку из users
+    sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
 
-    if let Some(aid) = avatar_id {
-        // 1) Сначала убираем ссылку
+    let user = get_user_dto(&state, auth.user_id).await?;
+    broadcast_user_update(&state, auth.user_id, user).await;
+
+    Ok(Json(()))
+}
+
+/// DELETE /api/users/me/avatars/:avatar_id — удалить аватарку из истории навсегда
+pub async fn delete_avatar_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(avatar_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    // Находим запись в истории
+    type HistoryRow = (Uuid, bool);
+    let row: Option<HistoryRow> = sqlx::query_as(
+        "SELECT attachment_id, is_current FROM avatar_history WHERE id = $1 AND user_id = $2",
+    )
+    .bind(avatar_id)
+    .bind(auth.user_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let (attachment_id, was_current) =
+        row.ok_or_else(|| AppError::NotFound("Аватарка не найдена".into()))?;
+
+    // Если это текущая — убираем ссылку из users
+    if was_current {
         sqlx::query("UPDATE users SET avatar_id = NULL WHERE id = $1")
             .bind(auth.user_id)
             .execute(&state.db)
             .await?;
+    }
 
-        // 2) Потом удаляем attachment
-        sqlx::query("DELETE FROM attachments WHERE id = $1")
-            .bind(aid)
-            .execute(&state.db)
-            .await?;
+    // Удаляем запись из истории
+    sqlx::query("DELETE FROM avatar_history WHERE id = $1")
+        .bind(avatar_id)
+        .execute(&state.db)
+        .await?;
 
-        // 3) Удаляем файл
-        let path = format!("{}/{}", state.config.upload_dir, aid);
-        let _ = tokio::fs::remove_file(&path).await;
+    // Удаляем attachment
+    sqlx::query("DELETE FROM attachments WHERE id = $1")
+        .bind(attachment_id)
+        .execute(&state.db)
+        .await?;
 
+    // Удаляем файл с диска
+    let file_path = format!("{}/{}", state.config.upload_dir, attachment_id);
+    let _ = tokio::fs::remove_file(&file_path).await;
+
+    if was_current {
         let user = get_user_dto(&state, auth.user_id).await?;
         broadcast_user_update(&state, auth.user_id, user).await;
     }
 
     Ok(Json(()))
+}
+
+/// POST /api/users/me/avatars/:avatar_id/set-current — поставить старую аватарку
+pub async fn set_avatar_from_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(avatar_id): Path<Uuid>,
+) -> Result<Json<UpdateAvatarRes>, AppError> {
+    // Проверяем что запись принадлежит пользователю
+    type HistoryRow = (Uuid,);
+    let row: Option<HistoryRow> =
+        sqlx::query_as("SELECT attachment_id FROM avatar_history WHERE id = $1 AND user_id = $2")
+            .bind(avatar_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let (attachment_id,) = row.ok_or_else(|| AppError::NotFound("Аватарка не найдена".into()))?;
+
+    // Снимаем текущую
+    sqlx::query(
+        "UPDATE avatar_history SET is_current = FALSE WHERE user_id = $1 AND is_current = TRUE",
+    )
+    .bind(auth.user_id)
+    .execute(&state.db)
+    .await?;
+
+    // Ставим выбранную как текущую
+    sqlx::query("UPDATE avatar_history SET is_current = TRUE WHERE id = $1")
+        .bind(avatar_id)
+        .execute(&state.db)
+        .await?;
+
+    // Обновляем пользователя
+    sqlx::query("UPDATE users SET avatar_id = $1 WHERE id = $2")
+        .bind(attachment_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    let avatar_url = format!("/api/files/{}", attachment_id);
+
+    let user = get_user_dto(&state, auth.user_id).await?;
+    broadcast_user_update(&state, auth.user_id, user).await;
+
+    Ok(Json(UpdateAvatarRes { avatar_url }))
 }
 
 /// GET /api/users/:user_id/avatar
@@ -296,6 +443,7 @@ pub async fn get_user_dto(state: &AppState, user_id: Uuid) -> Result<UserDto, Ap
         id: user.id,
         username: user.username,
         display_name: user.display_name,
+        bio: user.bio,
         online: state.is_online(&user.id).await,
         last_seen: user.last_seen,
         avatar_url,

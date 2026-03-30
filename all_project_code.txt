@@ -1900,8 +1900,6 @@ input {
     }
 }
 
-/* Добавить в client/src/App.css */
-
 /* ═══════════════════════════════════════════════════════════
    AVATAR EDIT
    ═══════════════════════════════════════════════════════════ */
@@ -1991,58 +1989,6 @@ input {
     50% {
         opacity: 0.5;
     }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   AVATAR EDIT
-   ═══════════════════════════════════════════════════════════ */
-.avatar-edit-wrap {
-    position: relative;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.avatar-edit-overlay {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.avatar-edit-wrap:hover .avatar-edit-overlay {
-    opacity: 1;
-}
-
-.avatar-loading {
-    font-size: 18px;
-    animation: pulse 1s infinite;
-}
-
-.profile-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.avatar-delete-btn {
-    font-size: 12px;
-    color: var(--red);
-    margin-top: 4px;
-    padding: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-}
-
-.avatar-delete-btn:hover {
-    text-decoration: underline;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2202,18 +2148,6 @@ input {
 
 .e2e-reset-btn:hover {
     color: var(--text2);
-}
-
-@keyframes pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.4;
-    }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2603,156 +2537,6 @@ input {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MESSAGE NOTIFICATIONS (правый нижний угол)
-   ═══════════════════════════════════════════════════════════ */
-.notification-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 1800;
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 8px;
-    pointer-events: none;
-    max-width: 380px;
-}
-
-.notification-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 16px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg), 0 4px 24px rgba(0, 0, 0, .18);
-    cursor: pointer;
-    pointer-events: auto;
-    animation: notifSlideIn .35s cubic-bezier(.2, .9, .3, 1.1);
-    transition: transform .15s, opacity .15s, box-shadow .15s;
-    min-width: 300px;
-    max-width: 380px;
-}
-
-.notification-item:hover {
-    transform: translateX(-4px);
-    box-shadow: var(--shadow-lg), 0 6px 32px rgba(0, 0, 0, .24);
-}
-
-.notification-item:active {
-    transform: scale(.98);
-}
-
-.notification-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.notification-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-}
-
-.notification-name {
-    font-size: 14px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.notification-group-icon {
-    display: inline-flex;
-    color: var(--text2);
-    flex-shrink: 0;
-}
-
-.notification-label {
-    font-size: 11px;
-    color: var(--text3);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.notification-text {
-    font-size: 13px;
-    color: var(--text2);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.35;
-}
-
-.notification-close {
-    flex-shrink: 0;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    display: grid;
-    place-items: center;
-    color: var(--text3);
-    background: none;
-    border: none;
-    cursor: pointer;
-    pointer-events: auto;
-    opacity: 0;
-    transition: opacity .15s, background .12s, color .12s;
-}
-
-.notification-item:hover .notification-close {
-    opacity: 1;
-}
-
-.notification-close:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-}
-
-/* Полоска прогресса автоскрытия */
-.notification-item::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 16px;
-    right: 16px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--accent);
-    animation: notifProgress 4.5s linear forwards;
-    opacity: 0.4;
-}
-
-@keyframes notifSlideIn {
-    from {
-        opacity: 0;
-        transform: translateX(80px) scale(.92);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateX(0) scale(1);
-    }
-}
-
-@keyframes notifProgress {
-    from {
-        width: calc(100% - 32px);
-    }
-
-    to {
-        width: 0;
-    }
-}
-
-/* ═══════════════════════════════════════════════════════════
    CALL: PEER NAME ROW (с индикатором мьюта)
    ═══════════════════════════════════════════════════════════ */
 .call-peer-name-row {
@@ -3024,6 +2808,246 @@ input {
     }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   CALL EXPANDED (with media panel)
+   ═══════════════════════════════════════════════════════════ */
+.call-overlay.call-expanded {
+    max-width: 400px;
+    width: 400px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED MEDIA PANEL
+   ═══════════════════════════════════════════════════════════ */
+.media-panel {
+    padding: 12px 16px 16px;
+    border-radius: 0 0 20px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+    animation: volumePanelIn .2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 320px;
+    overflow-y: auto;
+    transition: border-color .2s;
+}
+
+.media-panel.media-drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+
+.media-upload-row {
+    display: flex;
+    gap: 8px;
+}
+
+.media-upload-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--bg-surface);
+    color: var(--text);
+    border: 1px dashed var(--border);
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .1s;
+    text-align: center;
+}
+
+.media-upload-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    transform: scale(1.01);
+}
+
+.media-upload-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.media-drop-hint {
+    padding: 20px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    background: var(--accent-dim);
+    animation: fadeIn .15s ease;
+}
+
+.media-empty {
+    text-align: center;
+    padding: 12px 8px;
+    font-size: 12px;
+    color: var(--text3);
+    line-height: 1.5;
+}
+
+/* ── Media Card ────────────────────────────────────────── */
+.media-card {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: fadeUp .2s ease;
+}
+
+.media-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.media-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.media-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-card-owner {
+    font-size: 11px;
+    color: var(--text3);
+}
+
+.media-remove-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color .12s, background .12s;
+}
+
+.media-remove-btn:hover {
+    color: var(--red);
+    background: rgba(239, 68, 68, .1);
+}
+
+/* ── Progress ──────────────────────────────────────────── */
+.media-progress {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.media-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width .3s linear;
+}
+
+/* ── Controls ──────────────────────────────────────────── */
+.media-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.media-ctrl-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    color: var(--text);
+    background: var(--bg-hover);
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .12s, color .12s;
+}
+
+.media-ctrl-btn:hover {
+    background: var(--bg-active);
+}
+
+.media-ctrl-btn.muted {
+    color: var(--red);
+}
+
+.media-time {
+    font-size: 11px;
+    color: var(--text3);
+    font-variant-numeric: tabular-nums;
+    flex: 1;
+    min-width: 0;
+}
+
+.media-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 60px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.media-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.media-volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+}
+
+/* Индикатор активных треков на кнопке */
+.call-ctrl-btn.has-media::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+}
+
+.call-ctrl-btn {
+    position: relative;
+}
+
 
 ================================================================================
 FILE PATH: ./client/src/app.rs
@@ -3160,6 +3184,8 @@ export default function App() {
     const {
         callState, startCall, answerCall, rejectCall,
         hangup, toggleMute, setPeerVolume, setMicGain, dismissCall,
+        toggleMediaPanel, shareMedia, removeMedia, controlMedia,
+        setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
     } = useCall(user?.id || '', chats);
 
     // ── Уведомление о звонке ─────────────────────────────
@@ -3262,8 +3288,22 @@ export default function App() {
             <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} onCreate={createChat} showToast={showToast} />
             <IncomingCallModal callState={callState} onAccept={answerCall} onReject={rejectCall} />
             <CallOverlay
-                callState={callState} onHangup={hangup} onToggleMute={toggleMute}
-                onSetPeerVolume={setPeerVolume} onSetMicGain={setMicGain} onDismiss={dismissCall}
+                callState={callState}
+                currentUserId={user.id}
+                onHangup={hangup}
+                onToggleMute={toggleMute}
+                onSetPeerVolume={setPeerVolume}
+                onSetMicGain={setMicGain}
+                onDismiss={dismissCall}
+                onToggleMediaPanel={toggleMediaPanel}
+                onShareMedia={shareMedia}
+                onRemoveMedia={removeMedia}
+                onControlMedia={controlMedia}
+                onMediaVolumeChange={setMediaVolume}
+                onMediaMuteToggle={toggleMediaMute}
+                onMediaTitleUpdate={updateMediaTitle}
+                onMediaTimeUpdate={updateMediaTime}
+                showToast={showToast}
             />
 
             {/* In-app уведомления — ВСЕГДА видны */}
@@ -3424,14 +3464,25 @@ import React, { useState, useEffect } from 'react';
 import type { CallState } from '../../types';
 import { Avatar } from '../ui/Avatar';
 import { Icon } from '../../icons';
+import { SharedMediaPanel } from './SharedMediaPanel';
 
 interface Props {
     callState: CallState;
+    currentUserId: string;
     onHangup: () => void;
     onToggleMute: () => void;
     onSetPeerVolume: (v: number) => void;
     onSetMicGain: (v: number) => void;
     onDismiss: () => void;
+    onToggleMediaPanel: () => void;
+    onShareMedia: (fileId: string, fileName: string) => void;
+    onRemoveMedia: (mediaId: string) => void;
+    onControlMedia: (mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => void;
+    onMediaVolumeChange: (mediaId: string, volume: number) => void;
+    onMediaMuteToggle: (mediaId: string) => void;
+    onMediaTitleUpdate: (mediaId: string, title: string) => void;
+    onMediaTimeUpdate: (mediaId: string, currentTime: number, duration: number) => void;
+    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 function fmtDuration(s: number): string {
@@ -3456,16 +3507,21 @@ function statusText(state: CallState): string {
 }
 
 export function CallOverlay({
-    callState, onHangup, onToggleMute,
+    callState, currentUserId, onHangup, onToggleMute,
     onSetPeerVolume, onSetMicGain, onDismiss,
+    onToggleMediaPanel, onShareMedia, onRemoveMedia, onControlMedia,
+    onMediaVolumeChange, onMediaMuteToggle, onMediaTitleUpdate, onMediaTimeUpdate,
+    showToast,
 }: Props) {
-    const { status, peerName, peerAvatarUrl, isMuted, peerMuted, isEncrypted, peerVolume, micGain } = callState;
-    const [showControls, setShowControls] = useState(false);
+    const {
+        status, peerName, peerAvatarUrl, isMuted, peerMuted, isEncrypted,
+        peerVolume, micGain, sharedMedia, showMediaPanel,
+    } = callState;
+    const [showVolume, setShowVolume] = useState(false);
 
-    // Автоскрытие "ended"
     useEffect(() => {
         if (status === 'ended') {
-            setShowControls(false);
+            setShowVolume(false);
             const t = setTimeout(onDismiss, 3000);
             return () => clearTimeout(t);
         }
@@ -3476,24 +3532,19 @@ export function CallOverlay({
     const isActive = status === 'calling' || status === 'connecting' || status === 'connected';
     const isEnded = status === 'ended';
     const isConnected = status === 'connected';
+    const hasMedia = sharedMedia.length > 0;
 
     return (
-        <div className={`call-overlay ${isEnded ? 'call-ended' : ''}`}>
+        <div className={`call-overlay ${isEnded ? 'call-ended' : ''} ${showMediaPanel ? 'call-expanded' : ''}`}>
             <div className="call-overlay-inner">
                 <div className="call-peer">
                     <Avatar name={peerName || '?'} size={48} avatarUrl={peerAvatarUrl} />
                     <div className="call-peer-info">
                         <div className="call-peer-name-row">
                             <span className="call-peer-name">{peerName || 'Неизвестный'}</span>
-                            {peerMuted && (
-                                <span className="call-peer-muted" title="Микрофон выключен">
-                                    {Icon.micOff(14)}
-                                </span>
-                            )}
+                            {peerMuted && <span className="call-peer-muted" title="Мьют">{Icon.micOff(14)}</span>}
                         </div>
-                        <span className={`call-status-text ${status}`}>
-                            {statusText(callState)}
-                        </span>
+                        <span className={`call-status-text ${status}`}>{statusText(callState)}</span>
                     </div>
                 </div>
 
@@ -3505,18 +3556,27 @@ export function CallOverlay({
                     {isActive && (
                         <>
                             {isConnected && (
-                                <button
-                                    className={`call-ctrl-btn ${showControls ? 'active-soft' : ''}`}
-                                    onClick={() => setShowControls(v => !v)}
-                                    title="Настройки звука"
-                                >
-                                    {Icon.sliders(18)}
-                                </button>
+                                <>
+                                    <button
+                                        className={`call-ctrl-btn ${showMediaPanel ? 'active-soft' : ''} ${hasMedia ? 'has-media' : ''}`}
+                                        onClick={onToggleMediaPanel}
+                                        title="Музыка"
+                                    >
+                                        🎵
+                                    </button>
+                                    <button
+                                        className={`call-ctrl-btn ${showVolume ? 'active-soft' : ''}`}
+                                        onClick={() => setShowVolume(v => !v)}
+                                        title="Громкость"
+                                    >
+                                        {Icon.sliders(18)}
+                                    </button>
+                                </>
                             )}
                             <button
                                 className={`call-ctrl-btn ${isMuted ? 'active' : ''}`}
                                 onClick={onToggleMute}
-                                title={isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+                                title={isMuted ? 'Вкл микрофон' : 'Выкл микрофон'}
                             >
                                 {isMuted ? Icon.micOff(20) : Icon.mic(20)}
                             </button>
@@ -3526,39 +3586,43 @@ export function CallOverlay({
                         </>
                     )}
                     {isEnded && (
-                        <button className="call-ctrl-btn dismiss" onClick={onDismiss}>
-                            {Icon.x(18)}
-                        </button>
+                        <button className="call-ctrl-btn dismiss" onClick={onDismiss}>{Icon.x(18)}</button>
                     )}
                 </div>
             </div>
 
-            {/* Панель громкости */}
-            {showControls && isConnected && (
+            {showVolume && isConnected && (
                 <div className="call-volume-panel">
                     <div className="call-volume-row">
-                        <span className="call-volume-icon" title="Микрофон">
-                            {Icon.mic(15)}
-                        </span>
-                        <input
-                            type="range" min={0} max={100} value={micGain}
+                        <span className="call-volume-icon">{Icon.mic(15)}</span>
+                        <input type="range" min={0} max={100} value={micGain}
                             className="call-volume-slider"
-                            onChange={e => onSetMicGain(Number(e.target.value))}
-                        />
+                            onChange={e => onSetMicGain(Number(e.target.value))} />
                         <span className="call-volume-value">{micGain}%</span>
                     </div>
                     <div className="call-volume-row">
-                        <span className="call-volume-icon" title="Динамик">
-                            {peerVolume === 0 ? Icon.volumeOff(15) : Icon.volumeHigh(15)}
-                        </span>
-                        <input
-                            type="range" min={0} max={100} value={peerVolume}
+                        <span className="call-volume-icon">{peerVolume === 0 ? Icon.volumeOff(15) : Icon.volumeHigh(15)}</span>
+                        <input type="range" min={0} max={100} value={peerVolume}
                             className="call-volume-slider"
-                            onChange={e => onSetPeerVolume(Number(e.target.value))}
-                        />
+                            onChange={e => onSetPeerVolume(Number(e.target.value))} />
                         <span className="call-volume-value">{peerVolume}%</span>
                     </div>
                 </div>
+            )}
+
+            {showMediaPanel && isConnected && (
+                <SharedMediaPanel
+                    media={sharedMedia}
+                    currentUserId={currentUserId}
+                    onShare={onShareMedia}
+                    onRemove={onRemoveMedia}
+                    onControl={onControlMedia}
+                    onLocalVolumeChange={onMediaVolumeChange}
+                    onLocalMuteToggle={onMediaMuteToggle}
+                    onTitleUpdate={onMediaTitleUpdate}
+                    onTimeUpdate={onMediaTimeUpdate}
+                    showToast={showToast}
+                />
             )}
 
             {status === 'calling' && <div className="call-pulse" />}
@@ -3643,6 +3707,334 @@ export function IncomingCallModal({ callState, onAccept, onReject }: Props) {
                     </button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/calls/SharedMediaPanel.tsx
+================================================================================
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { SharedMediaItem } from '../../types';
+import { getFileUrl, uploadFile } from '../../api';
+import { Icon } from '../../icons';
+
+interface Props {
+    media: SharedMediaItem[];
+    currentUserId: string;
+    onShare: (fileId: string, fileName: string) => void;
+    onRemove: (mediaId: string) => void;
+    onControl: (mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => void;
+    onLocalVolumeChange: (mediaId: string, volume: number) => void;
+    onLocalMuteToggle: (mediaId: string) => void;
+    onTitleUpdate: (mediaId: string, title: string) => void;
+    onTimeUpdate: (mediaId: string, currentTime: number, duration: number) => void;
+    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
+}
+
+const AUDIO_TYPES = '.mp3,.ogg,.wav,.flac,.aac,.m4a,.webm,.opus';
+
+export function SharedMediaPanel({
+    media, currentUserId, onShare, onRemove, onControl,
+    onLocalVolumeChange, onLocalMuteToggle, onTitleUpdate, onTimeUpdate, showToast,
+}: Props) {
+    const [uploading, setUploading] = useState(false);
+    const [dragOver, setDragOver] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+    const timerRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
+    // ── Cleanup при unmount ──────────────────────────────
+
+    useEffect(() => {
+        return () => {
+            audioRefs.current.forEach(a => { a.pause(); a.src = ''; });
+            audioRefs.current.clear();
+            timerRefs.current.forEach(t => clearInterval(t));
+            timerRefs.current.clear();
+        };
+    }, []);
+
+    // ── Создание / удаление audio элементов ──────────────
+
+    useEffect(() => {
+        const currentIds = new Set(media.map(m => m.id));
+
+        // Удаляем для removed
+        audioRefs.current.forEach((audio, id) => {
+            if (!currentIds.has(id)) {
+                audio.pause();
+                audio.src = '';
+                audioRefs.current.delete(id);
+                const timer = timerRefs.current.get(id);
+                if (timer) { clearInterval(timer); timerRefs.current.delete(id); }
+            }
+        });
+
+        // Создаём новые
+        media.forEach(item => {
+            if (audioRefs.current.has(item.id)) return;
+
+            const audio = new Audio();
+            audio.crossOrigin = 'anonymous';
+            audio.preload = 'auto';
+            audio.src = getFileUrl(item.fileId);
+            audio.volume = item.localMuted ? 0 : item.localVolume / 100;
+
+            audio.onloadedmetadata = () => {
+                onTimeUpdate(item.id, 0, audio.duration || 0);
+                const name = item.fileName.replace(/\.[^.]+$/, '') || 'Аудио';
+                onTitleUpdate(item.id, name);
+            };
+
+            audio.onended = () => {
+                onControl(item.id, 'pause');
+                onTimeUpdate(item.id, 0, audio.duration || 0);
+            };
+
+            audio.onerror = () => {
+                console.error('[Media] Audio load error:', item.fileId);
+                showToast('Ошибка загрузки аудио', 'error');
+            };
+
+            if (item.isPlaying) {
+                audio.play().catch(() => { });
+            }
+
+            audioRefs.current.set(item.id, audio);
+
+            // Таймер обновления прогресса
+            const timer = setInterval(() => {
+                const a = audioRefs.current.get(item.id);
+                if (!a) return;
+                onTimeUpdate(item.id, a.currentTime, a.duration || 0);
+            }, 500);
+            timerRefs.current.set(item.id, timer);
+        });
+    }, [media.map(m => m.id).join(',')]);
+
+    // ── Синхронизация play/pause и loop ──────────────────
+
+    useEffect(() => {
+        media.forEach(item => {
+            const audio = audioRefs.current.get(item.id);
+            if (!audio) return;
+
+            audio.loop = item.isLooping;
+
+            if (item.isPlaying && audio.paused) {
+                audio.play().catch(() => { });
+            } else if (!item.isPlaying && !audio.paused) {
+                audio.pause();
+            }
+        });
+    }, [media.map(m => `${m.id}:${m.isPlaying}:${m.isLooping}`).join(',')]);
+
+    // ── Синхронизация громкости ──────────────────────────
+
+    useEffect(() => {
+        media.forEach(item => {
+            const audio = audioRefs.current.get(item.id);
+            if (!audio) return;
+            audio.volume = item.localMuted ? 0 : item.localVolume / 100;
+        });
+    }, [media.map(m => `${m.id}:${m.localVolume}:${m.localMuted}`).join(',')]);
+
+    // ── Загрузка файла ──────────────────────────────────
+
+    const handleUpload = useCallback(async (file: File) => {
+        if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|ogg|wav|flac|aac|m4a|webm|opus)$/i)) {
+            showToast('Выберите аудиофайл', 'error');
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            showToast('Файл слишком большой (макс 25MB)', 'error');
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const att = await uploadFile(file, file.name);
+            onShare(att.id, file.name);
+            showToast('Музыка добавлена!', 'success');
+        } catch (e: any) {
+            showToast(e.message || 'Ошибка загрузки', 'error');
+        } finally {
+            setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    }, [onShare, showToast]);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) handleUpload(file);
+    };
+
+    // ── Drag & Drop ─────────────────────────────────────
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOver(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(false);
+        const file = e.dataTransfer.files[0];
+        if (file) handleUpload(file);
+    };
+
+    // ── Seek по клику (только локально) ─────────────────
+
+    const handleSeek = (item: SharedMediaItem, e: React.MouseEvent<HTMLDivElement>) => {
+        if (!item.duration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const time = pct * item.duration;
+        const audio = audioRefs.current.get(item.id);
+        if (audio) audio.currentTime = time;
+        onControl(item.id, 'seek', time);
+    };
+
+    const fmt = (s: number) => {
+        if (!s || !isFinite(s)) return '0:00';
+        const m = Math.floor(s / 60);
+        return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    };
+
+    return (
+        <div
+            className={`media-panel ${dragOver ? 'media-drag-over' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
+            {/* Кнопка загрузки */}
+            <div className="media-upload-row">
+                <button
+                    className="media-upload-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                >
+                    {uploading ? '⏳ Загрузка...' : '🎵 Добавить музыку'}
+                </button>
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={AUDIO_TYPES}
+                    style={{ display: 'none' }}
+                    onChange={handleFileChange}
+                />
+            </div>
+
+            {/* Drag hint */}
+            {dragOver && (
+                <div className="media-drop-hint">
+                    Отпустите файл чтобы добавить
+                </div>
+            )}
+
+            {/* Пустое состояние */}
+            {media.length === 0 && !dragOver && (
+                <div className="media-empty">
+                    Перетащите аудиофайл или нажмите кнопку выше
+                </div>
+            )}
+
+            {/* Список треков */}
+            {media.map(item => {
+                const pct = item.duration > 0 ? (item.currentTime / item.duration) * 100 : 0;
+                const isOwner = item.userId === currentUserId;
+
+                return (
+                    <div key={item.id} className="media-card">
+                        <div className="media-card-header">
+                            <div className="media-card-info">
+                                <span className="media-card-title">
+                                    🎵 {item.title || item.fileName || 'Загрузка...'}
+                                </span>
+                                <span className="media-card-owner">
+                                    {isOwner ? 'Вы' : item.userName}
+                                </span>
+                            </div>
+                            {isOwner && (
+                                <button
+                                    className="media-remove-btn"
+                                    onClick={() => onRemove(item.id)}
+                                    title="Убрать"
+                                >
+                                    {Icon.x(14)}
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Прогресс */}
+                        <div className="media-progress" onClick={e => handleSeek(item, e)}>
+                            <div className="media-progress-fill" style={{ width: `${pct}%` }} />
+                        </div>
+
+                        <div className="media-controls">
+                            <button
+                                className="media-ctrl-btn"
+                                onClick={() => onControl(item.id, item.isPlaying ? 'pause' : 'play')}
+                                title={item.isPlaying ? 'Пауза' : 'Плей'}
+                            >
+                                {item.isPlaying ? (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                                    </svg>
+                                ) : (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5,3 19,12 5,21" />
+                                    </svg>
+                                )}
+                            </button>
+
+                            <button
+                                className="media-ctrl-btn"
+                                style={{ color: item.isLooping ? 'var(--accent)' : 'inherit' }}
+                                onClick={() => onControl(item.id, 'loop')}
+                                title={item.isLooping ? 'Выключить повтор' : 'Включить повтор'}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="17 1 21 5 17 9"></polyline>
+                                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                                    <polyline points="7 23 3 19 7 15"></polyline>
+                                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                                </svg>
+                            </button>
+
+                            <span className="media-time">
+                                {fmt(item.currentTime)} / {fmt(item.duration)}
+                            </span>
+
+                            <button
+                                className={`media-ctrl-btn ${item.localMuted ? 'muted' : ''}`}
+                                onClick={() => onLocalMuteToggle(item.id)}
+                                title={item.localMuted ? 'Включить звук' : 'Выключить звук'}
+                            >
+                                {item.localMuted ? Icon.volumeOff(14) : Icon.volumeHigh(14)}
+                            </button>
+
+                            <input
+                                type="range" min={0} max={100}
+                                value={item.localMuted ? 0 : item.localVolume}
+                                onChange={e => onLocalVolumeChange(item.id, Number(e.target.value))}
+                                className="media-volume-slider"
+                            />
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -5840,7 +6232,7 @@ export function useAuth() {
 FILE PATH: ./client/src/hooks/useCall.ts
 ================================================================================
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { CallState, LocalChat, WsServerMsg } from '../types';
+import type { CallState, LocalChat, WsServerMsg, SharedMediaItem } from '../types';
 import { wsManager } from '../websocket';
 import { cryptoManager } from '../crypto';
 
@@ -5853,7 +6245,6 @@ const ICE_CONFIG: RTCConfiguration = {
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
-        // ── TURN-сервер на вашем VPS (поменяйте пароль!) ──
         {
             urls: [
                 'turn:163.5.180.138:3478',
@@ -5884,6 +6275,8 @@ const INITIAL: CallState = {
     isEncrypted: false,
     peerVolume: 100,
     micGain: 100,
+    sharedMedia: [],
+    showMediaPanel: false,
 };
 
 interface PendingOffer {
@@ -6031,13 +6424,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
     // ── Helpers ──────────────────────────────────────────
 
-    const startTimer = useCallback(() => {
-        if (timerRef.current) return;
-        timerRef.current = setInterval(() => {
-            setCallState(s => ({ ...s, duration: s.duration + 1 }));
-        }, 1000);
-    }, []);
-
     const getPeerInfo = useCallback((chatId: string): { name: string; avatarUrl?: string } => {
         const chat = chatsRef.current.find(c => c.id === chatId);
         if (!chat) return { name: 'Неизвестный' };
@@ -6165,7 +6551,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
             setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
         };
 
-        // Двойное отслеживание: connectionState + iceConnectionState
         pc.onconnectionstatechange = () => {
             const st = pc.connectionState;
             console.log('[Call] connectionState:', st);
@@ -6179,20 +6564,17 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
             if (st === 'connected' || st === 'completed') {
                 markConnected();
-                // Сбрасываем таймер disconnected
                 if (iceDisconnectTimeoutRef.current) {
                     clearTimeout(iceDisconnectTimeoutRef.current);
                     iceDisconnectTimeoutRef.current = null;
                 }
             } else if (st === 'failed') {
-                // Пробуем ICE restart перед отключением
                 if (iceRestartCountRef.current < ICE_RESTART_MAX) {
                     tryIceRestart();
                 } else {
                     markFailed();
                 }
             } else if (st === 'disconnected') {
-                // Ждём — может восстановится
                 if (iceDisconnectTimeoutRef.current) clearTimeout(iceDisconnectTimeoutRef.current);
                 iceDisconnectTimeoutRef.current = setTimeout(() => {
                     const currentSt = pcRef.current?.iceConnectionState;
@@ -6248,6 +6630,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                 isMuted: false, peerMuted: false,
                 duration: 0, isEncrypted: enc.encrypted,
                 peerVolume: 100, micGain: 100,
+                sharedMedia: [], showMediaPanel: false,
             });
 
             ringtoneRef.current.start('outgoing');
@@ -6278,7 +6661,19 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         clearAllTimeouts();
         ringtoneRef.current.stop();
 
-        setCallState(s => ({ ...s, status: 'connecting' }));
+        setCallState(s => (s.status === 'connected' ? s : { ...s, status: 'connecting' }));
+
+        connectingTimeoutRef.current = setTimeout(() => {
+            if (stateRef.current.status === 'connecting' && pcRef.current?.connectionState !== 'connected') {
+                console.warn('[Call] Connecting timeout (answerer)');
+                const { chatId, callId } = stateRef.current;
+                if (chatId && callId) {
+                    wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
+                }
+                cleanup();
+                setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+            }
+        }, CONNECTING_TIMEOUT_MS);
 
         try {
             const stream = await getAudioStream();
@@ -6303,18 +6698,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                 type: 'call_answer',
                 payload: { chat_id: offer.chatId, call_id: offer.callId, sdp: enc.data, encrypted: enc.encrypted },
             });
-
-            connectingTimeoutRef.current = setTimeout(() => {
-                if (stateRef.current.status === 'connecting') {
-                    console.warn('[Call] Connecting timeout (answerer)');
-                    const { chatId, callId } = stateRef.current;
-                    if (chatId && callId) {
-                        wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
-                    }
-                    cleanup();
-                    setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
-                }
-            }, CONNECTING_TIMEOUT_MS);
 
         } catch (e: any) {
             console.error('[Call] Answer failed:', e);
@@ -6391,6 +6774,84 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
     const dismissCall = useCallback(() => { setCallState(INITIAL); }, []);
 
     // ═══════════════════════════════════════════════════════
+    //  Shared Media
+    // ═══════════════════════════════════════════════════════
+
+    const toggleMediaPanel = useCallback(() => {
+        setCallState(s => ({ ...s, showMediaPanel: !s.showMediaPanel }));
+    }, []);
+
+    // Добавление трека — синхронизируется (оба узнают о треке)
+    const shareMedia = useCallback((fileId: string, fileName: string) => {
+        const { chatId, callId } = stateRef.current;
+        if (!chatId || !callId) return;
+        wsManager.send({
+            type: 'call_media_share',
+            payload: { chat_id: chatId, call_id: callId, file_id: fileId, file_name: fileName },
+        });
+    }, []);
+
+    // Удаление трека — синхронизируется (трек убирается у обоих)
+    const removeMedia = useCallback((mediaId: string) => {
+        const { chatId, callId } = stateRef.current;
+        if (!chatId || !callId) return;
+        setCallState(s => ({ ...s, sharedMedia: s.sharedMedia.filter(m => m.id !== mediaId) }));
+        wsManager.send({
+            type: 'call_media_remove',
+            payload: { chat_id: chatId, call_id: callId, media_id: mediaId },
+        });
+    }, []);
+
+    // Управление воспроизведением — ТОЛЬКО ЛОКАЛЬНО, не синхронизируется
+    const controlMedia = useCallback((mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m => {
+                if (m.id !== mediaId) return m;
+                if (action === 'play') return { ...m, isPlaying: true };
+                if (action === 'pause') return { ...m, isPlaying: false };
+                if (action === 'loop') return { ...m, isLooping: !m.isLooping };
+                if (action === 'seek' && time !== undefined) return { ...m, currentTime: time };
+                return m;
+            }),
+        }));
+    }, []);
+
+    const setMediaVolume = useCallback((mediaId: string, volume: number) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m =>
+                m.id !== mediaId ? m : { ...m, localVolume: volume, localMuted: false }
+            ),
+        }));
+    }, []);
+
+    const toggleMediaMute = useCallback((mediaId: string) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m =>
+                m.id !== mediaId ? m : { ...m, localMuted: !m.localMuted }
+            ),
+        }));
+    }, []);
+
+    const updateMediaTitle = useCallback((mediaId: string, title: string) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m => m.id !== mediaId ? m : { ...m, title }),
+        }));
+    }, []);
+
+    const updateMediaTime = useCallback((mediaId: string, currentTime: number, duration: number) => {
+        setCallState(s => ({
+            ...s,
+            sharedMedia: s.sharedMedia.map(m =>
+                m.id !== mediaId ? m : { ...m, currentTime, duration: duration || m.duration }
+            ),
+        }));
+    }, []);
+
+    // ═══════════════════════════════════════════════════════
     //  Refs для всех callback'ов → стабильная подписка
     // ═══════════════════════════════════════════════════════
 
@@ -6424,11 +6885,9 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
                     console.log('[Call] ← call_incoming', { call_id, caller_name, currentStatus: st });
 
-                    // Если в 'ended' — сбрасываем и принимаем
                     if (st === 'ended') {
                         cleanupRef.current();
                         setCallState(INITIAL);
-                        // Даём React обновить state
                         await new Promise(r => setTimeout(r, 50));
                     } else if (st !== 'idle') {
                         console.log('[Call] Busy, auto-rejecting');
@@ -6451,6 +6910,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                         isMuted: false, peerMuted: false,
                         duration: 0, isEncrypted: encrypted,
                         peerVolume: 100, micGain: 100,
+                        sharedMedia: [], showMediaPanel: false,
                     });
 
                     ringtoneRef.current.start('incoming');
@@ -6482,6 +6942,19 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     clearAllTimeoutsRef.current();
                     ringtoneRef.current.stop();
 
+                    setCallState(s => (s.status === 'connected' ? s : { ...s, status: 'connecting' }));
+
+                    connectingTimeoutRef.current = setTimeout(() => {
+                        if (stateRef.current.status === 'connecting' && pcRef.current?.connectionState !== 'connected') {
+                            console.warn('[Call] Connecting timeout (caller)');
+                            if (iceRestartCountRef.current < ICE_RESTART_MAX) {
+                                tryIceRestartRef.current();
+                            } else {
+                                hangupRef.current();
+                            }
+                        }
+                    }, CONNECTING_TIMEOUT_MS);
+
                     try {
                         const pc = pcRef.current;
                         if (!pc) {
@@ -6496,20 +6969,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
                         console.log('[Call] Flushing candidates after answer');
                         await flushRef.current();
-
-                        setCallState(s => ({ ...s, status: 'connecting' }));
-
-                        connectingTimeoutRef.current = setTimeout(() => {
-                            if (stateRef.current.status === 'connecting') {
-                                console.warn('[Call] Connecting timeout (caller)');
-                                // Пробуем ICE restart перед отключением
-                                if (iceRestartCountRef.current < ICE_RESTART_MAX) {
-                                    tryIceRestartRef.current();
-                                } else {
-                                    hangupRef.current();
-                                }
-                            }
-                        }, CONNECTING_TIMEOUT_MS);
 
                     } catch (e) {
                         console.error('[Call] Set answer failed:', e);
@@ -6572,18 +7031,41 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── ICE restart (re-offer от собеседника) ──
-                case 'call_incoming': {
-                    // Уже обработан выше
+                // ── Совместная Музыка: трек добавлен (синхронизируется) ──
+                case 'call_media_shared': {
+                    const { call_id, media_id, user_id, user_name, file_id, file_name } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    if (stateRef.current.sharedMedia.some(m => m.id === media_id)) return;
+
+                    const newItem: SharedMediaItem = {
+                        id: media_id, userId: user_id, userName: user_name,
+                        fileId: file_id, fileName: file_name, title: '',
+                        isPlaying: true, isLooping: false, currentTime: 0, duration: 0,
+                        localVolume: 70, localMuted: false,
+                    };
+                    setCallState(s => ({
+                        ...s,
+                        sharedMedia: [...s.sharedMedia, newItem],
+                    }));
                     break;
                 }
+
+                // ── Совместная Музыка: трек удалён (синхронизируется) ──
+                case 'call_media_removed': {
+                    const { call_id, media_id } = msg.payload;
+                    if (stateRef.current.callId !== call_id) return;
+                    setCallState(s => ({
+                        ...s, sharedMedia: s.sharedMedia.filter(m => m.id !== media_id),
+                    }));
+                    break;
+                }
+
+                // call_media_controlled — игнорируем, воспроизведение независимое
             }
         });
 
         return unsub;
-    }, []);  // ← ПУСТЫЕ ЗАВИСИМОСТИ — подписка ОДНА на всё время
-
-    // ── Cleanup при размонтировании ──────────────────────
+    }, []);
 
     useEffect(() => {
         return () => cleanupRef.current();
@@ -6593,6 +7075,8 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         callState,
         startCall, answerCall, rejectCall, hangup,
         toggleMute, setPeerVolume, setMicGain, dismissCall,
+        toggleMediaPanel, shareMedia, removeMedia, controlMedia,
+        setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
     };
 }
 
@@ -7632,10 +8116,6 @@ FILE PATH: ./client/src/notifications.ts
 ================================================================================
 import type { NotificationData } from './types';
 
-// ═══════════════════════════════════════════════════════════
-//  Tauri plugin
-// ═══════════════════════════════════════════════════════════
-
 let tauriNotifModule: any = null;
 let tauriChecked = false;
 
@@ -7647,7 +8127,6 @@ async function getTauriModule(): Promise<any> {
     if (tauriChecked) return tauriNotifModule;
     tauriChecked = true;
     if (!isTauri()) return null;
-
     try {
         tauriNotifModule = await import('@tauri-apps/plugin-notification');
         return tauriNotifModule;
@@ -7656,10 +8135,6 @@ async function getTauriModule(): Promise<any> {
         return null;
     }
 }
-
-// ═══════════════════════════════════════════════════════════
-//  Звук
-// ═══════════════════════════════════════════════════════════
 
 let lastSoundTime = 0;
 
@@ -7674,15 +8149,10 @@ export function playNotificationSound(): void {
     } catch { /* */ }
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Инициализация
-// ═══════════════════════════════════════════════════════════
-
 let _permissionGranted = false;
 
 export async function initNotifications(): Promise<boolean> {
     const mod = await getTauriModule();
-
     if (mod) {
         try {
             let granted = await mod.isPermissionGranted();
@@ -7691,25 +8161,16 @@ export async function initNotifications(): Promise<boolean> {
                 granted = result === 'granted';
             }
             _permissionGranted = granted;
-            console.log('[Notif] Tauri permission:', granted);
-        } catch (e) {
-            console.warn('[Notif] Tauri permission error:', e);
-            _permissionGranted = false;
-        }
+        } catch { _permissionGranted = false; }
     } else if ('Notification' in window) {
-        if (Notification.permission === 'granted') {
-            _permissionGranted = true;
-        } else if (Notification.permission !== 'denied') {
+        if (Notification.permission === 'granted') _permissionGranted = true;
+        else if (Notification.permission !== 'denied') {
             try {
-                const result = await Notification.requestPermission();
-                _permissionGranted = result === 'granted';
-            } catch {
-                _permissionGranted = false;
-            }
+                const r = await Notification.requestPermission();
+                _permissionGranted = r === 'granted';
+            } catch { _permissionGranted = false; }
         }
-        console.log('[Notif] Web permission:', _permissionGranted);
     }
-
     return _permissionGranted;
 }
 
@@ -7724,63 +8185,42 @@ export function isNotificationEnabled(): boolean {
     return _permissionGranted;
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Системное уведомление (best effort)
-// ═══════════════════════════════════════════════════════════
-
 export async function sendSystemNotification(
-    title: string,
-    body: string,
-    tag?: string,
-    onClick?: () => void,
+    title: string, body: string, tag?: string, onClick?: () => void,
 ): Promise<void> {
-    console.log('[Notif] Trying system notification:', { title, body });
-
-    // Tauri
     const mod = await getTauriModule();
     if (mod) {
+        try { await mod.sendNotification({ title, body }); } catch { /* */ }
+    } else if ('Notification' in window && Notification.permission === 'granted') {
         try {
-            await mod.sendNotification({ title, body });
-            console.log('[Notif] Tauri notification sent OK');
-            return;
-        } catch (e) {
-            console.error('[Notif] Tauri sendNotification error:', e);
-        }
-    }
-
-    // Web Notification API
-    if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-            const n = new Notification(title, {
-                body,
-                silent: true,
-                tag: tag || undefined,
-            });
-            if (onClick) {
-                n.onclick = () => {
-                    window.focus();
-                    onClick();
-                    n.close();
-                };
-            }
+            const n = new Notification(title, { body, silent: true, tag: tag || undefined });
+            if (onClick) { n.onclick = () => { window.focus(); onClick(); n.close(); }; }
             setTimeout(() => n.close(), 6000);
-            console.log('[Notif] Web notification sent OK');
-        } catch (e) {
-            console.error('[Notif] Web Notification error:', e);
-        }
+        } catch { /* */ }
     }
 }
 
-/**
- * Тестовое уведомление для отладки.
- */
+export function showMessageNotification(
+    data: NotificationData, onClick?: () => void,
+): void {
+    playNotificationSound();
+    const title = data.isGroup ? data.chatName : data.senderName;
+    const rawBody = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
+    const body = rawBody.length > 100 ? rawBody.slice(0, 100) + '…' : rawBody;
+    if (document.hidden || !document.hasFocus()) {
+        sendSystemNotification(title, body, `msg-${data.chatId}`, onClick);
+    }
+}
+
+export function showCallNotification(callerName: string): void {
+    if (document.hidden || !document.hasFocus()) {
+        sendSystemNotification('Входящий звонок', callerName, 'incoming-call');
+    }
+}
+
 export async function sendTestNotification(): Promise<void> {
     playNotificationSound();
-    await sendSystemNotification(
-        'Тест уведомлений',
-        'Если вы видите это — уведомления работают! 🎉',
-        'test',
-    );
+    await sendSystemNotification('Тест', 'Уведомления работают! 🎉', 'test');
 }
 
 
@@ -7903,7 +8343,11 @@ export type WsServerMsg =
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute_changed'; payload: { chat_id: string; call_id: string; user_id: string; muted: boolean } }
-    | { type: 'call_ended'; payload: { chat_id: string; call_id: string } };
+    | { type: 'call_ended'; payload: { chat_id: string; call_id: string } }
+    // ── Медиа ──
+    | { type: 'call_media_shared'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; user_name: string; file_id: string; file_name: string } }
+    | { type: 'call_media_removed'; payload: { chat_id: string; call_id: string; media_id: string } }
+    | { type: 'call_media_controlled'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; action: string; current_time: number } };
 
 export type WsClientMsg =
     | { type: 'send_message'; payload: { chat_id: string; content: string; client_id: string; attachment_id?: string; encrypted?: EncryptedPayload } }
@@ -7918,7 +8362,11 @@ export type WsClientMsg =
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute'; payload: { chat_id: string; call_id: string; muted: boolean } }
-    | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } };
+    | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } }
+    // ── Медиа ──
+    | { type: 'call_media_share'; payload: { chat_id: string; call_id: string; file_id: string; file_name: string } }
+    | { type: 'call_media_remove'; payload: { chat_id: string; call_id: string; media_id: string } }
+    | { type: 'call_media_control'; payload: { chat_id: string; call_id: string; media_id: string; action: string; current_time: number } };
 
 // ═══════════════════════════════════════════════════════════
 //  Локальные UI типы
@@ -7991,6 +8439,21 @@ export interface Chat {
 //  Call типы
 // ═══════════════════════════════════════════════════════════
 
+export interface SharedMediaItem {
+    id: string;
+    userId: string;
+    userName: string;
+    fileId: string;
+    fileName: string;
+    title: string;
+    isPlaying: boolean;
+    isLooping: boolean; // Добавлен флаг зацикливания
+    currentTime: number;
+    duration: number;
+    localVolume: number;
+    localMuted: boolean;
+}
+
 export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
 export type CallEndReason = 'hangup' | 'rejected' | 'timeout' | 'error' | 'busy';
 
@@ -8008,6 +8471,8 @@ export interface CallState {
     endReason?: CallEndReason;
     peerVolume: number;
     micGain: number;
+    sharedMedia: SharedMediaItem[];
+    showMediaPanel: boolean;
 }
 
 export interface NotificationData {
@@ -8437,6 +8902,27 @@ FILE PATH: ./server/migrations/0005_chat_keys.sql
 ================================================================================
 ALTER TABLE chat_members ADD COLUMN encrypted_chat_key JSONB;
 ALTER TABLE chat_members ADD COLUMN member_key_id VARCHAR(64);
+
+
+================================================================================
+FILE PATH: ./server/migrations/0006_profile_bio_avatar_history.sql
+================================================================================
+ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE avatar_history (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attachment_id UUID NOT NULL REFERENCES attachments(id),
+    set_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_current    BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX idx_avatar_history_user ON avatar_history(user_id, set_at DESC);
+
+INSERT INTO avatar_history (user_id, attachment_id, is_current, set_at)
+SELECT id, avatar_id, TRUE, COALESCE(last_seen, NOW())
+FROM users
+WHERE avatar_id IS NOT NULL;
 
 
 ================================================================================
@@ -10072,6 +10558,24 @@ pub struct Attachment {
 
 
 ================================================================================
+FILE PATH: ./server/src/models/avatar_history.rs
+================================================================================
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
+pub struct AvatarHistory {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub attachment_id: Uuid,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+
+
+================================================================================
 FILE PATH: ./server/src/models/chat.rs
 ================================================================================
 use chrono::{DateTime, Utc};
@@ -10443,6 +10947,69 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             call_id,
             muted,
         } => on_call_mute(state, uid, chat_id, call_id, muted).await,
+
+        // ── Shared Media ────────────────────────────────────
+        WsClientMsg::CallMediaShare {
+            chat_id,
+            call_id,
+            file_id,
+            file_name,
+        } => {
+            let user_name = get_display_name(state, uid, uname).await;
+            let media_id = Uuid::new_v4().to_string();
+            broadcast_to_chat_all(
+                state,
+                chat_id,
+                WsServerMsg::CallMediaShared {
+                    chat_id,
+                    call_id,
+                    media_id,
+                    user_id: uid,
+                    user_name,
+                    file_id,
+                    file_name,
+                },
+            )
+            .await;
+        }
+        WsClientMsg::CallMediaRemove {
+            chat_id,
+            call_id,
+            media_id,
+        } => {
+            broadcast_to_chat_all(
+                state,
+                chat_id,
+                WsServerMsg::CallMediaRemoved {
+                    chat_id,
+                    call_id,
+                    media_id,
+                },
+            )
+            .await;
+        }
+        WsClientMsg::CallMediaControl {
+            chat_id,
+            call_id,
+            media_id,
+            action,
+            current_time,
+        } => {
+            broadcast_to_chat(
+                state,
+                chat_id,
+                uid,
+                WsServerMsg::CallMediaControlled {
+                    chat_id,
+                    call_id,
+                    media_id,
+                    user_id: uid,
+                    action,
+                    current_time,
+                },
+            )
+            .await;
+        }
     }
 }
 
@@ -10950,6 +11517,24 @@ pub enum WsClientMsg {
         call_id: Uuid,
         muted: bool,
     },
+    CallMediaShare {
+        chat_id: Uuid,
+        call_id: Uuid,
+        file_id: Uuid,
+        file_name: String,
+    },
+    CallMediaRemove {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+    },
+    CallMediaControl {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+        action: String,
+        current_time: f64,
+    },
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -11038,6 +11623,28 @@ pub enum WsServerMsg {
         call_id: Uuid,
         user_id: Uuid,
         muted: bool,
+    },
+    CallMediaShared {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+        user_id: Uuid,
+        user_name: String,
+        file_id: Uuid,
+        file_name: String,
+    },
+    CallMediaRemoved {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+    },
+    CallMediaControlled {
+        chat_id: Uuid,
+        call_id: Uuid,
+        media_id: String,
+        user_id: Uuid,
+        action: String,
+        current_time: f64,
     },
 }
 
@@ -11168,6 +11775,50 @@ pub struct UpdateAvatarRes {
 #[derive(Debug, Deserialize)]
 pub struct UpdateChatKeysReq {
     pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserDto {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub bio: String, // Новое поле
+    pub online: bool,
+    pub last_seen: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_keys: Option<PublicKeyBundle>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AvatarHistoryDto {
+    pub id: Uuid,
+    pub url: String,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserProfileDto {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub bio: String,
+    pub online: bool,
+    pub last_seen: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    pub avatars: Vec<AvatarHistoryDto>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileReq {
+    pub display_name: Option<String>,
+    pub bio: Option<String>,
+    pub public_keys: Option<PublicKeyBundle>,
 }
 
 

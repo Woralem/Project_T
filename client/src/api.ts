@@ -1,8 +1,9 @@
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey } from './types';
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey, UserProfileDto, AvatarHistoryDto } from './types';
 
 const SERVER_URL = 'http://163.5.180.138:3000';
 const API_URL = `${SERVER_URL}/api`;
 export const WS_URL = 'ws://163.5.180.138:3000/ws';
+export { SERVER_URL };
 
 let token: string | null = localStorage.getItem('auth_token');
 
@@ -94,12 +95,17 @@ export function logout() {
 
 export async function updateProfile(data: {
     display_name?: string;
+    bio?: string;
     public_keys?: PublicKeyBundle;
 }): Promise<UserDto> {
     return request<UserDto>('/users/me', {
         method: 'PUT',
         body: JSON.stringify(data),
     });
+}
+
+export async function getUserProfile(userId: string): Promise<UserProfileDto> {
+    return request<UserProfileDto>(`/users/${userId}/profile`);
 }
 
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
@@ -127,6 +133,16 @@ export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> 
 
 export async function deleteAvatar(): Promise<void> {
     await request<void>('/users/me/avatar', { method: 'DELETE' });
+}
+
+export async function deleteAvatarHistory(avatarId: string): Promise<void> {
+    await request<void>(`/users/me/avatars/${avatarId}`, { method: 'DELETE' });
+}
+
+export async function setAvatarFromHistory(avatarId: string): Promise<{ avatar_url: string }> {
+    return request<{ avatar_url: string }>(`/users/me/avatars/${avatarId}/set-current`, {
+        method: 'POST',
+    });
 }
 
 export function getAvatarUrl(userId: string): string {

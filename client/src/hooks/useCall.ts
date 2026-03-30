@@ -12,7 +12,6 @@ const ICE_CONFIG: RTCConfiguration = {
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
-        // ── TURN-сервер на вашем VPS (поменяйте пароль!) ──
         {
             urls: [
                 'turn:163.5.180.138:3478',
@@ -192,13 +191,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
     // ── Helpers ──────────────────────────────────────────
 
-    const startTimer = useCallback(() => {
-        if (timerRef.current) return;
-        timerRef.current = setInterval(() => {
-            setCallState(s => ({ ...s, duration: s.duration + 1 }));
-        }, 1000);
-    }, []);
-
     const getPeerInfo = useCallback((chatId: string): { name: string; avatarUrl?: string } => {
         const chat = chatsRef.current.find(c => c.id === chatId);
         if (!chat) return { name: 'Неизвестный' };
@@ -326,7 +318,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
             setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
         };
 
-        // Двойное отслеживание: connectionState + iceConnectionState
         pc.onconnectionstatechange = () => {
             const st = pc.connectionState;
             console.log('[Call] connectionState:', st);
@@ -340,20 +331,17 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
             if (st === 'connected' || st === 'completed') {
                 markConnected();
-                // Сбрасываем таймер disconnected
                 if (iceDisconnectTimeoutRef.current) {
                     clearTimeout(iceDisconnectTimeoutRef.current);
                     iceDisconnectTimeoutRef.current = null;
                 }
             } else if (st === 'failed') {
-                // Пробуем ICE restart перед отключением
                 if (iceRestartCountRef.current < ICE_RESTART_MAX) {
                     tryIceRestart();
                 } else {
                     markFailed();
                 }
             } else if (st === 'disconnected') {
-                // Ждём — может восстановится
                 if (iceDisconnectTimeoutRef.current) clearTimeout(iceDisconnectTimeoutRef.current);
                 iceDisconnectTimeoutRef.current = setTimeout(() => {
                     const currentSt = pcRef.current?.iceConnectionState;
@@ -440,7 +428,19 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         clearAllTimeouts();
         ringtoneRef.current.stop();
 
-        setCallState(s => ({ ...s, status: 'connecting' }));
+        setCallState(s => (s.status === 'connected' ? s : { ...s, status: 'connecting' }));
+
+        connectingTimeoutRef.current = setTimeout(() => {
+            if (stateRef.current.status === 'connecting' && pcRef.current?.connectionState !== 'connected') {
+                console.warn('[Call] Connecting timeout (answerer)');
+                const { chatId, callId } = stateRef.current;
+                if (chatId && callId) {
+                    wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
+                }
+                cleanup();
+                setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
+            }
+        }, CONNECTING_TIMEOUT_MS);
 
         try {
             const stream = await getAudioStream();
@@ -465,18 +465,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                 type: 'call_answer',
                 payload: { chat_id: offer.chatId, call_id: offer.callId, sdp: enc.data, encrypted: enc.encrypted },
             });
-
-            connectingTimeoutRef.current = setTimeout(() => {
-                if (stateRef.current.status === 'connecting') {
-                    console.warn('[Call] Connecting timeout (answerer)');
-                    const { chatId, callId } = stateRef.current;
-                    if (chatId && callId) {
-                        wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
-                    }
-                    cleanup();
-                    setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
-                }
-            }, CONNECTING_TIMEOUT_MS);
 
         } catch (e: any) {
             console.error('[Call] Answer failed:', e);
@@ -560,6 +548,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         setCallState(s => ({ ...s, showMediaPanel: !s.showMediaPanel }));
     }, []);
 
+    // Добавление трека — синхронизируется (оба узнают о треке)
     const shareMedia = useCallback((fileId: string, fileName: string) => {
         const { chatId, callId } = stateRef.current;
         if (!chatId || !callId) return;
@@ -569,6 +558,7 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         });
     }, []);
 
+    // Удаление трека — синхронизируется (трек убирается у обоих)
     const removeMedia = useCallback((mediaId: string) => {
         const { chatId, callId } = stateRef.current;
         if (!chatId || !callId) return;
@@ -579,29 +569,19 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
         });
     }, []);
 
-    const controlMedia = useCallback((mediaId: string, action: 'play' | 'pause' | 'seek', time?: number) => {
-        const { chatId, callId } = stateRef.current;
-        if (!chatId || !callId) return;
-
+    // Управление воспроизведением — ТОЛЬКО ЛОКАЛЬНО, не синхронизируется
+    const controlMedia = useCallback((mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => {
         setCallState(s => ({
             ...s,
             sharedMedia: s.sharedMedia.map(m => {
                 if (m.id !== mediaId) return m;
                 if (action === 'play') return { ...m, isPlaying: true };
                 if (action === 'pause') return { ...m, isPlaying: false };
+                if (action === 'loop') return { ...m, isLooping: !m.isLooping };
                 if (action === 'seek' && time !== undefined) return { ...m, currentTime: time };
                 return m;
             }),
         }));
-
-        const item = stateRef.current.sharedMedia.find(m => m.id === mediaId);
-        wsManager.send({
-            type: 'call_media_control',
-            payload: {
-                chat_id: chatId, call_id: callId, media_id: mediaId,
-                action, current_time: time ?? item?.currentTime ?? 0,
-            },
-        });
     }, []);
 
     const setMediaVolume = useCallback((mediaId: string, volume: number) => {
@@ -672,11 +652,9 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
                     console.log('[Call] ← call_incoming', { call_id, caller_name, currentStatus: st });
 
-                    // Если в 'ended' — сбрасываем и принимаем
                     if (st === 'ended') {
                         cleanupRef.current();
                         setCallState(INITIAL);
-                        // Даём React обновить state
                         await new Promise(r => setTimeout(r, 50));
                     } else if (st !== 'idle') {
                         console.log('[Call] Busy, auto-rejecting');
@@ -731,6 +709,19 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     clearAllTimeoutsRef.current();
                     ringtoneRef.current.stop();
 
+                    setCallState(s => (s.status === 'connected' ? s : { ...s, status: 'connecting' }));
+
+                    connectingTimeoutRef.current = setTimeout(() => {
+                        if (stateRef.current.status === 'connecting' && pcRef.current?.connectionState !== 'connected') {
+                            console.warn('[Call] Connecting timeout (caller)');
+                            if (iceRestartCountRef.current < ICE_RESTART_MAX) {
+                                tryIceRestartRef.current();
+                            } else {
+                                hangupRef.current();
+                            }
+                        }
+                    }, CONNECTING_TIMEOUT_MS);
+
                     try {
                         const pc = pcRef.current;
                         if (!pc) {
@@ -745,20 +736,6 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
 
                         console.log('[Call] Flushing candidates after answer');
                         await flushRef.current();
-
-                        setCallState(s => ({ ...s, status: 'connecting' }));
-
-                        connectingTimeoutRef.current = setTimeout(() => {
-                            if (stateRef.current.status === 'connecting') {
-                                console.warn('[Call] Connecting timeout (caller)');
-                                // Пробуем ICE restart перед отключением
-                                if (iceRestartCountRef.current < ICE_RESTART_MAX) {
-                                    tryIceRestartRef.current();
-                                } else {
-                                    hangupRef.current();
-                                }
-                            }
-                        }, CONNECTING_TIMEOUT_MS);
 
                     } catch (e) {
                         console.error('[Call] Set answer failed:', e);
@@ -821,17 +798,16 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     break;
                 }
 
-                // ── Совместная Музыка ────────────────────
+                // ── Совместная Музыка: трек добавлен (синхронизируется) ──
                 case 'call_media_shared': {
                     const { call_id, media_id, user_id, user_name, file_id, file_name } = msg.payload;
                     if (stateRef.current.callId !== call_id) return;
-                    // Не дублируем если уже есть
                     if (stateRef.current.sharedMedia.some(m => m.id === media_id)) return;
 
                     const newItem: SharedMediaItem = {
                         id: media_id, userId: user_id, userName: user_name,
                         fileId: file_id, fileName: file_name, title: '',
-                        isPlaying: true, currentTime: 0, duration: 0,
+                        isPlaying: true, isLooping: false, currentTime: 0, duration: 0,
                         localVolume: 70, localMuted: false,
                     };
                     setCallState(s => ({
@@ -840,6 +816,8 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     }));
                     break;
                 }
+
+                // ── Совместная Музыка: трек удалён (синхронизируется) ──
                 case 'call_media_removed': {
                     const { call_id, media_id } = msg.payload;
                     if (stateRef.current.callId !== call_id) return;
@@ -848,31 +826,13 @@ export function useCall(currentUserId: string, chats: LocalChat[]) {
                     }));
                     break;
                 }
-                case 'call_media_controlled': {
-                    const { call_id, media_id, action, current_time } = msg.payload;
-                    if (stateRef.current.callId !== call_id) return;
-                    setCallState(s => ({
-                        ...s,
-                        sharedMedia: s.sharedMedia.map(m => {
-                            if (m.id !== media_id) return m;
-                            if (action === 'play') return { ...m, isPlaying: true };
-                            if (action === 'pause') return { ...m, isPlaying: false };
-                            if (action === 'seek') return { ...m, currentTime: current_time };
-                            return m;
-                        }),
-                    }));
-                    if (action === 'seek') {
-                        (window as any).__mediaSeek?.(media_id, current_time);
-                    }
-                    break;
-                }
+
+                // call_media_controlled — игнорируем, воспроизведение независимое
             }
         });
 
         return unsub;
-    }, []);  // ← ПУСТЫЕ ЗАВИСИМОСТИ — подписка ОДНА на всё время
-
-    // ── Cleanup при размонтировании ──────────────────────
+    }, []);
 
     useEffect(() => {
         return () => cleanupRef.current();

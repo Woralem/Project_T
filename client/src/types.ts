@@ -32,9 +32,30 @@ export interface UserDto {
     id: string;
     username: string;
     display_name: string;
+    bio?: string;
     online: boolean;
     last_seen: string;
     avatar_url?: string;
+    public_keys?: PublicKeyBundle;
+}
+
+export interface AvatarHistoryDto {
+    id: string;
+    url: string;
+    set_at: string;
+    is_current: boolean;
+}
+
+export interface UserProfileDto {
+    id: string;
+    username: string;
+    display_name: string;
+    bio: string;
+    online: boolean;
+    last_seen: string;
+    avatar_url?: string;
+    avatars: AvatarHistoryDto[];
+    created_at: string;
     public_keys?: PublicKeyBundle;
 }
 
@@ -100,14 +121,12 @@ export type WsServerMsg =
     | { type: 'user_offline'; payload: { user_id: string } }
     | { type: 'user_updated'; payload: { user: UserDto } }
     | { type: 'error'; payload: { message: string } }
-    // ── Звонки ──
     | { type: 'call_incoming'; payload: { chat_id: string; call_id: string; caller_id: string; caller_name: string; sdp: string; encrypted: boolean } }
     | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_rejected'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute_changed'; payload: { chat_id: string; call_id: string; user_id: string; muted: boolean } }
     | { type: 'call_ended'; payload: { chat_id: string; call_id: string } }
-    // ── Медиа ──
     | { type: 'call_media_shared'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; user_name: string; file_id: string; file_name: string } }
     | { type: 'call_media_removed'; payload: { chat_id: string; call_id: string; media_id: string } }
     | { type: 'call_media_controlled'; payload: { chat_id: string; call_id: string; media_id: string; user_id: string; action: string; current_time: number } };
@@ -119,14 +138,12 @@ export type WsClientMsg =
     | { type: 'typing'; payload: { chat_id: string } }
     | { type: 'stop_typing'; payload: { chat_id: string } }
     | { type: 'mark_read'; payload: { chat_id: string; message_id: string } }
-    // ── Звонки ──
     | { type: 'call_offer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_answer'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
     | { type: 'call_ice'; payload: { chat_id: string; call_id: string; candidate: string; encrypted: boolean } }
     | { type: 'call_reject'; payload: { chat_id: string; call_id: string } }
     | { type: 'call_mute'; payload: { chat_id: string; call_id: string; muted: boolean } }
     | { type: 'call_hangup'; payload: { chat_id: string; call_id: string } }
-    // ── Медиа ──
     | { type: 'call_media_share'; payload: { chat_id: string; call_id: string; file_id: string; file_name: string } }
     | { type: 'call_media_remove'; payload: { chat_id: string; call_id: string; media_id: string } }
     | { type: 'call_media_control'; payload: { chat_id: string; call_id: string; media_id: string; action: string; current_time: number } };
@@ -210,6 +227,7 @@ export interface SharedMediaItem {
     fileName: string;
     title: string;
     isPlaying: boolean;
+    isLooping: boolean;
     currentTime: number;
     duration: number;
     localVolume: number;

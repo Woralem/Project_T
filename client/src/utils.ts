@@ -41,9 +41,33 @@ export function formatTime(iso: string): string {
     }
 }
 
+const MONTH_NAMES = [
+    'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+    'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+];
+
+export function formatDate(iso: string): string {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    } catch {
+        return '';
+    }
+}
+
+export function formatDateFull(iso: string): string {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } catch {
+        return '';
+    }
+}
+
 /** Получить превью последнего сообщения для списка чатов */
 export function getChatPreview(chat: LocalChat): { text: string; time: string } {
-    // Если сообщения загружены — берём из них
     if (chat.messages.length > 0) {
         const m = chat.messages[chat.messages.length - 1];
         const prefix = chat.is_group && !m.own
@@ -56,7 +80,6 @@ export function getChatPreview(chat: LocalChat): { text: string; time: string } 
         };
     }
 
-    // Иначе — из серверного превью
     if (chat.lastMessageText) {
         return {
             text: chat.lastMessageText.length > 42

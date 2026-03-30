@@ -11,9 +11,10 @@ interface Props {
     isGroup: boolean;
     chatId: string;
     onContextMenu: (e: React.MouseEvent) => void;
+    onClickAuthor?: (userId: string) => void;
 }
 
-export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu }: Props) {
+export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu, onClickAuthor }: Props) {
     const showAuthor = isGroup && !message.own && isFirst;
     const isPending = message.status === 'pending';
     const isVoice = message.attachment?.mime_type?.startsWith('audio/') || message.attachment?.mime_type === 'application/octet-stream';
@@ -24,9 +25,22 @@ export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu
         message.content !== '[Зашифрованное сообщение]' &&
         message.content !== '🔒 Зашифровано';
 
+    const handleAuthorClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onClickAuthor) onClickAuthor(message.sender_id);
+    };
+
     return (
         <div className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`} onContextMenu={onContextMenu}>
-            {showAuthor && <span className="msg-author" style={{ color: getAvatarColor(message.sender_name) }}>{message.sender_name}</span>}
+            {showAuthor && (
+                <span
+                    className="msg-author clickable-author"
+                    style={{ color: getAvatarColor(message.sender_name) }}
+                    onClick={handleAuthorClick}
+                >
+                    {message.sender_name}
+                </span>
+            )}
             <div className={`msg-bubble ${isVoice && !hasText ? 'voice-bubble' : ''}`}>
                 {hasText && <span className="msg-text">{message.content}</span>}
                 {isVoice && message.attachment && (

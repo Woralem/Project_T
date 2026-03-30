@@ -15,7 +15,7 @@ interface Props {
     onToggleMediaPanel: () => void;
     onShareMedia: (fileId: string, fileName: string) => void;
     onRemoveMedia: (mediaId: string) => void;
-    onControlMedia: (mediaId: string, action: 'play' | 'pause' | 'seek', time?: number) => void;
+    onControlMedia: (mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => void;
     onMediaVolumeChange: (mediaId: string, volume: number) => void;
     onMediaMuteToggle: (mediaId: string) => void;
     onMediaTitleUpdate: (mediaId: string, title: string) => void;
