@@ -40,6 +40,16 @@ pub fn create_app(state: AppState) -> Router {
         .route("/chats/:chat_id", get(api::chats::get))
         .route("/chats/:chat_id/keys", put(api::chats::update_keys))
         .route("/chats/:chat_id/messages", get(api::messages::list))
+        .route("/chats/:chat_id/pin", post(api::chats::toggle_pin))
+        .route(
+            "/chats/:chat_id/invite",
+            post(api::chats::create_chat_invite),
+        )
+        .route(
+            "/chats/:chat_id/invites",
+            get(api::chats::list_chat_invites),
+        )
+        .route("/join/:code", post(api::chats::join_by_code))
         // Files — 26MB limit
         .route("/upload", post(api::files::upload))
         .route("/files/:file_id", get(api::files::download))

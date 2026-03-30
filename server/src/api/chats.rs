@@ -39,14 +39,18 @@ pub async fn create(
     }
 
     let chat_id = Uuid::new_v4();
+    let is_channel = req.is_channel.unwrap_or(false);
 
-    sqlx::query("INSERT INTO chats (id, is_group, name, created_by) VALUES ($1,$2,$3,$4)")
-        .bind(chat_id)
-        .bind(req.is_group)
-        .bind(&req.name)
-        .bind(auth.user_id)
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "INSERT INTO chats (id, is_group, is_channel, name, created_by) VALUES ($1,$2,$3,$4,$5)",
+    )
+    .bind(chat_id)
+    .bind(req.is_group)
+    .bind(is_channel)
+    .bind(&req.name)
+    .bind(auth.user_id)
+    .execute(&state.db)
+    .await?;
 
     sqlx::query("INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'owner')")
         .bind(chat_id)
@@ -172,12 +176,14 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         Option<String>,
         Option<serde_json::Value>,
         Option<String>,
+        bool,
     );
 
     let rows: Vec<MemberRow> = sqlx::query_as(
         "SELECT u.id, u.username, u.display_name, cm.role,
                 u.avatar_id, u.identity_key, u.signing_key, u.key_signature, u.key_id,
-                cm.encrypted_chat_key, cm.member_key_id
+                cm.encrypted_chat_key, cm.member_key_id,
+                cm.is_pinned
          FROM chat_members cm JOIN users u ON u.id = cm.user_id
          WHERE cm.chat_id = $1",
     )
@@ -198,6 +204,7 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         key_id,
         enc_chat_key_json,
         member_key_id,
+        is_pinned,
     ) in &rows
     {
         let avatar_url = avatar_id.map(|id| format!("/api/files/{}", id));
@@ -227,6 +234,7 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
             public_keys,
             encrypted_chat_key,
             member_key_id: member_key_id.clone(),
+            is_pinned: *is_pinned,
         });
     }
 
@@ -283,6 +291,7 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
     Ok(ChatDto {
         id: chat.id,
         is_group: chat.is_group,
+        is_channel: chat.is_channel,
         name: chat.name,
         members,
         last_message,
@@ -297,7 +306,6 @@ pub async fn delete_chat(
     auth: AuthUser,
     Path(chat_id): Path<Uuid>,
 ) -> Result<Json<()>, AppError> {
-    // Проверяем что пользователь — владелец
     let role: Option<(String,)> =
         sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
             .bind(chat_id)
@@ -312,20 +320,17 @@ pub async fn delete_chat(
         ));
     }
 
-    // Получаем участников для уведомления
     let member_ids: Vec<(Uuid,)> =
         sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id = $1")
             .bind(chat_id)
             .fetch_all(&state.db)
             .await?;
 
-    // Удаляем (каскадно удалит messages и chat_members)
     sqlx::query("DELETE FROM chats WHERE id = $1")
         .bind(chat_id)
         .execute(&state.db)
         .await?;
 
-    // Уведомляем
     let msg = shared::WsServerMsg::ChatDeleted { chat_id };
     for (uid,) in member_ids {
         if uid != auth.user_id {
@@ -350,7 +355,6 @@ pub async fn leave_chat(
         .execute(&state.db)
         .await?;
 
-    // Если больше нет участников — удаляем чат
     let (remaining,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id = $1")
             .bind(chat_id)
@@ -365,4 +369,142 @@ pub async fn leave_chat(
     }
 
     Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/pin
+pub async fn toggle_pin(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    let (current,): (bool,) =
+        sqlx::query_as("SELECT is_pinned FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    sqlx::query("UPDATE chat_members SET is_pinned = $1 WHERE chat_id = $2 AND user_id = $3")
+        .bind(!current)
+        .bind(chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/invite
+pub async fn create_chat_invite(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    Json(req): Json<shared::CreateChatInviteReq>,
+) -> Result<Json<shared::ChatInviteDto>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    let code: String = {
+        use rand::Rng;
+        const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+        let mut rng = rand::thread_rng();
+        (0..10)
+            .map(|_| CHARS[rng.gen_range(0..CHARS.len())] as char)
+            .collect()
+    };
+
+    let expires_at = req
+        .expires_in_hours
+        .map(|h| chrono::Utc::now() + chrono::Duration::hours(h));
+    let id = Uuid::new_v4();
+
+    sqlx::query(
+        "INSERT INTO chat_invites (id, chat_id, code, created_by, expires_at, max_uses) VALUES ($1,$2,$3,$4,$5,$6)"
+    ).bind(id).bind(chat_id).bind(&code).bind(auth.user_id).bind(expires_at).bind(req.max_uses)
+    .execute(&state.db).await?;
+
+    Ok(Json(shared::ChatInviteDto {
+        id,
+        chat_id,
+        code,
+        created_at: chrono::Utc::now(),
+        expires_at,
+        max_uses: req.max_uses,
+        use_count: 0,
+    }))
+}
+
+/// GET /api/chats/:chat_id/invites
+pub async fn list_chat_invites(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<Vec<shared::ChatInviteDto>>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+    let rows: Vec<models::ChatInvite> =
+        sqlx::query_as("SELECT * FROM chat_invites WHERE chat_id = $1 ORDER BY created_at DESC")
+            .bind(chat_id)
+            .fetch_all(&state.db)
+            .await?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| shared::ChatInviteDto {
+                id: r.id,
+                chat_id: r.chat_id,
+                code: r.code,
+                created_at: r.created_at,
+                expires_at: r.expires_at,
+                max_uses: r.max_uses,
+                use_count: r.use_count,
+            })
+            .collect(),
+    ))
+}
+
+/// POST /api/join/:code
+pub async fn join_by_code(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(code): Path<String>,
+) -> Result<Json<shared::ChatDto>, AppError> {
+    let invite: Option<models::ChatInvite> =
+        sqlx::query_as("SELECT * FROM chat_invites WHERE code = $1")
+            .bind(&code)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let invite = invite.ok_or_else(|| AppError::NotFound("Ссылка не найдена".into()))?;
+
+    if invite.expires_at.map_or(false, |e| e < chrono::Utc::now()) {
+        return Err(AppError::BadRequest("Ссылка истекла".into()));
+    }
+    if invite.max_uses.map_or(false, |max| invite.use_count >= max) {
+        return Err(AppError::BadRequest("Лимит использований исчерпан".into()));
+    }
+
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
+            .bind(invite.chat_id)
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if n > 0 {
+        return chat_dto(&state, invite.chat_id).await.map(Json);
+    }
+
+    sqlx::query("INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member')")
+        .bind(invite.chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    sqlx::query("UPDATE chat_invites SET use_count = use_count + 1 WHERE id = $1")
+        .bind(invite.id)
+        .execute(&state.db)
+        .await?;
+
+    chat_dto(&state, invite.chat_id).await.map(Json)
 }

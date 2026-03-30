@@ -4248,3 +4248,71 @@ textarea.msg-textarea:focus {
     border-top: 1px solid var(--border);
     box-shadow: 0 -4px 16px rgba(0, 0, 0, .15);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PIN INDICATOR
+   ═══════════════════════════════════════════════════════════ */
+.pin-indicator {
+    font-size: 11px;
+    margin-right: 3px;
+}
+
+.channel-badge {
+    font-size: 12px;
+    margin-right: 3px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHANNEL READONLY BAR
+   ═══════════════════════════════════════════════════════════ */
+.channel-readonly-bar {
+    padding: 14px 18px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text3);
+    background: var(--bg-list);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHAT INFO PANEL — INVITE
+   ═══════════════════════════════════════════════════════════ */
+.cip-invite-result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--bg-surface);
+}
+
+.cip-invite-code {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    flex: 1;
+    word-break: break-all;
+    user-select: all;
+}
+
+.cip-invite-copy {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: background .15s;
+    flex-shrink: 0;
+}
+
+.cip-invite-copy:hover {
+    background: var(--accent-hover);
+}

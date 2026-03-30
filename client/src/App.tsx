@@ -6,6 +6,7 @@ import { useCall } from './hooks/useCall';
 import { useToast } from './hooks/useToast';
 import { cryptoManager } from './crypto';
 import { initNotifications, playNotificationSound, sendSystemNotification, showCallNotification } from './notifications';
+import * as api from './api';
 import './App.css';
 
 import { ToastContainer } from './components/ui/Toast';
@@ -69,7 +70,7 @@ export default function App() {
         chats, selectedId, selectedChat, loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, refreshChat,
-        loadMoreMessages, deleteChatAction, leaveChatAction,
+        loadMoreMessages, deleteChatAction, leaveChatAction, togglePinChat, loadChats,
     } = useChats(user, handleNewMessage);
 
     selectChatRef.current = selectChat;
@@ -153,7 +154,20 @@ export default function App() {
 
                 {tab === 'chats' && (
                     <>
-                        <ChatListPanel chats={chats} selectedId={selectedId} onSelect={selectChat} search={search} onSearch={setSearch} onNewChat={() => setNewChatOpen(true)} loading={loadingChats} currentUserId={user.id} />
+                        <ChatListPanel
+                            chats={chats} selectedId={selectedId} onSelect={selectChat}
+                            search={search} onSearch={setSearch} onNewChat={() => setNewChatOpen(true)}
+                            loading={loadingChats} currentUserId={user.id}
+                            onPinToggle={togglePinChat}
+                            onJoinByCode={() => {
+                                const code = prompt('Введите код приглашения:');
+                                if (code) {
+                                    api.joinByCode(code.trim())
+                                        .then(() => { showToast('Вы присоединились!', 'success'); loadChats(); })
+                                        .catch((e: any) => showToast(e.message || 'Ошибка', 'error'));
+                                }
+                            }}
+                        />
                         {selectedChat ? (
                             <ChatView
                                 chat={selectedChat} currentUserId={user.id} loadingMessages={loadingMessages}

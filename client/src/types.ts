@@ -98,11 +98,13 @@ export interface ChatMemberDto {
     public_keys?: PublicKeyBundle;
     encrypted_chat_key?: EncryptedChatKey;
     member_key_id?: string;
+    is_pinned?: boolean;
 }
 
 export interface ChatDto {
     id: string;
     is_group: boolean;
+    is_channel?: boolean;
     name: string | null;
     members: ChatMemberDto[];
     last_message: MessageDto | null;
@@ -115,6 +117,16 @@ export interface InviteDto {
     created_at: string;
     expires_at: string | null;
     used: boolean;
+}
+
+export interface ChatInviteDto {
+    id: string;
+    chat_id: string;
+    code: string;
+    created_at: string;
+    expires_at: string | null;
+    max_uses: number | null;
+    use_count: number;
 }
 
 export interface AuthRes {
@@ -205,6 +217,9 @@ export interface LocalChat {
     lastMessageText: string;
     lastMessageTime: string;
     hasMore?: boolean;
+    isPinned: boolean;
+    isChannel: boolean;
+    lastActivityAt: string;
 }
 
 export interface ToastData {

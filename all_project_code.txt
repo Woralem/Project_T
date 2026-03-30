@@ -49,247 +49,71 @@ export { SERVER_URL };
 
 let token: string | null = localStorage.getItem('auth_token');
 
-export function getToken(): string | null {
-    return token;
-}
+export function getToken(): string | null { return token; }
+export function setToken(t: string | null) { token = t; if (t) localStorage.setItem('auth_token', t); else localStorage.removeItem('auth_token'); }
 
-export function setToken(t: string | null) {
-    token = t;
-    if (t) {
-        localStorage.setItem('auth_token', t);
-    } else {
-        localStorage.removeItem('auth_token');
-    }
-}
-
-async function request<T>(
-    path: string,
-    options: RequestInit = {},
-): Promise<T> {
-    const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(options.headers as Record<string, string> || {}),
-    };
-
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const res = await fetch(`${API_URL}${path}`, {
-        ...options,
-        headers,
-    });
-
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new ApiError(res.status, body.error || 'Unknown error');
-    }
-
-    return res.json();
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+    if (!res.ok) { const body = await res.json().catch(() => ({ error: res.statusText })); throw new ApiError(res.status, body.error || 'Unknown error'); }
+    const text = await res.text();
+    if (!text) return undefined as any;
+    return JSON.parse(text);
 }
 
 export class ApiError extends Error {
-    constructor(public status: number, message: string) {
-        super(message);
-        this.name = 'ApiError';
-    }
+    constructor(public status: number, message: string) { super(message); this.name = 'ApiError'; }
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Auth API
-// ═══════════════════════════════════════════════════════════
-
-export async function register(
-    username: string,
-    password: string,
-    display_name: string,
-    invite_code?: string,
-    public_keys?: PublicKeyBundle,
-): Promise<AuthRes> {
-    const data = await request<AuthRes>('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ username, password, display_name, invite_code, public_keys }),
-    });
-    setToken(data.token);
-    return data;
+export async function register(username: string, password: string, display_name: string, invite_code?: string, public_keys?: PublicKeyBundle): Promise<AuthRes> {
+    const data = await request<AuthRes>('/auth/register', { method: 'POST', body: JSON.stringify({ username, password, display_name, invite_code, public_keys }) });
+    setToken(data.token); return data;
 }
-
 export async function login(username: string, password: string): Promise<AuthRes> {
-    const data = await request<AuthRes>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ username, password }),
-    });
-    setToken(data.token);
-    return data;
+    const data = await request<AuthRes>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    setToken(data.token); return data;
 }
+export async function getMe(): Promise<UserDto> { return request<UserDto>('/auth/me'); }
+export function logout() { setToken(null); }
 
-export async function getMe(): Promise<UserDto> {
-    return request<UserDto>('/auth/me');
+export async function updateProfile(data: { display_name?: string; bio?: string; public_keys?: PublicKeyBundle }): Promise<UserDto> {
+    return request<UserDto>('/users/me', { method: 'PUT', body: JSON.stringify(data) });
 }
-
-export function logout() {
-    setToken(null);
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Profile API
-// ═══════════════════════════════════════════════════════════
-
-export async function updateProfile(data: {
-    display_name?: string;
-    bio?: string;
-    public_keys?: PublicKeyBundle;
-}): Promise<UserDto> {
-    return request<UserDto>('/users/me', {
-        method: 'PUT',
-        body: JSON.stringify(data),
-    });
-}
-
-export async function getUserProfile(userId: string): Promise<UserProfileDto> {
-    return request<UserProfileDto>(`/users/${userId}/profile`);
-}
-
+export async function getUserProfile(userId: string): Promise<UserProfileDto> { return request<UserProfileDto>(`/users/${userId}/profile`); }
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
-    const formData = new FormData();
-    formData.append('avatar', file);
-
-    const headers: Record<string, string> = {};
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const res = await fetch(`${API_URL}/users/me/avatar`, {
-        method: 'POST',
-        headers,
-        body: formData,
-    });
-
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new ApiError(res.status, body.error || 'Upload failed');
-    }
-
+    const formData = new FormData(); formData.append('avatar', file);
+    const headers: Record<string, string> = {}; if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}/users/me/avatar`, { method: 'POST', headers, body: formData });
+    if (!res.ok) { const body = await res.json().catch(() => ({ error: res.statusText })); throw new ApiError(res.status, body.error || 'Upload failed'); }
     return res.json();
 }
-
-export async function deleteAvatar(): Promise<void> {
-    await request<void>('/users/me/avatar', { method: 'DELETE' });
+export async function deleteAvatar(): Promise<void> { await request<void>('/users/me/avatar', { method: 'DELETE' }); }
+export async function deleteAvatarHistory(avatarId: string): Promise<void> { await request<void>(`/users/me/avatars/${avatarId}`, { method: 'DELETE' }); }
+export async function setAvatarFromHistory(avatarId: string): Promise<{ avatar_url: string }> { return request<{ avatar_url: string }>(`/users/me/avatars/${avatarId}/set-current`, { method: 'POST' }); }
+export function getAvatarUrl(userId: string): string { return `${API_URL}/users/${userId}/avatar`; }
+export async function searchUsers(query?: string): Promise<UserDto[]> { const q = query ? `?q=${encodeURIComponent(query)}` : ''; return request<UserDto[]>(`/users${q}`); }
+export async function getChats(): Promise<ChatDto[]> { return request<ChatDto[]>('/chats'); }
+export async function getChat(chatId: string): Promise<ChatDto> { return request<ChatDto>(`/chats/${chatId}`); }
+export async function createChat(member_ids: string[], is_group: boolean = false, name?: string): Promise<ChatDto> {
+    return request<ChatDto>('/chats', { method: 'POST', body: JSON.stringify({ member_ids, is_group, name }) });
 }
-
-export async function deleteAvatarHistory(avatarId: string): Promise<void> {
-    await request<void>(`/users/me/avatars/${avatarId}`, { method: 'DELETE' });
+export async function deleteChat(chatId: string): Promise<void> { await request<void>(`/chats/${chatId}`, { method: 'DELETE' }); }
+export async function leaveChat(chatId: string): Promise<void> { await request<void>(`/chats/${chatId}/leave`, { method: 'POST' }); }
+export async function updateChatKeys(chatId: string, encrypted_keys: Record<string, EncryptedChatKey>): Promise<void> {
+    await request<void>(`/chats/${chatId}/keys`, { method: 'PUT', body: JSON.stringify({ encrypted_keys }) });
 }
-
-export async function setAvatarFromHistory(avatarId: string): Promise<{ avatar_url: string }> {
-    return request<{ avatar_url: string }>(`/users/me/avatars/${avatarId}/set-current`, {
-        method: 'POST',
-    });
+export async function getMessages(chatId: string, limit: number = 50, before?: string): Promise<MessageDto[]> {
+    let url = `/chats/${chatId}/messages?limit=${limit}`; if (before) url += `&before=${before}`; return request<MessageDto[]>(url);
 }
-
-export function getAvatarUrl(userId: string): string {
-    return `${API_URL}/users/${userId}/avatar`;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Users API
-// ═══════════════════════════════════════════════════════════
-
-export async function searchUsers(query?: string): Promise<UserDto[]> {
-    const q = query ? `?q=${encodeURIComponent(query)}` : '';
-    return request<UserDto[]>(`/users${q}`);
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Chats API
-// ═══════════════════════════════════════════════════════════
-
-export async function getChats(): Promise<ChatDto[]> {
-    return request<ChatDto[]>('/chats');
-}
-
-export async function getChat(chatId: string): Promise<ChatDto> {
-    return request<ChatDto>(`/chats/${chatId}`);
-}
-
-export async function createChat(
-    member_ids: string[],
-    is_group: boolean = false,
-    name?: string,
-): Promise<ChatDto> {
-    return request<ChatDto>('/chats', {
-        method: 'POST',
-        body: JSON.stringify({ member_ids, is_group, name }),
-    });
-}
-
-export async function updateChatKeys(
-    chatId: string,
-    encrypted_keys: Record<string, EncryptedChatKey>,
-): Promise<void> {
-    await request<void>(`/chats/${chatId}/keys`, {
-        method: 'PUT',
-        body: JSON.stringify({ encrypted_keys }),
-    });
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Messages API
-// ═══════════════════════════════════════════════════════════
-
-export async function getMessages(
-    chatId: string,
-    limit: number = 50,
-    before?: string,
-): Promise<MessageDto[]> {
-    let url = `/chats/${chatId}/messages?limit=${limit}`;
-    if (before) url += `&before=${before}`;
-    return request<MessageDto[]>(url);
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Invites API
-// ═══════════════════════════════════════════════════════════
-
-export async function createInvite(expires_in_hours?: number): Promise<InviteDto> {
-    return request<InviteDto>('/invites', {
-        method: 'POST',
-        body: JSON.stringify({ expires_in_hours }),
-    });
-}
-
-export async function getInvites(): Promise<InviteDto[]> {
-    return request<InviteDto[]>('/invites');
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Files API
-// ═══════════════════════════════════════════════════════════
-
-export function getFileUrl(fileId: string): string {
-    return `${API_URL}/files/${fileId}`;
-}
-
+export async function createInvite(expires_in_hours?: number): Promise<InviteDto> { return request<InviteDto>('/invites', { method: 'POST', body: JSON.stringify({ expires_in_hours }) }); }
+export async function getInvites(): Promise<InviteDto[]> { return request<InviteDto[]>('/invites'); }
+export function getFileUrl(fileId: string): string { return `${API_URL}/files/${fileId}`; }
 export async function uploadFile(file: Blob, filename: string): Promise<AttachmentDto> {
-    const formData = new FormData();
-    formData.append('file', file, filename);
-
-    const headers: Record<string, string> = {};
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const res = await fetch(`${API_URL}/upload`, {
-        method: 'POST',
-        headers,
-        body: formData,
-    });
-
-    if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new ApiError(res.status, body.error || 'Upload failed');
-    }
-
+    const formData = new FormData(); formData.append('file', file, filename);
+    const headers: Record<string, string> = {}; if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}/upload`, { method: 'POST', headers, body: formData });
+    if (!res.ok) { const body = await res.json().catch(() => ({ error: res.statusText })); throw new ApiError(res.status, body.error || 'Upload failed'); }
     return res.json();
 }
 
@@ -657,6 +481,14 @@ input {
    CHAT VIEW
    ═══════════════════════════════════════════════════════════ */
 .chat-view {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    background: var(--bg-chat);
+}
+
+.chat-view-main {
     flex: 1;
     min-width: 0;
     display: flex;
@@ -4036,6 +3868,510 @@ input {
     text-overflow: ellipsis;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   AUDIO SPEED BUTTON
+   ═══════════════════════════════════════════════════════════ */
+.audio-speed-btn {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .1);
+    color: currentColor;
+    opacity: .7;
+    transition: opacity .15s, background .15s;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: none;
+}
+
+.audio-speed-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, .18);
+}
+
+.msg:not(.own) .audio-speed-btn {
+    background: rgba(0, 0, 0, .06);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VOICE PLAYER BAR
+   ═══════════════════════════════════════════════════════════ */
+.voice-player-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--accent-dim);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    animation: fadeIn .2s ease;
+}
+
+.voice-bar-play {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    border: none;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.voice-bar-play:hover {
+    background: var(--accent-hover);
+}
+
+.voice-bar-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.voice-bar-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.voice-bar-progress {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    overflow: hidden;
+}
+
+.voice-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width .15s linear;
+}
+
+.voice-bar-time {
+    font-size: 11px;
+    color: var(--text3);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+.voice-bar-speed {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: var(--bg-surface);
+    color: var(--accent);
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s;
+}
+
+.voice-bar-speed:hover {
+    background: var(--bg-hover);
+}
+
+.voice-bar-close {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color .12s, background .12s;
+    flex-shrink: 0;
+}
+
+.voice-bar-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHAT INFO PANEL
+   ═══════════════════════════════════════════════════════════ */
+.chat-info-panel {
+    width: 300px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-list);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    animation: cipSlideIn .2s ease;
+}
+
+@keyframes cipSlideIn {
+    from {
+        transform: translateX(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.cip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.cip-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.cip-avatar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 16px 12px;
+}
+
+.cip-name {
+    font-size: 17px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.cip-sub {
+    font-size: 13px;
+    color: var(--text2);
+}
+
+.cip-section {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+}
+
+.cip-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text3);
+    margin-bottom: 8px;
+}
+
+.cip-member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cip-member {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px;
+    border-radius: 10px;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    transition: background .12s;
+}
+
+.cip-member:hover {
+    background: var(--bg-hover);
+}
+
+.cip-member-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.cip-member-name {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cip-member-role {
+    font-size: 11px;
+    color: var(--text3);
+}
+
+.cip-media-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.cip-media-thumb {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.cip-media-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.cip-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 12px;
+}
+
+.cip-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    transition: background .12s;
+}
+
+.cip-action-btn:hover {
+    background: var(--bg-hover);
+}
+
+.cip-action-btn.danger {
+    color: var(--red);
+}
+
+.cip-action-btn.danger:hover {
+    background: rgba(239, 68, 68, .08);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TEXTAREA INPUT FIX
+   ═══════════════════════════════════════════════════════════ */
+textarea.msg-input,
+textarea.msg-textarea {
+    color: var(--text);
+    resize: none;
+    overflow-y: auto;
+    max-height: 150px;
+    min-height: 40px;
+    line-height: 1.4;
+    font-family: inherit;
+}
+
+textarea.msg-input::placeholder,
+textarea.msg-textarea::placeholder {
+    color: var(--text3);
+}
+
+textarea.msg-input:focus,
+textarea.msg-textarea:focus {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+    outline: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUDIO PLAYER VOLUME
+   ═══════════════════════════════════════════════════════════ */
+.audio-player-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 200px;
+}
+
+.audio-vol-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    color: currentColor;
+    opacity: .6;
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity .15s;
+}
+
+.audio-vol-btn:hover {
+    opacity: 1;
+}
+
+.audio-volume-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+}
+
+.audio-volume-icon {
+    display: flex;
+    opacity: .6;
+    flex-shrink: 0;
+}
+
+.audio-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, .12);
+    outline: none;
+    cursor: pointer;
+}
+
+.msg:not(.own) .audio-volume-slider {
+    background: rgba(0, 0, 0, .08);
+}
+
+.audio-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.audio-volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+}
+
+.audio-volume-value {
+    font-size: 10px;
+    opacity: .5;
+    min-width: 28px;
+    text-align: right;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VOICE PLAYER BAR — VOLUME
+   ═══════════════════════════════════════════════════════════ */
+.voice-player-bar-wrap {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.voice-bar-vol-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: var(--text2);
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color .12s, background .12s;
+}
+
+.voice-bar-vol-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.voice-bar-volume-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 16px 8px;
+    background: var(--accent-dim);
+}
+
+.voice-bar-volume-icon {
+    display: flex;
+    color: var(--text3);
+    flex-shrink: 0;
+}
+
+.voice-bar-volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--bg-active);
+    outline: none;
+    cursor: pointer;
+}
+
+.voice-bar-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+.voice-bar-volume-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+}
+
+.voice-bar-volume-value {
+    font-size: 11px;
+    color: var(--text3);
+    min-width: 30px;
+    text-align: right;
+}
+
+.voice-bar-progress {
+    cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLOBAL VOICE BAR (when on other tabs)
+   ═══════════════════════════════════════════════════════════ */
+.global-voice-bar {
+    position: fixed;
+    bottom: 0;
+    left: 64px;
+    right: 0;
+    z-index: 1200;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, .15);
+}
+
 
 ================================================================================
 FILE PATH: ./client/src/app.rs
@@ -4054,7 +4390,7 @@ pub fn default_window_title() -> &'static str {
 FILE PATH: ./client/src/App.tsx
 ================================================================================
 import React from 'react';
-import type { Tab, UserDto, NotificationData, LocalMessage } from './types';
+import type { Tab, UserDto, NotificationData, LocalMessage, ActiveVoice } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useCall } from './hooks/useCall';
@@ -4077,6 +4413,7 @@ import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { SettingsView } from './components/settings/SettingsView';
 import { ProfileModal } from './components/ui/ProfileModal';
+import { VoicePlayerBar } from './components/chat/VoicePlayerBar';
 
 function loadDark(): boolean { try { return localStorage.getItem('dark_mode') !== 'false'; } catch { return true; } }
 function saveDark(v: boolean) { try { localStorage.setItem('dark_mode', String(v)); } catch { } }
@@ -4092,6 +4429,7 @@ export default function App() {
     const [forwardMsg, setForwardMsg] = React.useState<LocalMessage | null>(null);
     const [notifications, setNotifications] = React.useState<NotificationData[]>([]);
     const [profileUserId, setProfileUserId] = React.useState<string | null>(null);
+    const [activeVoice, setActiveVoice] = React.useState<ActiveVoice | null>(null);
     const { toasts, showToast } = useToast();
     const { user, setUser, loading: authLoading, login, register, logout } = useAuth();
 
@@ -4122,6 +4460,7 @@ export default function App() {
         chats, selectedId, selectedChat, loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, refreshChat,
+        loadMoreMessages, deleteChatAction, leaveChatAction,
     } = useChats(user, handleNewMessage);
 
     selectChatRef.current = selectChat;
@@ -4144,9 +4483,10 @@ export default function App() {
 
     const handleLogout = React.useCallback(() => {
         if (callState.status !== 'idle' && callState.status !== 'ended') hangup();
+        if (activeVoice) { activeVoice.audio.pause(); setActiveVoice(null); }
         cryptoManager.clear();
         logout();
-    }, [logout, callState.status, hangup]);
+    }, [logout, callState.status, hangup, activeVoice]);
 
     const handleUserUpdate = React.useCallback((updated: UserDto) => { setUser(updated); }, [setUser]);
 
@@ -4158,8 +4498,7 @@ export default function App() {
     const handleOpenProfile = React.useCallback((userId: string) => { setProfileUserId(userId); }, []);
 
     const handleProfileMessage = React.useCallback(async (userId: string) => {
-        setProfileUserId(null);
-        setTab('chats');
+        setProfileUserId(null); setTab('chats');
         const dm = chats.find(c => !c.is_group && c.members.some(m => m.user_id === userId));
         if (dm) { selectChat(dm.id); } else { try { await createChat([userId], false); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }
     }, [chats, selectChat, createChat, showToast]);
@@ -4171,13 +4510,22 @@ export default function App() {
     }, [chats, handleStartCall, showToast]);
 
     const handleProfileEdit = React.useCallback(() => { setProfileUserId(null); setTab('settings'); }, []);
-
     const handleForwardMessage = React.useCallback((msg: LocalMessage) => { setForwardMsg(msg); }, []);
 
     const handleForward = React.useCallback((msg: LocalMessage, targetChatId: string) => {
         forwardMessage(msg, targetChatId);
         showToast('Сообщение переслано', 'success');
     }, [forwardMessage, showToast]);
+
+    // Voice player handlers — живут на уровне App, не сбрасываются при смене чата
+    const handleVoiceActivate = React.useCallback((v: ActiveVoice) => {
+        if (activeVoice && activeVoice.audio !== v.audio) {
+            activeVoice.audio.pause(); activeVoice.audio.currentTime = 0;
+        }
+        setActiveVoice(v);
+    }, [activeVoice]);
+
+    const handleVoiceDeactivate = React.useCallback(() => { setActiveVoice(null); }, []);
 
     const theme = dark ? 'dark' : 'light';
 
@@ -4204,7 +4552,13 @@ export default function App() {
                                 onDeleteMessage={deleteMessage} onEditMessage={editMessage}
                                 onRefreshChat={refreshChat} onStartCall={handleStartCall}
                                 onOpenProfile={handleOpenProfile} onForwardMessage={handleForwardMessage}
+                                onLoadMore={loadMoreMessages}
+                                onDeleteChat={async (id) => { try { await deleteChatAction(id); showToast('Чат удалён', 'success'); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }}
+                                onLeaveChat={async (id) => { try { await leaveChatAction(id); showToast('Вы покинули чат', 'success'); } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); } }}
                                 showToast={showToast}
+                                activeVoice={activeVoice}
+                                onVoiceActivate={handleVoiceActivate}
+                                onVoiceDeactivate={handleVoiceDeactivate}
                             />
                         ) : <EmptyState />}
                     </>
@@ -4212,6 +4566,13 @@ export default function App() {
                 {tab === 'calls' && <CallsView />}
                 {tab === 'settings' && <SettingsView darkMode={dark} onToggleTheme={toggleDark} showToast={showToast} user={user} onUserUpdate={handleUserUpdate} />}
             </div>
+
+            {/* Глобальный voice player — показывается даже если не на вкладке чатов */}
+            {activeVoice && tab !== 'chats' && (
+                <div className="global-voice-bar">
+                    <VoicePlayerBar voice={activeVoice} onClose={handleVoiceDeactivate} />
+                </div>
+            )}
 
             <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} onCreate={createChat} showToast={showToast} />
             <ForwardModal open={!!forwardMsg} message={forwardMsg} chats={chats} currentUserId={user.id} onForward={handleForward} onClose={() => setForwardMsg(null)} />
@@ -4954,133 +5315,236 @@ FILE PATH: ./client/src/components/chat/AudioPlayer.tsx
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { cryptoManager } from '../../crypto';
 import { Icon } from '../../icons';
+import type { ActiveVoice } from '../../types';
 
 interface Props {
     src: string;
     encryptedNonce?: string;
     chatId?: string;
     attachmentId?: string;
+    senderName?: string;
+    messageId?: string;
+    onActivate?: (v: ActiveVoice) => void;
+    onDeactivate?: () => void;
 }
 
-export function AudioPlayer({ src, encryptedNonce, chatId, attachmentId }: Props) {
+const SPEEDS = [1, 1.5, 2, 0.5];
+
+export function AudioPlayer({ src, encryptedNonce, chatId, attachmentId, senderName, messageId, onActivate, onDeactivate }: Props) {
     const audioRef = useRef<HTMLAudioElement>(null);
+    const trackRef = useRef<HTMLDivElement>(null);
     const [playing, setPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null);
     const [decrypting, setDecrypting] = useState(false);
     const [decryptError, setDecryptError] = useState(false);
+    const [speedIdx, setSpeedIdx] = useState(0);
+    const [volume, setVolume] = useState(100);
+    const [showVolume, setShowVolume] = useState(false);
+    const [dragging, setDragging] = useState(false);
     const urlRef = useRef<string | null>(null);
-
     const isEncrypted = !!encryptedNonce && !!chatId;
 
     useEffect(() => {
         if (!isEncrypted) return;
         let cancelled = false;
-        setDecrypting(true);
-        setDecryptError(false);
-
+        setDecrypting(true); setDecryptError(false);
         (async () => {
             try {
-                const resp = await fetch(src);
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const encData = await resp.arrayBuffer();
-                if (cancelled) return;
-
-                const decData = await cryptoManager.decryptBuffer(chatId!, encData, encryptedNonce!, attachmentId);
-                if (cancelled) return;
-
-                const blob = new Blob([decData], { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                urlRef.current = url;
-                setDecryptedUrl(url);
-            } catch (e) {
-                console.error('[E2E] Voice decrypt failed:', e);
-                if (!cancelled) setDecryptError(true);
-            } finally {
-                if (!cancelled) setDecrypting(false);
-            }
+                const resp = await fetch(src); if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const encData = await resp.arrayBuffer(); if (cancelled) return;
+                const decData = await cryptoManager.decryptBuffer(chatId!, encData, encryptedNonce!, attachmentId); if (cancelled) return;
+                const url = URL.createObjectURL(new Blob([decData], { type: 'audio/webm' }));
+                urlRef.current = url; setDecryptedUrl(url);
+            } catch (e) { console.error('[E2E] Voice decrypt failed:', e); if (!cancelled) setDecryptError(true); }
+            finally { if (!cancelled) setDecrypting(false); }
         })();
-
-        return () => {
-            cancelled = true;
-            if (urlRef.current) {
-                URL.revokeObjectURL(urlRef.current);
-                urlRef.current = null;
-            }
-        };
+        return () => { cancelled = true; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
     }, [src, encryptedNonce, chatId, isEncrypted, attachmentId]);
 
     const audioSrc = isEncrypted ? decryptedUrl : src;
 
     useEffect(() => {
-        const audio = audioRef.current;
-        if (!audio || !audioSrc) return;
-        const onL = () => setDuration(audio.duration || 0);
-        const onT = () => setCurrentTime(audio.currentTime);
-        const onE = () => { setPlaying(false); setCurrentTime(0); };
-        audio.addEventListener('loadedmetadata', onL);
-        audio.addEventListener('timeupdate', onT);
-        audio.addEventListener('ended', onE);
+        const a = audioRef.current; if (!a || !audioSrc) return;
+        const onL = () => setDuration(a.duration || 0);
+        const onT = () => { if (!dragging) setCurrentTime(a.currentTime); };
+        const onE = () => { setPlaying(false); setCurrentTime(0); onDeactivate?.(); };
+        const onPause = () => setPlaying(false);
+        const onPlay = () => setPlaying(true);
+        a.addEventListener('loadedmetadata', onL);
+        a.addEventListener('timeupdate', onT);
+        a.addEventListener('ended', onE);
+        a.addEventListener('pause', onPause);
+        a.addEventListener('play', onPlay);
         return () => {
-            audio.removeEventListener('loadedmetadata', onL);
-            audio.removeEventListener('timeupdate', onT);
-            audio.removeEventListener('ended', onE);
+            a.removeEventListener('loadedmetadata', onL);
+            a.removeEventListener('timeupdate', onT);
+            a.removeEventListener('ended', onE);
+            a.removeEventListener('pause', onPause);
+            a.removeEventListener('play', onPlay);
         };
-    }, [audioSrc]);
+    }, [audioSrc, dragging, onDeactivate]);
+
+    // Sync volume
+    useEffect(() => {
+        if (audioRef.current) audioRef.current.volume = volume / 100;
+    }, [volume]);
 
     const toggle = useCallback(() => {
-        const a = audioRef.current;
-        if (!a) return;
-        if (playing) a.pause(); else a.play().catch(() => { });
-        setPlaying(!playing);
-    }, [playing]);
+        const a = audioRef.current; if (!a) return;
+        if (playing) { a.pause(); onDeactivate?.(); }
+        else { a.play().catch(() => { }); if (onActivate && messageId) onActivate({ audio: a, messageId, senderName: senderName || '' }); }
+    }, [playing, onActivate, onDeactivate, messageId, senderName]);
 
-    const seek = (e: React.MouseEvent<HTMLDivElement>) => {
-        const a = audioRef.current;
-        if (!a || !duration) return;
-        const r = e.currentTarget.getBoundingClientRect();
-        a.currentTime = ((e.clientX - r.left) / r.width) * duration;
-    };
+    const cycleSpeed = useCallback(() => {
+        const next = (speedIdx + 1) % SPEEDS.length;
+        setSpeedIdx(next);
+        if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next];
+    }, [speedIdx]);
+
+    // Draggable seek
+    const seekFromEvent = useCallback((e: MouseEvent | React.MouseEvent) => {
+        const a = audioRef.current; const t = trackRef.current;
+        if (!a || !t || !duration) return;
+        const r = t.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        a.currentTime = pct * duration;
+        setCurrentTime(pct * duration);
+    }, [duration]);
+
+    const onTrackMouseDown = useCallback((e: React.MouseEvent) => {
+        setDragging(true); seekFromEvent(e);
+        const onMove = (ev: MouseEvent) => seekFromEvent(ev);
+        const onUp = () => { setDragging(false); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, [seekFromEvent]);
 
     const fmt = (s: number) => !s || !isFinite(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-    if (decrypting) return (
-        <div className="audio-player">
-            <div className="audio-play-btn" style={{ opacity: .5 }}>{Icon.lock(16)}</div>
-            <span style={{ fontSize: 12, opacity: .6, flex: 1 }}>Расшифровка…</span>
-        </div>
-    );
-
-    if (decryptError) return (
-        <div className="audio-player">
-            <div className="audio-play-btn" style={{ opacity: .5, background: 'var(--red)' }}>{Icon.lock(16)}</div>
-            <span style={{ fontSize: 12, opacity: .6, flex: 1 }}>🔒 Не удалось расшифровать</span>
-        </div>
-    );
-
-    if (isEncrypted && !audioSrc) return (
-        <div className="audio-player">
-            <span style={{ fontSize: 12, opacity: .5 }}>Загрузка…</span>
-        </div>
-    );
+    if (decrypting) return (<div className="audio-player"><div className="audio-play-btn" style={{ opacity: .5 }}>{Icon.lock(16)}</div><span style={{ fontSize: 12, opacity: .6, flex: 1 }}>Расшифровка…</span></div>);
+    if (decryptError) return (<div className="audio-player"><div className="audio-play-btn" style={{ opacity: .5, background: 'var(--red)' }}>{Icon.lock(16)}</div><span style={{ fontSize: 12, opacity: .6, flex: 1 }}>🔒 Не удалось расшифровать</span></div>);
+    if (isEncrypted && !audioSrc) return (<div className="audio-player"><span style={{ fontSize: 12, opacity: .5 }}>Загрузка…</span></div>);
 
     const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+    const speed = SPEEDS[speedIdx];
 
     return (
-        <div className="audio-player">
+        <div className="audio-player-wrap">
             {audioSrc && <audio ref={audioRef} src={audioSrc} preload="metadata" />}
-            <button className="audio-play-btn" onClick={toggle} disabled={!audioSrc}>
-                {playing
-                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
-            </button>
-            <div className="audio-track" onClick={seek}>
-                <div className="audio-track-fill" style={{ width: `${pct}%` }} />
-                <div className="audio-track-thumb" style={{ left: `${pct}%` }} />
+            <div className="audio-player">
+                <button className="audio-play-btn" onClick={toggle} disabled={!audioSrc}>
+                    {playing
+                        ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                        : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
+                </button>
+                <div className="audio-track" ref={trackRef} onMouseDown={onTrackMouseDown}>
+                    <div className="audio-track-fill" style={{ width: `${pct}%` }} />
+                    <div className="audio-track-thumb" style={{ left: `${pct}%` }} />
+                </div>
+                <button className="audio-speed-btn" onClick={cycleSpeed} title="Скорость">{speed}×</button>
+                <button className="audio-vol-btn" onClick={() => setShowVolume(v => !v)} title="Громкость">
+                    {volume === 0 ? Icon.volumeOff(15) : Icon.volumeHigh(15)}
+                </button>
+                <span className="audio-time">{playing ? fmt(currentTime) : fmt(duration)}</span>
             </div>
-            <span className="audio-time">{playing ? fmt(currentTime) : fmt(duration)}</span>
+            {showVolume && (
+                <div className="audio-volume-row">
+                    <span className="audio-volume-icon">{volume === 0 ? Icon.volumeOff(14) : Icon.volumeHigh(14)}</span>
+                    <input type="range" min={0} max={100} value={volume}
+                        className="audio-volume-slider"
+                        onChange={e => setVolume(Number(e.target.value))} />
+                    <span className="audio-volume-value">{volume}%</span>
+                </div>
+            )}
         </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/ChatInfoPanel.tsx
+================================================================================
+import React, { useMemo } from 'react';
+import type { LocalChat } from '../../types';
+import { Avatar } from '../ui/Avatar';
+import { Icon } from '../../icons';
+
+interface Props {
+    chat: LocalChat;
+    currentUserId: string;
+    onClose: () => void;
+    onOpenProfile: (userId: string) => void;
+    onLeaveChat: () => void;
+    onDeleteChat: () => void;
+}
+
+export function ChatInfoPanel({ chat, currentUserId, onClose, onOpenProfile, onLeaveChat, onDeleteChat }: Props) {
+    const myRole = useMemo(() => chat.members.find(m => m.user_id === currentUserId)?.role || 'member', [chat, currentUserId]);
+    const canDelete = myRole === 'owner';
+    const avatarUrl = chat.is_group ? undefined : chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
+
+    const sharedImages = useMemo(() => {
+        return chat.messages.filter(m => m.attachment && m.attachment.mime_type.startsWith('image/')).slice(-12).reverse();
+    }, [chat.messages]);
+
+    return (
+        <aside className="chat-info-panel">
+            <div className="cip-header">
+                <h3>Информация</h3>
+                <button className="icon-btn" onClick={onClose}>{Icon.x(18)}</button>
+            </div>
+
+            <div className="cip-avatar-section">
+                <Avatar name={chat.name} size={80} avatarUrl={avatarUrl} />
+                <h3 className="cip-name">{chat.name}</h3>
+                <span className="cip-sub">{chat.is_group ? `${chat.members.length} участников` : chat.online ? 'в сети' : 'был(а) недавно'}</span>
+            </div>
+
+            {chat.is_group && (
+                <div className="cip-section">
+                    <div className="cip-section-label">Участники ({chat.members.length})</div>
+                    <div className="cip-member-list">
+                        {chat.members.map(m => (
+                            <button key={m.user_id} className="cip-member" onClick={() => onOpenProfile(m.user_id)}>
+                                <Avatar name={m.display_name} size={36} online={m.online} avatarUrl={m.avatar_url} />
+                                <div className="cip-member-info">
+                                    <span className="cip-member-name">{m.display_name}{m.user_id === currentUserId ? ' (вы)' : ''}</span>
+                                    <span className="cip-member-role">{m.role === 'owner' ? 'Создатель' : 'Участник'}</span>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {sharedImages.length > 0 && (
+                <div className="cip-section">
+                    <div className="cip-section-label">Медиа ({sharedImages.length})</div>
+                    <div className="cip-media-grid">
+                        {sharedImages.map(m => (
+                            <div key={m.id} className="cip-media-thumb">
+                                <img src={`http://163.5.180.138:3000/api/files/${m.attachment!.id}`} alt="" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div className="cip-section cip-actions">
+                {chat.is_group && (
+                    <button className="cip-action-btn danger" onClick={onLeaveChat}>
+                        {Icon.leave(18)} Покинуть группу
+                    </button>
+                )}
+                {canDelete && (
+                    <button className="cip-action-btn danger" onClick={onDeleteChat}>
+                        {Icon.trash(18)} Удалить чат
+                    </button>
+                )}
+            </div>
+        </aside>
     );
 }
 
@@ -5356,7 +5820,7 @@ export function ChatSecurityBanner({ chat, currentUserId, onRefresh, showToast }
 FILE PATH: ./client/src/components/chat/ChatView.tsx
 ================================================================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { LocalChat, LocalMessage, ContextMenuItem } from '../../types';
+import type { LocalChat, LocalMessage, ContextMenuItem, ActiveVoice } from '../../types';
 import type { MediaInfo } from './MessageBubble';
 import { formatTime } from '../../utils';
 import { Icon } from '../../icons';
@@ -5366,6 +5830,10 @@ import { MessageBubble } from './MessageBubble';
 import { InputBar } from './InputBar';
 import { ChatSecurityBanner } from './ChatSecurityBanner';
 import { MediaViewer } from '../ui/MediaViewer';
+import { VoicePlayerBar } from './VoicePlayerBar';
+import { ChatInfoPanel } from './ChatInfoPanel';
+import { getFileUrl, getToken } from '../../api';
+import { cryptoManager } from '../../crypto';
 
 interface Props {
     chat: LocalChat;
@@ -5380,14 +5848,84 @@ interface Props {
     onStartCall: (chatId: string) => void;
     onOpenProfile?: (userId: string) => void;
     onForwardMessage: (msg: LocalMessage) => void;
+    onLoadMore?: (chatId: string) => void;
+    onDeleteChat?: (chatId: string) => void;
+    onLeaveChat?: (chatId: string) => void;
     showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
+    activeVoice?: ActiveVoice | null;
+    onVoiceActivate?: (v: ActiveVoice) => void;
+    onVoiceDeactivate?: () => void;
+}
+
+function guessMime(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const map: Record<string, string> = {
+        pdf: 'application/pdf',
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+        mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav',
+        mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+        txt: 'text/plain', html: 'text/html', css: 'text/css', js: 'text/javascript',
+        json: 'application/json', xml: 'application/xml',
+        zip: 'application/zip', rar: 'application/x-rar-compressed',
+        doc: 'application/msword',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xls: 'application/vnd.ms-excel',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+    return map[ext] || 'application/octet-stream';
+}
+
+async function downloadAndOpen(fileUrl: string, filename: string, chatId?: string, nonce?: string, attachmentId?: string) {
+    try {
+        const headers: Record<string, string> = {};
+        const token = getToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const resp = await fetch(fileUrl, { headers });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        let data = await resp.arrayBuffer();
+
+        if (chatId && nonce && cryptoManager.hasChatKey(chatId)) {
+            data = await cryptoManager.decryptBuffer(chatId, data, nonce, attachmentId);
+        }
+
+        const contentType = resp.headers.get('content-type') || guessMime(filename);
+        const blob = new Blob([data], { type: contentType });
+
+        // Скачиваем через <a download>
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 2000);
+
+        // Для медиа — дополнительно открываем в новой вкладке
+        const mime = contentType || '';
+        if (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('video/') || mime.startsWith('audio/')) {
+            const viewUrl = URL.createObjectURL(new Blob([data], { type: contentType }));
+            window.open(viewUrl, '_blank');
+            setTimeout(() => URL.revokeObjectURL(viewUrl), 120000);
+        }
+    } catch (e) {
+        console.error('Download/open failed:', e);
+    }
 }
 
 export function ChatView({
     chat, currentUserId, loadingMessages,
     onSendMessage, onSendVoice, onSendFile,
     onDeleteMessage, onEditMessage, onRefreshChat, onStartCall,
-    onOpenProfile, onForwardMessage, showToast,
+    onOpenProfile, onForwardMessage, onLoadMore, onDeleteChat, onLeaveChat, showToast,
+    activeVoice, onVoiceActivate, onVoiceDeactivate,
 }: Props) {
     const [inputText, setInputText] = useState('');
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
@@ -5396,27 +5934,33 @@ export function ChatView({
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const [mediaView, setMediaView] = useState<MediaInfo | null>(null);
     const [sending, setSending] = useState(false);
+    const [infoOpen, setInfoOpen] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const getChatAvatar = (): string | undefined => {
         if (chat.is_group) return undefined;
         return chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
     };
 
-    const handleHeaderAvatarClick = () => {
-        if (!onOpenProfile || chat.is_group) return;
-        const other = chat.members.find(m => m.user_id !== currentUserId);
-        if (other) onOpenProfile(other.user_id);
-    };
-
+    useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50); }, [chat.id]);
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
-    useEffect(() => { setInputText(''); setEditingMsg(null); setReplyTo(null); setPendingFile(null); setCtxMenu(null); setMediaView(null); }, [chat.id]);
+
+    useEffect(() => {
+        if (!isRecording) setInputText('');
+        setEditingMsg(null); setReplyTo(null); setPendingFile(null);
+        setCtxMenu(null); setMediaView(null); setInfoOpen(false);
+    }, [chat.id]);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 if (mediaView) setMediaView(null);
                 else if (ctxMenu) setCtxMenu(null);
+                else if (infoOpen) setInfoOpen(false);
                 else if (editingMsg) { setEditingMsg(null); setInputText(''); }
                 else if (replyTo) setReplyTo(null);
                 else if (pendingFile) setPendingFile(null);
@@ -5424,44 +5968,44 @@ export function ChatView({
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [ctxMenu, editingMsg, replyTo, pendingFile, mediaView]);
+    }, [ctxMenu, editingMsg, replyTo, pendingFile, mediaView, infoOpen]);
+
+    const handleScroll = useCallback(() => {
+        const el = scrollRef.current;
+        if (!el || loadingMore || !chat.hasMore || !onLoadMore) return;
+        if (el.scrollTop < 100) {
+            setLoadingMore(true);
+            const prevHeight = el.scrollHeight;
+            onLoadMore(chat.id);
+            requestAnimationFrame(() => {
+                if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prevHeight;
+                setLoadingMore(false);
+            });
+        }
+    }, [chat.id, chat.hasMore, loadingMore, onLoadMore]);
+
+    const handleMessagesClick = useCallback(() => { inputRef.current?.focus(); }, []);
 
     const handleSend = useCallback(async () => {
         if (sending) return;
-
         if (editingMsg) {
             const t = inputText.trim();
             if (t && t !== editingMsg.content) onEditMessage(editingMsg.id, t);
-            setEditingMsg(null); setInputText('');
-            return;
+            setEditingMsg(null); setInputText(''); return;
         }
-
         if (pendingFile) {
             setSending(true);
-            try {
-                await onSendFile(chat.id, pendingFile, inputText.trim(), replyTo?.id);
-                setPendingFile(null); setReplyTo(null); setInputText('');
-            } catch (e: any) {
-                showToast(e.message || 'Ошибка отправки файла', 'error');
-            } finally {
-                setSending(false);
-            }
-            return;
+            try { await onSendFile(chat.id, pendingFile, inputText.trim(), replyTo?.id); setPendingFile(null); setReplyTo(null); setInputText(''); }
+            catch (e: any) { showToast(e.message || 'Ошибка отправки файла', 'error'); }
+            finally { setSending(false); } return;
         }
-
-        const t = inputText.trim();
-        if (!t) return;
-        onSendMessage(t, replyTo?.id);
-        setReplyTo(null); setInputText('');
+        const t = inputText.trim(); if (!t) return;
+        onSendMessage(t, replyTo?.id); setReplyTo(null); setInputText('');
     }, [inputText, editingMsg, pendingFile, replyTo, chat.id, sending, onSendMessage, onEditMessage, onSendFile, showToast]);
 
-    const handleSendVoice = useCallback((blob: Blob) => { onSendVoice(chat.id, blob); }, [chat.id, onSendVoice]);
+    const handleSendVoice = useCallback((cid: string, blob: Blob) => { onSendVoice(cid, blob); }, [onSendVoice]);
     const handleSendFile = useCallback((file: File) => { setPendingFile(file); }, []);
-
-    const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => {
-        e.preventDefault();
-        setCtxMenu({ x: e.clientX, y: e.clientY, message: msg });
-    };
+    const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, message: msg }); };
 
     const ctxItems = (msg: LocalMessage): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [];
@@ -5471,6 +6015,20 @@ export function ChatView({
             items.push({ label: 'Редактировать', icon: Icon.edit(16), onClick: () => { setEditingMsg(msg); setInputText(msg.content); setReplyTo(null); } });
         }
         items.push({ label: 'Копировать', icon: Icon.copy(16), onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); } });
+        if (msg.attachment) {
+            items.push({
+                label: 'Скачать файл', icon: Icon.download(16),
+                onClick: () => {
+                    const att = msg.attachment!;
+                    const isEnc = !!msg.encrypted?.nonce;
+                    downloadAndOpen(
+                        getFileUrl(att.id), att.filename,
+                        isEnc ? chat.id : undefined,
+                        isEnc ? msg.encrypted!.nonce : undefined, att.id
+                    );
+                }
+            });
+        }
         if (msg.own) items.push({ label: 'Удалить', icon: Icon.trash(16), danger: true, onClick: () => onDeleteMessage(msg.id) });
         return items;
     };
@@ -5480,6 +6038,8 @@ export function ChatView({
         if (chat.is_group) { showToast('Групповые звонки пока не поддерживаются', 'info'); return; }
         onStartCall(chat.id);
     }, [chat.id, chat.is_group, onStartCall, showToast]);
+
+    const handleHeaderClick = useCallback(() => { setInfoOpen(v => !v); }, []);
     const handleAuthorClick = useCallback((userId: string) => { if (onOpenProfile) onOpenProfile(userId); }, [onOpenProfile]);
 
     const handleClickReply = useCallback((messageId: string) => {
@@ -5489,57 +6049,77 @@ export function ChatView({
 
     const handleOpenMedia = useCallback((info: MediaInfo) => { setMediaView(info); }, []);
 
+    const handleLeave = useCallback(() => {
+        if (!confirm('Покинуть этот чат?')) return;
+        onLeaveChat?.(chat.id);
+    }, [chat.id, onLeaveChat]);
+    const handleDelete = useCallback(() => {
+        if (!confirm('Удалить этот чат для всех?')) return;
+        onDeleteChat?.(chat.id);
+    }, [chat.id, onDeleteChat]);
+
     return (
         <section className="chat-view">
-            <div className="chat-header">
-                <div className="chat-header-left" style={{ cursor: !chat.is_group ? 'pointer' : undefined }} onClick={handleHeaderAvatarClick}>
-                    <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar()} />
-                    <div className="chat-header-info">
-                        <h3>{chat.name}</h3>
-                        <span className="chat-header-sub">
-                            {chat.is_group ? `${chat.members.length} участников` : chat.online ? 'в сети' : 'был(а) недавно'}
-                        </span>
+            <div className="chat-view-main">
+                <div className="chat-header">
+                    <div className="chat-header-left" style={{ cursor: 'pointer' }} onClick={handleHeaderClick}>
+                        <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar()} />
+                        <div className="chat-header-info">
+                            <h3>{chat.name}</h3>
+                            <span className="chat-header-sub">{chat.is_group ? `${chat.members.length} участников` : chat.online ? 'в сети' : 'был(а) недавно'}</span>
+                        </div>
+                    </div>
+                    <div className="chat-header-actions">
+                        <button className="icon-btn" title="Позвонить" onClick={handleCall}>{Icon.phone(20)}</button>
+                        <button className="icon-btn" title="Инфо" onClick={handleHeaderClick}>{Icon.info(20)}</button>
                     </div>
                 </div>
-                <div className="chat-header-actions">
-                    <button className="icon-btn" title="Позвонить" onClick={handleCall}>{Icon.phone(20)}</button>
-                    <button className="icon-btn" title="Поиск">{Icon.search(20)}</button>
+
+                <ChatSecurityBanner chat={chat} currentUserId={currentUserId} onRefresh={handleRefresh} showToast={showToast} />
+                {activeVoice && <VoicePlayerBar voice={activeVoice} onClose={() => onVoiceDeactivate?.()} />}
+
+                <div className="messages-scroll" ref={scrollRef} onScroll={handleScroll} onClick={handleMessagesClick}>
+                    <div className="messages-inner">
+                        {loadingMore && <div className="messages-loading" style={{ padding: 8 }}>Загрузка...</div>}
+                        <div className="encryption-notice">{Icon.lock(14)}<span>Сообщения защищены сквозным шифрованием</span></div>
+                        {loadingMessages && chat.messages.length === 0 && <div className="messages-loading">Загрузка сообщений...</div>}
+                        {!loadingMessages && chat.messagesLoaded && chat.messages.length === 0 && <div className="messages-loading">Нет сообщений. Напишите первое!</div>}
+
+                        {chat.messages.map((msg, i) => {
+                            const prev = chat.messages[i - 1];
+                            const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
+                            return (
+                                <MessageBubble key={msg.id} message={msg} isFirst={isFirst} isGroup={chat.is_group}
+                                    chatId={chat.id} onContextMenu={e => handleContextMenu(e, msg)}
+                                    onClickAuthor={handleAuthorClick} onClickReply={handleClickReply}
+                                    onOpenMedia={handleOpenMedia}
+                                    onVoiceActivate={onVoiceActivate} onVoiceDeactivate={onVoiceDeactivate} />
+                            );
+                        })}
+                        <div ref={bottomRef} />
+                    </div>
                 </div>
+
+                <InputBar
+                    chatId={chat.id}
+                    value={inputText} onChange={setInputText}
+                    onSend={handleSend} onSendVoice={handleSendVoice} onSendFile={handleSendFile}
+                    editingMessage={editingMsg ? { id: editingMsg.id, text: editingMsg.content, author: editingMsg.sender_name, time: formatTime(editingMsg.created_at), own: editingMsg.own } : null}
+                    onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
+                    replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
+                    pendingFile={pendingFile} onCancelFile={() => setPendingFile(null)}
+                    inputRef={inputRef}
+                    onRecordingChange={setIsRecording} />
+
+                {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
+                {mediaView && <MediaViewer {...mediaView} onClose={() => setMediaView(null)} />}
             </div>
 
-            <ChatSecurityBanner chat={chat} currentUserId={currentUserId} onRefresh={handleRefresh} showToast={showToast} />
-
-            <div className="messages-scroll">
-                <div className="messages-inner">
-                    <div className="encryption-notice">{Icon.lock(14)}<span>Сообщения защищены сквозным шифрованием</span></div>
-                    {loadingMessages && chat.messages.length === 0 && <div className="messages-loading">Загрузка сообщений...</div>}
-                    {!loadingMessages && chat.messagesLoaded && chat.messages.length === 0 && <div className="messages-loading">Нет сообщений. Напишите первое!</div>}
-
-                    {chat.messages.map((msg, i) => {
-                        const prev = chat.messages[i - 1];
-                        const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
-                        return (
-                            <MessageBubble key={msg.id} message={msg} isFirst={isFirst} isGroup={chat.is_group}
-                                chatId={chat.id} onContextMenu={e => handleContextMenu(e, msg)}
-                                onClickAuthor={handleAuthorClick} onClickReply={handleClickReply}
-                                onOpenMedia={handleOpenMedia} />
-                        );
-                    })}
-                    <div ref={bottomRef} />
-                </div>
-            </div>
-
-            <InputBar
-                value={inputText} onChange={setInputText}
-                onSend={handleSend} onSendVoice={handleSendVoice} onSendFile={handleSendFile}
-                editingMessage={editingMsg ? { id: editingMsg.id, text: editingMsg.content, author: editingMsg.sender_name, time: formatTime(editingMsg.created_at), own: editingMsg.own } : null}
-                onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
-                replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
-                pendingFile={pendingFile} onCancelFile={() => setPendingFile(null)} />
-
-            {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
-
-            {mediaView && <MediaViewer {...mediaView} onClose={() => setMediaView(null)} />}
+            {infoOpen && (
+                <ChatInfoPanel chat={chat} currentUserId={currentUserId}
+                    onClose={() => setInfoOpen(false)} onOpenProfile={handleAuthorClick}
+                    onLeaveChat={handleLeave} onDeleteChat={handleDelete} />
+            )}
         </section>
     );
 }
@@ -5653,19 +6233,14 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { LocalMessage } from '../../types';
 import { Icon } from '../../icons';
 
-interface EditableMessage {
-    id: string;
-    text: string;
-    author: string;
-    time: string;
-    own: boolean;
-}
+interface EditableMessage { id: string; text: string; author: string; time: string; own: boolean; }
 
 interface Props {
+    chatId: string;
     value: string;
     onChange: (v: string) => void;
     onSend: () => void;
-    onSendVoice: (blob: Blob) => void;
+    onSendVoice: (chatId: string, blob: Blob) => void;
     onSendFile: (file: File) => void;
     editingMessage: EditableMessage | null;
     onCancelEdit: () => void;
@@ -5673,6 +6248,8 @@ interface Props {
     onCancelReply: () => void;
     pendingFile: File | null;
     onCancelFile: () => void;
+    inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+    onRecordingChange?: (recording: boolean) => void;
 }
 
 function formatFileSize(bytes: number): string {
@@ -5682,10 +6259,9 @@ function formatFileSize(bytes: number): string {
 }
 
 export function InputBar({
-    value, onChange, onSend, onSendVoice, onSendFile,
-    editingMessage, onCancelEdit,
-    replyTo, onCancelReply,
-    pendingFile, onCancelFile,
+    chatId, value, onChange, onSend, onSendVoice, onSendFile,
+    editingMessage, onCancelEdit, replyTo, onCancelReply,
+    pendingFile, onCancelFile, inputRef, onRecordingChange,
 }: Props) {
     const [recording, setRecording] = useState(false);
     const [recTime, setRecTime] = useState(0);
@@ -5695,42 +6271,52 @@ export function InputBar({
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const localTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const recordingChatIdRef = useRef<string>(chatId);
+    const textareaRef = inputRef || localTextareaRef;
+
+    useEffect(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+    }, [value]);
 
     useEffect(() => {
         if (recording) {
             setRecTime(0);
             timerRef.current = setInterval(() => setRecTime(t => t + 1), 1000);
-        } else {
-            if (timerRef.current) clearInterval(timerRef.current);
-        }
+        } else if (timerRef.current) clearInterval(timerRef.current);
         return () => { if (timerRef.current) clearInterval(timerRef.current); };
     }, [recording]);
 
+    const setRec = useCallback((v: boolean) => { setRecording(v); onRecordingChange?.(v); }, [onRecordingChange]);
+
     const startRecording = useCallback(async () => {
         try {
+            recordingChatIdRef.current = chatId;
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus' : 'audio/ogg;codecs=opus';
-            const recorder = new MediaRecorder(stream, { mimeType });
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/ogg;codecs=opus';
+            const rec = new MediaRecorder(stream, { mimeType });
             chunks.current = [];
-            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.current.push(e.data); };
-            recorder.onstop = () => {
+            rec.ondataavailable = e => { if (e.data.size > 0) chunks.current.push(e.data); };
+            rec.onstop = () => {
                 const blob = new Blob(chunks.current, { type: mimeType });
-                if (blob.size > 0) onSendVoice(blob);
+                if (blob.size > 0) onSendVoice(recordingChatIdRef.current, blob);
                 stream.getTracks().forEach(t => t.stop());
                 streamRef.current = null;
             };
-            recorder.start();
-            mediaRecorder.current = recorder;
-            setRecording(true);
+            rec.start();
+            mediaRecorder.current = rec;
+            setRec(true);
         } catch (e) { console.error('Mic access denied', e); }
-    }, [onSendVoice]);
+    }, [chatId, onSendVoice, setRec]);
 
     const stopRecording = useCallback(() => {
         if (mediaRecorder.current?.state === 'recording') mediaRecorder.current.stop();
-        setRecording(false);
-    }, []);
+        setRec(false);
+    }, [setRec]);
 
     const cancelRecording = useCallback(() => {
         if (mediaRecorder.current?.state === 'recording') {
@@ -5740,14 +6326,12 @@ export function InputBar({
         }
         if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
         chunks.current = [];
-        setRecording(false);
-    }, []);
+        setRec(false);
+    }, [setRec]);
 
     const handleFileSelect = useCallback(() => { fileInputRef.current?.click(); }, []);
-
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const file = e.target.files?.[0]; if (!file) return;
         if (file.size > 25 * 1024 * 1024) { alert('Файл слишком большой (макс 25MB)'); return; }
         onSendFile(file);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -5756,24 +6340,14 @@ export function InputBar({
     const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true); };
     const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); };
     const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setDragOver(false);
-        const file = e.dataTransfer.files[0];
-        if (!file) return;
+        e.preventDefault(); setDragOver(false);
+        const file = e.dataTransfer.files[0]; if (!file) return;
         if (file.size > 25 * 1024 * 1024) { alert('Файл слишком большой (макс 25MB)'); return; }
         onSendFile(file);
     };
 
-    const handleSendWithFile = () => {
-        if (pendingFile) {
-            onSend(); // ChatView handles the file+text send
-        } else {
-            onSend();
-        }
-    };
-
     const onKey = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendWithFile(); }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); }
         if (e.key === 'Escape') {
             if (recording) cancelRecording();
             else if (editingMessage) onCancelEdit();
@@ -5784,99 +6358,57 @@ export function InputBar({
 
     const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-    if (recording) {
-        return (
-            <div className="input-area">
-                <div className="input-bar recording-bar">
-                    <button className="icon-btn cancel-rec-btn" onClick={cancelRecording} title="Отменить">{Icon.x(20)}</button>
-                    <div className="rec-indicator">
-                        <span className="rec-dot" />
-                        <span className="rec-timer">{fmtTime(recTime)}</span>
-                    </div>
-                    <button className="send-btn" onClick={stopRecording} title="Отправить">{Icon.send(20)}</button>
-                </div>
-            </div>
-        );
-    }
+    if (recording) return (
+        <div className="input-area"><div className="input-bar recording-bar">
+            <button className="icon-btn cancel-rec-btn" onClick={cancelRecording} title="Отменить">{Icon.x(20)}</button>
+            <div className="rec-indicator"><span className="rec-dot" /><span className="rec-timer">{fmtTime(recTime)}</span></div>
+            <button className="send-btn" onClick={stopRecording} title="Отправить">{Icon.send(20)}</button>
+        </div></div>
+    );
 
     return (
         <div className={`input-area ${dragOver ? 'input-drag-over' : ''}`}
             onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} />
 
-            <input ref={fileInputRef} type="file" style={{ display: 'none' }}
-                onChange={handleFileChange} />
-
-            {/* Reply bar */}
             {replyTo && !editingMessage && (
                 <div className="edit-bar reply-bar">
                     <span className="edit-bar-icon">{Icon.reply(15)}</span>
                     <div className="edit-bar-body">
-                        <span className="edit-bar-label" style={{ color: 'var(--accent)' }}>
-                            {replyTo.sender_name}
-                        </span>
-                        <span className="edit-bar-text">
-                            {replyTo.attachment ? `📎 ${replyTo.attachment.filename}` : replyTo.content}
-                        </span>
+                        <span className="edit-bar-label" style={{ color: 'var(--accent)' }}>{replyTo.sender_name}</span>
+                        <span className="edit-bar-text">{replyTo.attachment ? `📎 ${replyTo.attachment.filename}` : replyTo.content}</span>
                     </div>
                     <button className="icon-btn edit-bar-close" onClick={onCancelReply}>{Icon.x(16)}</button>
                 </div>
             )}
-
-            {/* Edit bar */}
             {editingMessage && (
                 <div className="edit-bar">
                     <span className="edit-bar-icon">{Icon.edit(15)}</span>
-                    <div className="edit-bar-body">
-                        <span className="edit-bar-label">Редактирование</span>
-                        <span className="edit-bar-text">{editingMessage.text}</span>
-                    </div>
+                    <div className="edit-bar-body"><span className="edit-bar-label">Редактирование</span><span className="edit-bar-text">{editingMessage.text}</span></div>
                     <button className="icon-btn edit-bar-close" onClick={onCancelEdit}>{Icon.x(16)}</button>
                 </div>
             )}
-
-            {/* Pending file bar */}
             {pendingFile && (
                 <div className="edit-bar file-bar">
-                    <span className="edit-bar-icon">
-                        {pendingFile.type.startsWith('image/') ? Icon.image(15) : Icon.file(15)}
-                    </span>
-                    <div className="edit-bar-body">
-                        <span className="edit-bar-label">Файл</span>
-                        <span className="edit-bar-text">
-                            {pendingFile.name} ({formatFileSize(pendingFile.size)})
-                        </span>
-                    </div>
+                    <span className="edit-bar-icon">{pendingFile.type.startsWith('image/') ? Icon.image(15) : Icon.file(15)}</span>
+                    <div className="edit-bar-body"><span className="edit-bar-label">Файл</span><span className="edit-bar-text">{pendingFile.name} ({formatFileSize(pendingFile.size)})</span></div>
                     <button className="icon-btn edit-bar-close" onClick={onCancelFile}>{Icon.x(16)}</button>
                 </div>
             )}
-
-            {dragOver && (
-                <div className="drop-overlay">Отпустите файл для отправки</div>
-            )}
+            {dragOver && <div className="drop-overlay">Отпустите файл для отправки</div>}
 
             <div className="input-bar">
-                <button className="icon-btn attach-btn" onClick={handleFileSelect} title="Прикрепить файл">
-                    {Icon.paperclip(21)}
-                </button>
-                <input
-                    className="msg-input" type="text"
-                    placeholder={
-                        editingMessage ? 'Редактировать сообщение...' :
-                            pendingFile ? 'Подпись к файлу (необязательно)...' :
-                                'Написать сообщение...'}
-                    value={value}
-                    onChange={e => onChange(e.target.value)}
-                    onKeyDown={onKey}
-                    autoFocus
+                <button className="icon-btn attach-btn" onClick={handleFileSelect} title="Прикрепить файл">{Icon.paperclip(21)}</button>
+                <textarea
+                    ref={textareaRef as React.RefObject<HTMLTextAreaElement>}
+                    className="msg-input msg-textarea"
+                    placeholder={editingMessage ? 'Редактировать сообщение...' : pendingFile ? 'Подпись к файлу...' : 'Написать сообщение...'}
+                    value={value} onChange={e => onChange(e.target.value)} onKeyDown={onKey} rows={1}
                 />
                 {(value.trim() || pendingFile) ? (
-                    <button className="send-btn" onClick={handleSendWithFile} title="Отправить">
-                        {editingMessage ? Icon.check(20) : Icon.send(20)}
-                    </button>
+                    <button className="send-btn" onClick={onSend} title="Отправить">{editingMessage ? Icon.check(20) : Icon.send(20)}</button>
                 ) : (
-                    <button className="icon-btn mic-btn" onClick={startRecording} title="Голосовое сообщение">
-                        {Icon.mic(21)}
-                    </button>
+                    <button className="icon-btn mic-btn" onClick={startRecording} title="Голосовое сообщение">{Icon.mic(21)}</button>
                 )}
             </div>
         </div>
@@ -5888,236 +6420,197 @@ export function InputBar({
 FILE PATH: ./client/src/components/chat/MessageBubble.tsx
 ================================================================================
 import React, { useState, useEffect, useRef } from 'react';
-import type { LocalMessage } from '../../types';
+import type { LocalMessage, ActiveVoice } from '../../types';
 import { getAvatarColor, formatTime } from '../../utils';
-import { getFileUrl } from '../../api';
+import { getFileUrl, getToken } from '../../api';
 import { cryptoManager } from '../../crypto';
 import { MsgStatus } from '../ui/MsgStatus';
 import { AudioPlayer } from './AudioPlayer';
 import { Icon } from '../../icons';
 
 export interface MediaInfo {
-    src: string;
-    mediaType: 'image' | 'video';
-    filename?: string;
-    chatId?: string;
-    nonce?: string;
-    attachmentId?: string;
+    src: string; mediaType: 'image' | 'video'; filename?: string; chatId?: string; nonce?: string; attachmentId?: string;
 }
 
 interface Props {
-    message: LocalMessage;
-    isFirst: boolean;
-    isGroup: boolean;
-    chatId: string;
+    message: LocalMessage; isFirst: boolean; isGroup: boolean; chatId: string;
     onContextMenu: (e: React.MouseEvent) => void;
     onClickAuthor?: (userId: string) => void;
     onClickReply?: (messageId: string) => void;
     onOpenMedia?: (info: MediaInfo) => void;
+    onVoiceActivate?: (v: ActiveVoice) => void;
+    onVoiceDeactivate?: () => void;
 }
 
-function isImageMime(mime: string): boolean {
-    return mime.startsWith('image/');
-}
-function isVideoMime(mime: string): boolean {
-    return mime.startsWith('video/');
-}
-function isAudioMime(mime: string): boolean {
-    return mime.startsWith('audio/');
-}
-function formatFileSize(bytes: number): string {
-    if (bytes < 1024) return bytes + ' Б';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
+function isImageMime(m: string) { return m.startsWith('image/'); }
+function isVideoMime(m: string) { return m.startsWith('video/'); }
+function isAudioMime(m: string) { return m.startsWith('audio/'); }
+function formatFileSize(b: number) { if (b < 1024) return b + ' Б'; if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' КБ'; return (b / (1024 * 1024)).toFixed(1) + ' МБ'; }
+
+function guessMime(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const map: Record<string, string> = {
+        pdf: 'application/pdf',
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        gif: 'image/gif', webp: 'image/webp',
+        mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav',
+        mp4: 'video/mp4', webm: 'video/webm',
+        txt: 'text/plain', json: 'application/json',
+        zip: 'application/zip',
+        doc: 'application/msword',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xls: 'application/vnd.ms-excel',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+    return map[ext] || 'application/octet-stream';
 }
 
-function SecureImage({ src, chatId, nonce, attachmentId, onClick }: {
-    src: string; chatId: string; nonce: string; attachmentId?: string; onClick?: () => void;
-}) {
+function SecureImage({ src, chatId, nonce, attachmentId, onClick }: { src: string; chatId: string; nonce: string; attachmentId?: string; onClick?: () => void }) {
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
     const urlRef = useRef<string | null>(null);
-
     useEffect(() => {
-        let cancelled = false;
-        setLoading(true); setError(false);
+        let c = false; setLoading(true); setError(false);
         (async () => {
             try {
-                const resp = await fetch(src);
-                if (!resp.ok) throw new Error('fetch');
-                const enc = await resp.arrayBuffer();
-                if (cancelled) return;
-                const dec = await cryptoManager.decryptBuffer(chatId, enc, nonce, attachmentId);
-                if (cancelled) return;
-                const u = URL.createObjectURL(new Blob([dec]));
-                urlRef.current = u;
-                setUrl(u);
-            } catch { if (!cancelled) setError(true); }
-            finally { if (!cancelled) setLoading(false); }
+                const headers: Record<string, string> = {};
+                const token = getToken();
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const r = await fetch(src, { headers });
+                if (!r.ok) throw 0;
+                const e = await r.arrayBuffer(); if (c) return;
+                const d = await cryptoManager.decryptBuffer(chatId, e, nonce, attachmentId); if (c) return;
+                const u = URL.createObjectURL(new Blob([d]));
+                urlRef.current = u; setUrl(u);
+            } catch { if (!c) setError(true); }
+            finally { if (!c) setLoading(false); }
         })();
-        return () => { cancelled = true; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
+        return () => { c = true; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
     }, [src, chatId, nonce, attachmentId]);
-
     if (loading) return <div className="msg-image-loading">{Icon.lock(16)} Расшифровка…</div>;
     if (error) return <div className="msg-image-error">🔒 Не удалось расшифровать</div>;
     if (!url) return null;
     return <img src={url} alt="" className="msg-image" onClick={onClick} />;
 }
 
-async function downloadFile(fileUrl: string, filename: string, chatId?: string, nonce?: string, attachmentId?: string) {
+async function downloadAndOpen(fileUrl: string, filename: string, chatId?: string, nonce?: string, attachmentId?: string) {
     try {
-        const resp = await fetch(fileUrl);
-        if (!resp.ok) throw new Error('fetch');
+        const headers: Record<string, string> = {};
+        const token = getToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const resp = await fetch(fileUrl, { headers });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
         let data = await resp.arrayBuffer();
+
         if (chatId && nonce && cryptoManager.hasChatKey(chatId)) {
             data = await cryptoManager.decryptBuffer(chatId, data, nonce, attachmentId);
         }
-        const url = URL.createObjectURL(new Blob([data]));
+
+        const contentType = resp.headers.get('content-type') || guessMime(filename);
+        const blob = new Blob([data], { type: contentType });
+
+        // Скачиваем через <a download>
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = filename; a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) { console.error('Download failed:', e); }
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 2000);
+
+        // Для медиа — дополнительно открываем
+        const mime = contentType || '';
+        if (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('video/') || mime.startsWith('audio/')) {
+            const viewUrl = URL.createObjectURL(new Blob([data], { type: contentType }));
+            window.open(viewUrl, '_blank');
+            setTimeout(() => URL.revokeObjectURL(viewUrl), 120000);
+        }
+    } catch (e) {
+        console.error('Download/open failed:', e);
+    }
 }
 
-export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu, onClickAuthor, onClickReply, onOpenMedia }: Props) {
+export function MessageBubble({ message, isFirst, isGroup, chatId, onContextMenu, onClickAuthor, onClickReply, onOpenMedia, onVoiceActivate, onVoiceDeactivate }: Props) {
     const showAuthor = isGroup && !message.own && isFirst;
     const isPending = message.status === 'pending';
     const att = message.attachment;
     const isEncrypted = !!message.encrypted?.nonce;
 
-    const isVoice = att && isAudioMime(att.mime_type) && (att.filename.startsWith('voice') || att.size_bytes < 5 * 1024 * 1024);
+    const isVoice = att && isAudioMime(att.mime_type) && att.filename.startsWith('voice');
     const isImage = att && isImageMime(att.mime_type);
     const isVideo = att && isVideoMime(att.mime_type);
     const isFile = att && !isVoice && !isImage && !isVideo;
 
-    const hasText = message.content &&
-        message.content !== '🎤 Голосовое сообщение' &&
-        message.content !== '[Зашифрованное сообщение]' &&
-        message.content !== '🔒 Зашифровано' &&
-        !message.content.startsWith('📎 ');
+    const hasText = message.content && message.content !== '🎤 Голосовое сообщение' && message.content !== '[Зашифрованное сообщение]' && message.content !== '🔒 Зашифровано' && !message.content.startsWith('📎 ');
 
-    const handleAuthorClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (onClickAuthor) onClickAuthor(message.sender_id);
-    };
-
-    const handleReplyClick = () => {
-        if (message.reply_to && onClickReply) onClickReply(message.reply_to.id);
-    };
+    const handleAuthorClick = (e: React.MouseEvent) => { e.stopPropagation(); onClickAuthor?.(message.sender_id); };
+    const handleReplyClick = () => { if (message.reply_to) onClickReply?.(message.reply_to.id); };
 
     const handleDownload = () => {
         if (!att) return;
-        downloadFile(getFileUrl(att.id), att.filename,
+        downloadAndOpen(
+            getFileUrl(att.id), att.filename,
             isEncrypted ? chatId : undefined,
-            isEncrypted ? message.encrypted!.nonce : undefined, att.id);
+            isEncrypted ? message.encrypted!.nonce : undefined, att.id
+        );
     };
 
     const handleOpenImage = () => {
         if (!att || !onOpenMedia) return;
-        onOpenMedia({
-            src: getFileUrl(att.id), mediaType: 'image', filename: att.filename,
-            chatId: isEncrypted ? chatId : undefined,
-            nonce: isEncrypted ? message.encrypted!.nonce : undefined,
-            attachmentId: att.id,
-        });
+        onOpenMedia({ src: getFileUrl(att.id), mediaType: 'image', filename: att.filename, chatId: isEncrypted ? chatId : undefined, nonce: isEncrypted ? message.encrypted!.nonce : undefined, attachmentId: att.id });
     };
-
     const handleOpenVideo = () => {
         if (!att || !onOpenMedia) return;
-        onOpenMedia({
-            src: getFileUrl(att.id), mediaType: 'video', filename: att.filename,
-            chatId: isEncrypted ? chatId : undefined,
-            nonce: isEncrypted ? message.encrypted!.nonce : undefined,
-            attachmentId: att.id,
-        });
+        onOpenMedia({ src: getFileUrl(att.id), mediaType: 'video', filename: att.filename, chatId: isEncrypted ? chatId : undefined, nonce: isEncrypted ? message.encrypted!.nonce : undefined, attachmentId: att.id });
     };
 
     return (
-        <div className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`}
-            onContextMenu={onContextMenu} id={`msg-${message.id}`}>
-
-            {showAuthor && (
-                <span className="msg-author clickable-author"
-                    style={{ color: getAvatarColor(message.sender_name) }}
-                    onClick={handleAuthorClick}>
-                    {message.sender_name}
-                </span>
-            )}
-
-            {message.forwarded_from && (
-                <div className="msg-forward-header">
-                    {Icon.forward(12)}
-                    <span>Переслано от {message.forwarded_from.original_sender_name}</span>
-                </div>
-            )}
+        <div className={`msg ${message.own ? 'own' : ''} ${isFirst ? 'first' : ''} ${isPending ? 'pending' : ''}`} onContextMenu={onContextMenu} id={`msg-${message.id}`}>
+            {showAuthor && <span className="msg-author clickable-author" style={{ color: getAvatarColor(message.sender_name) }} onClick={handleAuthorClick}>{message.sender_name}</span>}
+            {message.forwarded_from && <div className="msg-forward-header">{Icon.forward(12)}<span>Переслано от {message.forwarded_from.original_sender_name}</span></div>}
 
             <div className={`msg-bubble ${isVoice && !hasText ? 'voice-bubble' : ''}`}>
                 {message.reply_to && (
                     <div className="msg-reply-preview" onClick={handleReplyClick}>
                         <div className="msg-reply-line" />
                         <div className="msg-reply-body">
-                            <span className="msg-reply-author" style={{ color: getAvatarColor(message.reply_to.sender_name) }}>
-                                {message.reply_to.sender_name}
-                            </span>
-                            <span className="msg-reply-text">
-                                {message.reply_to.attachment ? `📎 ${message.reply_to.attachment.filename}` : message.reply_to.content.slice(0, 80)}
-                            </span>
+                            <span className="msg-reply-author" style={{ color: getAvatarColor(message.reply_to.sender_name) }}>{message.reply_to.sender_name}</span>
+                            <span className="msg-reply-text">{message.reply_to.attachment ? `📎 ${message.reply_to.attachment.filename}` : message.reply_to.content.slice(0, 80)}</span>
                         </div>
                     </div>
                 )}
-
                 {hasText && <span className="msg-text">{message.content}</span>}
 
-                {/* Image */}
                 {isImage && att && (
                     <div className="msg-image-wrap">
-                        {isEncrypted ? (
-                            <SecureImage src={getFileUrl(att.id)} chatId={chatId}
-                                nonce={message.encrypted!.nonce} attachmentId={att.id}
-                                onClick={handleOpenImage} />
-                        ) : (
-                            <img src={getFileUrl(att.id)} alt={att.filename}
-                                className="msg-image" onClick={handleOpenImage} />
-                        )}
+                        {isEncrypted ? <SecureImage src={getFileUrl(att.id)} chatId={chatId} nonce={message.encrypted!.nonce} attachmentId={att.id} onClick={handleOpenImage} />
+                            : <img src={getFileUrl(att.id)} alt={att.filename} className="msg-image" onClick={handleOpenImage} />}
                     </div>
                 )}
-
-                {/* Video */}
                 {isVideo && att && (
                     <div className="msg-video-wrap" onClick={handleOpenVideo}>
-                        {isEncrypted ? (
-                            <div className="msg-video-encrypted">
-                                <div className="msg-video-play-icon">▶</div>
-                                <span>Видео · {formatFileSize(att.size_bytes)}</span>
-                                <span className="msg-video-enc-badge">🔒</span>
-                            </div>
-                        ) : (
-                            <>
-                                <video src={getFileUrl(att.id)} className="msg-video" preload="metadata" muted />
-                                <div className="msg-video-play-overlay">
-                                    <div className="msg-video-play-icon">▶</div>
-                                </div>
-                            </>
-                        )}
+                        {isEncrypted ? (<div className="msg-video-encrypted"><div className="msg-video-play-icon">▶</div><span>Видео · {formatFileSize(att.size_bytes)}</span><span className="msg-video-enc-badge">🔒</span></div>)
+                            : (<><video src={getFileUrl(att.id)} className="msg-video" preload="metadata" muted /><div className="msg-video-play-overlay"><div className="msg-video-play-icon">▶</div></div></>)}
                     </div>
                 )}
-
-                {/* Voice/Audio */}
                 {isVoice && att && (
-                    <AudioPlayer src={getFileUrl(att.id)}
-                        encryptedNonce={isEncrypted ? message.encrypted!.nonce : undefined}
-                        chatId={isEncrypted ? chatId : undefined} attachmentId={att.id} />
+                    <AudioPlayer src={getFileUrl(att.id)} encryptedNonce={isEncrypted ? message.encrypted!.nonce : undefined}
+                        chatId={isEncrypted ? chatId : undefined} attachmentId={att.id}
+                        senderName={message.sender_name} messageId={message.id}
+                        onActivate={onVoiceActivate} onDeactivate={onVoiceDeactivate} />
                 )}
-
-                {/* Other files */}
                 {isFile && att && (
                     <div className="msg-file-card" onClick={handleDownload}>
                         <div className="msg-file-icon">{Icon.file(28)}</div>
-                        <div className="msg-file-info">
-                            <span className="msg-file-name">{att.filename}</span>
-                            <span className="msg-file-size">{formatFileSize(att.size_bytes)}</span>
-                        </div>
+                        <div className="msg-file-info"><span className="msg-file-name">{att.filename}</span><span className="msg-file-size">{formatFileSize(att.size_bytes)}</span></div>
                         <div className="msg-file-dl">{Icon.download(18)}</div>
                     </div>
                 )}
@@ -6276,6 +6769,109 @@ export function NewChatModal({ open, onClose, onCreate, showToast }: Props) {
                     </button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/chat/VoicePlayerBar.tsx
+================================================================================
+import React, { useState, useEffect, useCallback } from 'react';
+import type { ActiveVoice } from '../../types';
+import { Icon } from '../../icons';
+
+interface Props {
+    voice: ActiveVoice;
+    onClose: () => void;
+}
+
+const SPEEDS = [1, 1.5, 2, 0.5];
+
+export function VoicePlayerBar({ voice, onClose }: Props) {
+    const { audio, senderName } = voice;
+    const [playing, setPlaying] = useState(!audio.paused);
+    const [currentTime, setCurrent] = useState(audio.currentTime);
+    const [duration, setDuration] = useState(audio.duration || 0);
+    const [speedIdx, setSpeedIdx] = useState(0);
+    const [volume, setVolume] = useState(Math.round(audio.volume * 100));
+    const [showVolume, setShowVolume] = useState(false);
+
+    useEffect(() => {
+        const onP = () => setPlaying(true);
+        const onPa = () => setPlaying(false);
+        const onT = () => setCurrent(audio.currentTime);
+        const onL = () => setDuration(audio.duration || 0);
+        const onE = () => { setPlaying(false); onClose(); };
+        audio.addEventListener('play', onP);
+        audio.addEventListener('pause', onPa);
+        audio.addEventListener('timeupdate', onT);
+        audio.addEventListener('loadedmetadata', onL);
+        audio.addEventListener('ended', onE);
+        return () => {
+            audio.removeEventListener('play', onP);
+            audio.removeEventListener('pause', onPa);
+            audio.removeEventListener('timeupdate', onT);
+            audio.removeEventListener('loadedmetadata', onL);
+            audio.removeEventListener('ended', onE);
+        };
+    }, [audio, onClose]);
+
+    const toggle = useCallback(() => { if (playing) audio.pause(); else audio.play().catch(() => { }); }, [audio, playing]);
+
+    const stop = useCallback(() => { audio.pause(); audio.currentTime = 0; onClose(); }, [audio, onClose]);
+
+    const cycleSpeed = useCallback(() => {
+        const next = (speedIdx + 1) % SPEEDS.length;
+        setSpeedIdx(next);
+        audio.playbackRate = SPEEDS[next];
+    }, [speedIdx, audio]);
+
+    const handleVolume = useCallback((val: number) => {
+        setVolume(val);
+        audio.volume = val / 100;
+    }, [audio]);
+
+    const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        if (!duration) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        audio.currentTime = pct * duration;
+    }, [audio, duration]);
+
+    const fmt = (s: number) => !s || !isFinite(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    return (
+        <div className="voice-player-bar-wrap">
+            <div className="voice-player-bar">
+                <button className="voice-bar-play" onClick={toggle}>
+                    {playing
+                        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                        : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
+                </button>
+                <div className="voice-bar-info">
+                    <span className="voice-bar-name">🎤 {senderName}</span>
+                    <div className="voice-bar-progress" onClick={handleSeek}>
+                        <div className="voice-bar-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                </div>
+                <span className="voice-bar-time">{fmt(currentTime)} / {fmt(duration)}</span>
+                <button className="voice-bar-speed" onClick={cycleSpeed}>{SPEEDS[speedIdx]}×</button>
+                <button className="voice-bar-vol-btn" onClick={() => setShowVolume(v => !v)} title="Громкость">
+                    {volume === 0 ? Icon.volumeOff(16) : Icon.volumeHigh(16)}
+                </button>
+                <button className="voice-bar-close" onClick={stop}>{Icon.x(16)}</button>
+            </div>
+            {showVolume && (
+                <div className="voice-bar-volume-row">
+                    <span className="voice-bar-volume-icon">{volume === 0 ? Icon.volumeOff(14) : Icon.volumeHigh(14)}</span>
+                    <input type="range" min={0} max={100} value={volume}
+                        className="voice-bar-volume-slider"
+                        onChange={e => handleVolume(Number(e.target.value))} />
+                    <span className="voice-bar-volume-value">{volume}%</span>
+                </div>
+            )}
         </div>
     );
 }
@@ -9421,6 +10017,12 @@ export function useChats(
                     break;
                 }
                 case 'error': { console.error('[WS]', msg.payload.message); break; }
+                case 'chat_deleted': {
+                    const { chat_id } = msg.payload;
+                    setChats(prev => prev.filter(c => c.id !== chat_id));
+                    if (selectedIdRef.current === chat_id) { setSelectedId(null); saveSelectedId(null); }
+                    break;
+                }
             }
         });
         return unsub;
@@ -9457,12 +10059,47 @@ export function useChats(
         }
     }, [chats.length]);
 
+    const loadMoreMessages = useCallback(async (chatId: string) => {
+        const chat = chatsRef.current.find(c => c.id === chatId);
+        if (!chat || !chat.messagesLoaded || chat.messages.length === 0) return;
+        const oldest = chat.messages[0];
+        try {
+            const msgs = await api.getMessages(chatId, 50, oldest.id);
+            if (msgs.length === 0) {
+                setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, hasMore: false }));
+                return;
+            }
+            let local = await Promise.all(msgs.map(m => tryDecryptMessage(serverMsgToLocal(m, currentUserId), chatId)));
+            local = await Promise.all(local.map(m => tryDecryptReply(m, chatId)));
+            setChats(prev => prev.map(c => c.id !== chatId ? c : {
+                ...c, messages: [...local, ...c.messages], hasMore: msgs.length >= 50,
+            }));
+        } catch (e) { console.error('Load more failed', e); }
+    }, [currentUserId]);
+
+    const deleteChatAction = useCallback(async (chatId: string) => {
+        try {
+            await api.deleteChat(chatId);
+            setChats(prev => prev.filter(c => c.id !== chatId));
+            if (selectedIdRef.current === chatId) { setSelectedId(null); saveSelectedId(null); }
+        } catch (e: any) { console.error('Delete chat failed:', e); throw e; }
+    }, []);
+
+    const leaveChatAction = useCallback(async (chatId: string) => {
+        try {
+            await api.leaveChat(chatId);
+            setChats(prev => prev.filter(c => c.id !== chatId));
+            if (selectedIdRef.current === chatId) { setSelectedId(null); saveSelectedId(null); }
+        } catch (e: any) { console.error('Leave chat failed:', e); throw e; }
+    }, []);
+
     return {
         chats, selectedId,
         selectedChat: chats.find(c => c.id === selectedId) ?? null,
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, loadChats, refreshChat,
+        loadMoreMessages, deleteChatAction, leaveChatAction,
     };
 }
 
@@ -9627,264 +10264,40 @@ FILE PATH: ./client/src/icons.tsx
 import React from 'react';
 
 export const Icon = {
-    // ... ВСЕ СУЩЕСТВУЮЩИЕ ИКОНКИ ОСТАЮТСЯ ...
-
-    chat: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-    ),
-
-    phone: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-        </svg>
-    ),
-
-    settings: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-    ),
-
-    send: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-        </svg>
-    ),
-
-    paperclip: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-        </svg>
-    ),
-
-    mic: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-    ),
-
-    search: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-    ),
-
-    shield: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </svg>
-    ),
-
-    lock: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-    ),
-
-    check: (s = 13) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-        </svg>
-    ),
-
-    checkDouble: (s = 13) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="18 6 7 17 2 12" /><polyline points="22 10 13 19" />
-        </svg>
-    ),
-
-    moon: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
-    ),
-
-    sun: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="5" />
-            <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-            <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-        </svg>
-    ),
-
-    users: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-    ),
-
-    plus: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-    ),
-
-    logout: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
-        </svg>
-    ),
-
-    edit: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-        </svg>
-    ),
-
-    trash: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </svg>
-    ),
-
-    copy: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-        </svg>
-    ),
-
-    camera: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-            <circle cx="12" cy="13" r="4" />
-        </svg>
-    ),
-
-    phoneOff: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <g transform="rotate(135 12 12)">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-            </g>
-        </svg>
-    ),
-
-    volumeHigh: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-        </svg>
-    ),
-
-    volumeOff: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            <line x1="23" y1="9" x2="17" y2="15" />
-            <line x1="17" y1="9" x2="23" y2="15" />
-        </svg>
-    ),
-
-    sliders: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
-            <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
-            <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" />
-            <line x1="17" y1="16" x2="23" y2="16" />
-        </svg>
-    ),
-
-    micOff: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="1" y1="1" x2="23" y2="23" />
-            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.5-.35 2.18" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-    ),
-
-    x: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-    ),
-
-    // ═══════════════ НОВЫЕ ИКОНКИ ═══════════════
-
-    reply: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 17 4 12 9 7" />
-            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-        </svg>
-    ),
-
-    forward: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 17 20 12 15 7" />
-            <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
-        </svg>
-    ),
-
-    download: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-    ),
-
-    file: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-        </svg>
-    ),
-
-    image: (s = 20) => (
-        <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <polyline points="21 15 16 10 5 21" />
-        </svg>
-    ),
+    chat: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>),
+    phone: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" /></svg>),
+    settings: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>),
+    send: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>),
+    paperclip: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>),
+    mic: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>),
+    search: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>),
+    shield: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>),
+    lock: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>),
+    check: (s = 13) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>),
+    checkDouble: (s = 13) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 6 7 17 2 12" /><polyline points="22 10 13 19" /></svg>),
+    moon: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>),
+    sun: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>),
+    users: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>),
+    plus: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>),
+    logout: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>),
+    edit: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>),
+    trash: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>),
+    copy: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>),
+    camera: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>),
+    phoneOff: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><g transform="rotate(135 12 12)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" /></g></svg>),
+    volumeHigh: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>),
+    volumeOff: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>),
+    sliders: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg>),
+    micOff: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23" /><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" /><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.5-.35 2.18" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>),
+    x: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>),
+    reply: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>),
+    forward: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 17 20 12 15 7" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" /></svg>),
+    download: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>),
+    file: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>),
+    image: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>),
+    speed: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>),
+    leave: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>),
+    info: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>),
 };
 
 
@@ -10178,6 +10591,7 @@ export type WsServerMsg =
     | { type: 'user_online'; payload: { user_id: string } }
     | { type: 'user_offline'; payload: { user_id: string } }
     | { type: 'user_updated'; payload: { user: UserDto } }
+    | { type: 'chat_deleted'; payload: { chat_id: string } }
     | { type: 'error'; payload: { message: string } }
     | { type: 'call_incoming'; payload: { chat_id: string; call_id: string; caller_id: string; caller_name: string; sdp: string; encrypted: boolean } }
     | { type: 'call_accepted'; payload: { chat_id: string; call_id: string; sdp: string; encrypted: boolean } }
@@ -10244,6 +10658,7 @@ export interface LocalChat {
     created_at: string;
     lastMessageText: string;
     lastMessageTime: string;
+    hasMore?: boolean;
 }
 
 export interface ToastData {
@@ -10323,6 +10738,16 @@ export interface NotificationData {
     senderAvatarUrl?: string;
     text: string;
     isGroup: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Voice Player типы
+// ═══════════════════════════════════════════════════════════
+
+export interface ActiveVoice {
+    audio: HTMLAudioElement;
+    messageId: string;
+    senderName: string;
 }
 
 
@@ -10801,6 +11226,27 @@ CREATE INDEX idx_messages_reply ON messages(reply_to_id) WHERE reply_to_id IS NO
 
 
 ================================================================================
+FILE PATH: ./server/migrations/0008_channels_pins.sql
+================================================================================
+ALTER TABLE chats ADD COLUMN is_channel BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE chat_members ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE chat_invites (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id     UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    code        VARCHAR(32) UNIQUE NOT NULL,
+    created_by  UUID NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at  TIMESTAMPTZ,
+    max_uses    INT,
+    use_count   INT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_chat_invites_code ON chat_invites(code);
+CREATE INDEX idx_chat_invites_chat ON chat_invites(chat_id);
+
+
+================================================================================
 FILE PATH: ./server/src/api/auth.rs
 ================================================================================
 use axum::{extract::State, Json};
@@ -11205,6 +11651,7 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         Option<String>,
         Option<serde_json::Value>,
         Option<String>,
+        bool,
     );
 
     let rows: Vec<MemberRow> = sqlx::query_as(
@@ -11322,6 +11769,221 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         unread_count: 0,
         created_at: chat.created_at,
     })
+}
+
+/// DELETE /api/chats/:chat_id
+pub async fn delete_chat(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    // Проверяем что пользователь — владелец
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let role = role.ok_or_else(|| AppError::Forbidden("не участник чата".into()))?;
+    if role.0 != "owner" {
+        return Err(AppError::Forbidden(
+            "только создатель может удалить чат".into(),
+        ));
+    }
+
+    // Получаем участников для уведомления
+    let member_ids: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT user_id FROM chat_members WHERE chat_id = $1")
+            .bind(chat_id)
+            .fetch_all(&state.db)
+            .await?;
+
+    // Удаляем (каскадно удалит messages и chat_members)
+    sqlx::query("DELETE FROM chats WHERE id = $1")
+        .bind(chat_id)
+        .execute(&state.db)
+        .await?;
+
+    // Уведомляем
+    let msg = shared::WsServerMsg::ChatDeleted { chat_id };
+    for (uid,) in member_ids {
+        if uid != auth.user_id {
+            state.send_to_user(&uid, msg.clone()).await;
+        }
+    }
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/leave
+pub async fn leave_chat(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    sqlx::query("DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+        .bind(chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    // Если больше нет участников — удаляем чат
+    let (remaining,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id = $1")
+            .bind(chat_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if remaining == 0 {
+        sqlx::query("DELETE FROM chats WHERE id = $1")
+            .bind(chat_id)
+            .execute(&state.db)
+            .await?;
+    }
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/pin
+pub async fn toggle_pin(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<()>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    let (current,): (bool,) =
+        sqlx::query_as("SELECT is_pinned FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    sqlx::query("UPDATE chat_members SET is_pinned = $1 WHERE chat_id = $2 AND user_id = $3")
+        .bind(!current)
+        .bind(chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/invite
+pub async fn create_chat_invite(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    Json(req): Json<shared::CreateChatInviteReq>,
+) -> Result<Json<shared::ChatInviteDto>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+
+    let code: String = {
+        use rand::Rng;
+        const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+        let mut rng = rand::thread_rng();
+        (0..10)
+            .map(|_| CHARS[rng.gen_range(0..CHARS.len())] as char)
+            .collect()
+    };
+
+    let expires_at = req
+        .expires_in_hours
+        .map(|h| chrono::Utc::now() + chrono::Duration::hours(h));
+    let id = Uuid::new_v4();
+
+    sqlx::query(
+        "INSERT INTO chat_invites (id, chat_id, code, created_by, expires_at, max_uses) VALUES ($1,$2,$3,$4,$5,$6)"
+    ).bind(id).bind(chat_id).bind(&code).bind(auth.user_id).bind(expires_at).bind(req.max_uses)
+    .execute(&state.db).await?;
+
+    Ok(Json(shared::ChatInviteDto {
+        id,
+        chat_id,
+        code,
+        created_at: chrono::Utc::now(),
+        expires_at,
+        max_uses: req.max_uses,
+        use_count: 0,
+    }))
+}
+
+/// GET /api/chats/:chat_id/invites
+pub async fn list_chat_invites(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<Vec<shared::ChatInviteDto>>, AppError> {
+    ensure_member(&state, chat_id, auth.user_id).await?;
+    let rows: Vec<models::ChatInvite> =
+        sqlx::query_as("SELECT * FROM chat_invites WHERE chat_id = $1 ORDER BY created_at DESC")
+            .bind(chat_id)
+            .fetch_all(&state.db)
+            .await?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| shared::ChatInviteDto {
+                id: r.id,
+                chat_id: r.chat_id,
+                code: r.code,
+                created_at: r.created_at,
+                expires_at: r.expires_at,
+                max_uses: r.max_uses,
+                use_count: r.use_count,
+            })
+            .collect(),
+    ))
+}
+
+/// POST /api/join/:code
+pub async fn join_by_code(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(code): Path<String>,
+) -> Result<Json<shared::ChatDto>, AppError> {
+    let invite: Option<models::ChatInvite> =
+        sqlx::query_as("SELECT * FROM chat_invites WHERE code = $1")
+            .bind(&code)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let invite = invite.ok_or_else(|| AppError::NotFound("Ссылка не найдена".into()))?;
+
+    if invite.expires_at.map_or(false, |e| e < chrono::Utc::now()) {
+        return Err(AppError::BadRequest("Ссылка истекла".into()));
+    }
+    if invite.max_uses.map_or(false, |max| invite.use_count >= max) {
+        return Err(AppError::BadRequest("Лимит использований исчерпан".into()));
+    }
+
+    // Check not already member
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM chat_members WHERE chat_id=$1 AND user_id=$2")
+            .bind(invite.chat_id)
+            .bind(auth.user_id)
+            .fetch_one(&state.db)
+            .await?;
+
+    if n > 0 {
+        return chat_dto(&state, invite.chat_id).await.map(Json);
+    }
+
+    sqlx::query("INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member')")
+        .bind(invite.chat_id)
+        .bind(auth.user_id)
+        .execute(&state.db)
+        .await?;
+
+    sqlx::query("UPDATE chat_invites SET use_count = use_count + 1 WHERE id = $1")
+        .bind(invite.id)
+        .execute(&state.db)
+        .await?;
+
+    chat_dto(&state, invite.chat_id).await.map(Json)
 }
 
 
@@ -12401,6 +13063,11 @@ pub fn create_app(state: AppState) -> Router {
         // Files — 26MB limit
         .route("/upload", post(api::files::upload))
         .route("/files/:file_id", get(api::files::download))
+        .route(
+            "/chats/:chat_id",
+            get(api::chats::get).delete(api::chats::delete_chat),
+        )
+        .route("/chats/:chat_id/leave", post(api::chats::leave_chat))
         // Invites
         .route(
             "/invites",
@@ -12687,13 +13354,12 @@ FILE PATH: ./server/src/models.rs
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
     pub username: String,
     pub display_name: String,
     pub password_hash: String,
-    pub bio: String,
     pub created_at: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
     pub avatar_id: Option<Uuid>,
@@ -12701,9 +13367,10 @@ pub struct User {
     pub signing_key: Option<String>,
     pub key_signature: Option<String>,
     pub key_id: Option<String>,
+    pub bio: String,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Invite {
     pub id: Uuid,
     pub code: String,
@@ -12714,10 +13381,11 @@ pub struct Invite {
     pub used: bool,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Chat {
     pub id: Uuid,
     pub is_group: bool,
+    pub is_channel: bool,
     pub name: Option<String>,
     pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
@@ -12773,6 +13441,18 @@ pub struct ReadReceipt {
     pub user_id: Uuid,
     pub last_read_message_id: Uuid,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct ChatInvite {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub code: String,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub max_uses: Option<i32>,
+    pub use_count: i32,
 }
 
 
@@ -13713,9 +14393,10 @@ chrono = { version = "0.4", features = ["serde"] }
 ================================================================================
 FILE PATH: ./shared/src/lib.rs
 ================================================================================
+// FILE: ./shared/src/lib.rs
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use uuid::Uuid;
 
 // ═══════════════════════════════════════════════════════════
@@ -13748,14 +14429,6 @@ pub struct AuthRes {
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PublicKeyBundle {
-    pub identity_key: String,
-    pub signing_key: String,
-    pub signature: String,
-    pub key_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDto {
     pub id: Uuid,
     pub username: String,
@@ -13763,34 +14436,16 @@ pub struct UserDto {
     pub bio: String,
     pub online: bool,
     pub last_seen: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_keys: Option<PublicKeyBundle>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserProfileDto {
-    pub id: Uuid,
-    pub username: String,
-    pub display_name: String,
-    pub bio: String,
-    pub online: bool,
-    pub last_seen: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avatar_url: Option<String>,
-    pub avatars: Vec<AvatarHistoryDto>,
-    pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub public_keys: Option<PublicKeyBundle>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AvatarHistoryDto {
-    pub id: Uuid,
-    pub url: String,
-    pub set_at: DateTime<Utc>,
-    pub is_current: bool,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicKeyBundle {
+    pub identity_key: String,
+    pub signing_key: String,
+    pub signature: String,
+    pub key_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -13805,8 +14460,128 @@ pub struct UpdateAvatarRes {
     pub avatar_url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvatarHistoryDto {
+    pub id: Uuid,
+    pub url: String,
+    pub set_at: DateTime<Utc>,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserProfileDto {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub bio: String,
+    pub online: bool,
+    pub last_seen: DateTime<Utc>,
+    pub avatar_url: Option<String>,
+    pub avatars: Vec<AvatarHistoryDto>,
+    pub created_at: DateTime<Utc>,
+    pub public_keys: Option<PublicKeyBundle>,
+}
+
 // ═══════════════════════════════════════════════════════════
-//  Encryption
+//  Chats
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateChatReq {
+    pub member_ids: Vec<Uuid>,
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub is_channel: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatDto {
+    pub id: Uuid,
+    pub is_group: bool,
+    pub name: Option<String>,
+    pub members: Vec<ChatMemberDto>,
+    pub last_message: Option<MessageDto>,
+    pub unread_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub is_channel: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMemberDto {
+    pub user_id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub role: String,
+    pub online: bool,
+    pub avatar_url: Option<String>,
+    pub public_keys: Option<PublicKeyBundle>,
+    pub encrypted_chat_key: Option<EncryptedChatKey>,
+    pub member_key_id: Option<String>,
+    pub is_pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatInviteDto {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub code: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub max_uses: Option<i32>,
+    pub use_count: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateChatInviteReq {
+    pub expires_in_hours: Option<i64>,
+    pub max_uses: Option<i32>,
+}
+// ═══════════════════════════════════════════════════════════
+//  Messages
+// ═══════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageDto {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub content: String,
+    pub edited: bool,
+    pub created_at: DateTime<Utc>,
+    pub attachment: Option<AttachmentDto>,
+    pub encrypted: Option<EncryptedPayload>,
+    pub reply_to: Option<Box<ReplyInfoDto>>,
+    pub forwarded_from: Option<ForwardInfoDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttachmentDto {
+    pub id: Uuid,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplyInfoDto {
+    pub id: Uuid,
+    pub sender_id: Uuid,
+    pub sender_name: String,
+    pub content: String,
+    pub attachment: Option<AttachmentDto>,
+    pub encrypted: Option<EncryptedPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForwardInfoDto {
+    pub original_message_id: Uuid,
+    pub original_sender_name: String,
+    pub original_chat_name: Option<String>,
+}
+
+// ═══════════════════════════════════════════════════════════
+//  E2E Encryption
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13824,103 +14599,9 @@ pub struct EncryptedChatKey {
     pub nonce: String,
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Attachments
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AttachmentDto {
-    pub id: Uuid,
-    pub filename: String,
-    pub mime_type: String,
-    pub size_bytes: i64,
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Messages
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReplyInfoDto {
-    pub id: Uuid,
-    pub sender_id: Uuid,
-    pub sender_name: String,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attachment: Option<AttachmentDto>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted: Option<EncryptedPayload>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ForwardInfoDto {
-    pub original_message_id: Uuid,
-    pub original_sender_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub original_chat_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageDto {
-    pub id: Uuid,
-    pub chat_id: Uuid,
-    pub sender_id: Uuid,
-    pub sender_name: String,
-    pub content: String,
-    pub edited: bool,
-    pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attachment: Option<AttachmentDto>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted: Option<EncryptedPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reply_to: Option<Box<ReplyInfoDto>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub forwarded_from: Option<ForwardInfoDto>,
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Chats
-// ═══════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMemberDto {
-    pub user_id: Uuid,
-    pub username: String,
-    pub display_name: String,
-    pub role: String,
-    pub online: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avatar_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub public_keys: Option<PublicKeyBundle>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted_chat_key: Option<EncryptedChatKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub member_key_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatDto {
-    pub id: Uuid,
-    pub is_group: bool,
-    pub name: Option<String>,
-    pub members: Vec<ChatMemberDto>,
-    pub last_message: Option<MessageDto>,
-    pub unread_count: i64,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateChatReq {
-    pub member_ids: Vec<Uuid>,
-    pub is_group: bool,
-    pub name: Option<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateChatKeysReq {
-    pub encrypted_keys: HashMap<Uuid, EncryptedChatKey>,
+    pub encrypted_keys: std::collections::HashMap<Uuid, EncryptedChatKey>,
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -13928,74 +14609,161 @@ pub struct UpdateChatKeysReq {
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct InviteDto {
-    pub code: String,
-    pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<DateTime<Utc>>,
-    pub used: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateInviteReq {
     pub expires_in_hours: Option<i64>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InviteDto {
+    pub code: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub used: bool,
+}
+
 // ═══════════════════════════════════════════════════════════
-//  WebSocket
+//  WebSocket Messages
 // ═══════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
-pub enum WsServerMsg {
-    #[serde(rename = "new_message")]
-    NewMessage { message: MessageDto },
-
-    #[serde(rename = "message_sent")]
-    MessageSent {
-        client_id: String,
-        message: MessageDto,
-    },
-
-    #[serde(rename = "message_edited")]
-    MessageEdited {
+#[serde(rename_all = "snake_case")]
+pub enum WsClientMsg {
+    SendMessage {
         chat_id: Uuid,
+        content: String,
+        client_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachment_id: Option<Uuid>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        encrypted: Option<EncryptedPayload>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reply_to_id: Option<Uuid>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        forwarded_from_id: Option<Uuid>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        forwarded_from_name: Option<String>,
+    },
+    EditMessage {
         message_id: Uuid,
         new_content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         encrypted: Option<EncryptedPayload>,
     },
+    DeleteMessage {
+        message_id: Uuid,
+    },
+    Typing {
+        chat_id: Uuid,
+    },
+    StopTyping {
+        chat_id: Uuid,
+    },
+    MarkRead {
+        chat_id: Uuid,
+        message_id: Uuid,
+    },
+    // ── Calls ────────────────────────────────────────────
+    CallOffer {
+        chat_id: Uuid,
+        call_id: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    CallAnswer {
+        chat_id: Uuid,
+        call_id: String,
+        sdp: String,
+        encrypted: bool,
+    },
+    CallIce {
+        chat_id: Uuid,
+        call_id: String,
+        candidate: String,
+        encrypted: bool,
+    },
+    CallReject {
+        chat_id: Uuid,
+        call_id: String,
+    },
+    CallMute {
+        chat_id: Uuid,
+        call_id: String,
+        muted: bool,
+    },
+    CallHangup {
+        chat_id: Uuid,
+        call_id: String,
+    },
+    // ── Shared Media ─────────────────────────────────────
+    CallMediaShare {
+        chat_id: Uuid,
+        call_id: String,
+        file_id: String,
+        file_name: String,
+    },
+    CallMediaRemove {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+    },
+    CallMediaControl {
+        chat_id: Uuid,
+        call_id: String,
+        media_id: String,
+        action: String,
+        current_time: f64,
+    },
+}
 
-    #[serde(rename = "message_deleted")]
-    MessageDeleted { chat_id: Uuid, message_id: Uuid },
-
-    #[serde(rename = "typing")]
-    Typing { chat_id: Uuid, user_id: Uuid },
-
-    #[serde(rename = "stop_typing")]
-    StopTyping { chat_id: Uuid, user_id: Uuid },
-
-    #[serde(rename = "messages_read")]
+#[derive(Debug, Clone)]
+pub enum WsServerMsg {
+    NewMessage {
+        message: MessageDto,
+    },
+    MessageSent {
+        client_id: String,
+        message: MessageDto,
+    },
+    MessageEdited {
+        chat_id: Uuid,
+        message_id: Uuid,
+        new_content: String,
+        encrypted: Option<EncryptedPayload>,
+    },
+    MessageDeleted {
+        chat_id: Uuid,
+        message_id: Uuid,
+    },
+    Typing {
+        chat_id: Uuid,
+        user_id: Uuid,
+    },
+    StopTyping {
+        chat_id: Uuid,
+        user_id: Uuid,
+    },
     MessagesRead {
         chat_id: Uuid,
         user_id: Uuid,
         message_id: Uuid,
     },
-
-    #[serde(rename = "user_online")]
-    UserOnline { user_id: Uuid },
-
-    #[serde(rename = "user_offline")]
-    UserOffline { user_id: Uuid },
-
-    #[serde(rename = "user_updated")]
-    UserUpdated { user: UserDto },
-
-    #[serde(rename = "error")]
-    Error { message: String },
-
-    // Call
-    #[serde(rename = "call_incoming")]
+    UserOnline {
+        user_id: Uuid,
+    },
+    UserOffline {
+        user_id: Uuid,
+    },
+    UserUpdated {
+        user: UserDto,
+    },
+    ChatDeleted {
+        chat_id: Uuid,
+    },
+    Error {
+        message: String,
+    },
+    // ── Calls ────────────────────────────────────────────
     CallIncoming {
         chat_id: Uuid,
         call_id: String,
@@ -14004,32 +14772,33 @@ pub enum WsServerMsg {
         sdp: String,
         encrypted: bool,
     },
-    #[serde(rename = "call_accepted")]
     CallAccepted {
         chat_id: Uuid,
         call_id: String,
         sdp: String,
         encrypted: bool,
     },
-    #[serde(rename = "call_ice")]
     CallIce {
         chat_id: Uuid,
         call_id: String,
         candidate: String,
         encrypted: bool,
     },
-    #[serde(rename = "call_rejected")]
-    CallRejected { chat_id: Uuid, call_id: String },
-    #[serde(rename = "call_ended")]
-    CallEnded { chat_id: Uuid, call_id: String },
-    #[serde(rename = "call_mute_changed")]
+    CallRejected {
+        chat_id: Uuid,
+        call_id: String,
+    },
     CallMuteChanged {
         chat_id: Uuid,
         call_id: String,
         user_id: Uuid,
         muted: bool,
     },
-    #[serde(rename = "call_media_shared")]
+    CallEnded {
+        chat_id: Uuid,
+        call_id: String,
+    },
+    // ── Shared Media ─────────────────────────────────────
     CallMediaShared {
         chat_id: Uuid,
         call_id: String,
@@ -14039,13 +14808,11 @@ pub enum WsServerMsg {
         file_id: String,
         file_name: String,
     },
-    #[serde(rename = "call_media_removed")]
     CallMediaRemoved {
         chat_id: Uuid,
         call_id: String,
         media_id: String,
     },
-    #[serde(rename = "call_media_controlled")]
     CallMediaControlled {
         chat_id: Uuid,
         call_id: String,
@@ -14056,99 +14823,130 @@ pub enum WsServerMsg {
     },
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", content = "payload")]
-pub enum WsClientMsg {
-    #[serde(rename = "send_message")]
-    SendMessage {
-        chat_id: Uuid,
-        content: String,
-        client_id: String,
-        #[serde(default)]
-        attachment_id: Option<Uuid>,
-        #[serde(default)]
-        encrypted: Option<EncryptedPayload>,
-        #[serde(default)]
-        reply_to_id: Option<Uuid>,
-        #[serde(default)]
-        forwarded_from_id: Option<Uuid>,
-        #[serde(default)]
-        forwarded_from_name: Option<String>,
-    },
-
-    #[serde(rename = "edit_message")]
-    EditMessage {
-        message_id: Uuid,
-        new_content: String,
-        #[serde(default)]
-        encrypted: Option<EncryptedPayload>,
-    },
-
-    #[serde(rename = "delete_message")]
-    DeleteMessage { message_id: Uuid },
-
-    #[serde(rename = "typing")]
-    Typing { chat_id: Uuid },
-
-    #[serde(rename = "stop_typing")]
-    StopTyping { chat_id: Uuid },
-
-    #[serde(rename = "mark_read")]
-    MarkRead { chat_id: Uuid, message_id: Uuid },
-
-    // Call
-    #[serde(rename = "call_offer")]
-    CallOffer {
-        chat_id: Uuid,
-        call_id: String,
-        sdp: String,
-        encrypted: bool,
-    },
-    #[serde(rename = "call_answer")]
-    CallAnswer {
-        chat_id: Uuid,
-        call_id: String,
-        sdp: String,
-        encrypted: bool,
-    },
-    #[serde(rename = "call_ice")]
-    CallIce {
-        chat_id: Uuid,
-        call_id: String,
-        candidate: String,
-        encrypted: bool,
-    },
-    #[serde(rename = "call_reject")]
-    CallReject { chat_id: Uuid, call_id: String },
-    #[serde(rename = "call_mute")]
-    CallMute {
-        chat_id: Uuid,
-        call_id: String,
-        muted: bool,
-    },
-    #[serde(rename = "call_hangup")]
-    CallHangup { chat_id: Uuid, call_id: String },
-    #[serde(rename = "call_media_share")]
-    CallMediaShare {
-        chat_id: Uuid,
-        call_id: String,
-        file_id: String,
-        file_name: String,
-    },
-    #[serde(rename = "call_media_remove")]
-    CallMediaRemove {
-        chat_id: Uuid,
-        call_id: String,
-        media_id: String,
-    },
-    #[serde(rename = "call_media_control")]
-    CallMediaControl {
-        chat_id: Uuid,
-        call_id: String,
-        media_id: String,
-        action: String,
-        current_time: f64,
-    },
+impl WsServerMsg {
+    pub fn to_json(&self) -> serde_json::Value {
+        use serde_json::json;
+        match self {
+            WsServerMsg::NewMessage { message } => {
+                json!({"type": "new_message", "payload": {"message": message}})
+            }
+            WsServerMsg::MessageSent { client_id, message } => {
+                json!({"type": "message_sent", "payload": {"client_id": client_id, "message": message}})
+            }
+            WsServerMsg::MessageEdited {
+                chat_id,
+                message_id,
+                new_content,
+                encrypted,
+            } => {
+                json!({"type": "message_edited", "payload": {"chat_id": chat_id, "message_id": message_id, "new_content": new_content, "encrypted": encrypted}})
+            }
+            WsServerMsg::MessageDeleted {
+                chat_id,
+                message_id,
+            } => {
+                json!({"type": "message_deleted", "payload": {"chat_id": chat_id, "message_id": message_id}})
+            }
+            WsServerMsg::Typing { chat_id, user_id } => {
+                json!({"type": "typing", "payload": {"chat_id": chat_id, "user_id": user_id}})
+            }
+            WsServerMsg::StopTyping { chat_id, user_id } => {
+                json!({"type": "stop_typing", "payload": {"chat_id": chat_id, "user_id": user_id}})
+            }
+            WsServerMsg::MessagesRead {
+                chat_id,
+                user_id,
+                message_id,
+            } => {
+                json!({"type": "messages_read", "payload": {"chat_id": chat_id, "user_id": user_id, "message_id": message_id}})
+            }
+            WsServerMsg::UserOnline { user_id } => {
+                json!({"type": "user_online", "payload": {"user_id": user_id}})
+            }
+            WsServerMsg::UserOffline { user_id } => {
+                json!({"type": "user_offline", "payload": {"user_id": user_id}})
+            }
+            WsServerMsg::UserUpdated { user } => {
+                json!({"type": "user_updated", "payload": {"user": user}})
+            }
+            WsServerMsg::ChatDeleted { chat_id } => {
+                json!({"type": "chat_deleted", "payload": {"chat_id": chat_id}})
+            }
+            WsServerMsg::Error { message } => {
+                json!({"type": "error", "payload": {"message": message}})
+            }
+            // ── Calls ────────────────────────────────────
+            WsServerMsg::CallIncoming {
+                chat_id,
+                call_id,
+                caller_id,
+                caller_name,
+                sdp,
+                encrypted,
+            } => {
+                json!({"type": "call_incoming", "payload": {"chat_id": chat_id, "call_id": call_id, "caller_id": caller_id, "caller_name": caller_name, "sdp": sdp, "encrypted": encrypted}})
+            }
+            WsServerMsg::CallAccepted {
+                chat_id,
+                call_id,
+                sdp,
+                encrypted,
+            } => {
+                json!({"type": "call_accepted", "payload": {"chat_id": chat_id, "call_id": call_id, "sdp": sdp, "encrypted": encrypted}})
+            }
+            WsServerMsg::CallIce {
+                chat_id,
+                call_id,
+                candidate,
+                encrypted,
+            } => {
+                json!({"type": "call_ice", "payload": {"chat_id": chat_id, "call_id": call_id, "candidate": candidate, "encrypted": encrypted}})
+            }
+            WsServerMsg::CallRejected { chat_id, call_id } => {
+                json!({"type": "call_rejected", "payload": {"chat_id": chat_id, "call_id": call_id}})
+            }
+            WsServerMsg::CallMuteChanged {
+                chat_id,
+                call_id,
+                user_id,
+                muted,
+            } => {
+                json!({"type": "call_mute_changed", "payload": {"chat_id": chat_id, "call_id": call_id, "user_id": user_id, "muted": muted}})
+            }
+            WsServerMsg::CallEnded { chat_id, call_id } => {
+                json!({"type": "call_ended", "payload": {"chat_id": chat_id, "call_id": call_id}})
+            }
+            // ── Shared Media ─────────────────────────────
+            WsServerMsg::CallMediaShared {
+                chat_id,
+                call_id,
+                media_id,
+                user_id,
+                user_name,
+                file_id,
+                file_name,
+            } => {
+                json!({"type": "call_media_shared", "payload": {"chat_id": chat_id, "call_id": call_id, "media_id": media_id, "user_id": user_id, "user_name": user_name, "file_id": file_id, "file_name": file_name}})
+            }
+            WsServerMsg::CallMediaRemoved {
+                chat_id,
+                call_id,
+                media_id,
+            } => {
+                json!({"type": "call_media_removed", "payload": {"chat_id": chat_id, "call_id": call_id, "media_id": media_id}})
+            }
+            WsServerMsg::CallMediaControlled {
+                chat_id,
+                call_id,
+                media_id,
+                user_id,
+                action,
+                current_time,
+            } => {
+                json!({"type": "call_media_controlled", "payload": {"chat_id": chat_id, "call_id": call_id, "media_id": media_id, "user_id": user_id, "action": action, "current_time": current_time}})
+            }
+        }
+    }
 }
 
 

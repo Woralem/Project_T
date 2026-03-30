@@ -28,13 +28,17 @@ function buildPreview(dto: ChatDto, uid: string) {
 
 function chatDtoToLocal(dto: ChatDto, uid: string): LocalChat {
     const others = dto.members.filter(m => m.user_id !== uid);
-    const name = dto.is_group ? (dto.name || 'Групповой чат') : (others[0]?.display_name || 'Чат');
+    const name = dto.is_group ? (dto.name || (dto.is_channel ? 'Канал' : 'Групповой чат')) : (others[0]?.display_name || 'Чат');
     const online = dto.is_group ? false : (others[0]?.online || false);
     const p = buildPreview(dto, uid);
+    const myMember = dto.members.find(m => m.user_id === uid);
     return {
         id: dto.id, is_group: dto.is_group, name, members: dto.members,
         messages: [], messagesLoaded: false, unread_count: dto.unread_count,
         online, created_at: dto.created_at, lastMessageText: p.text, lastMessageTime: p.time,
+        isPinned: myMember?.is_pinned || false,
+        isChannel: dto.is_channel || false,
+        lastActivityAt: dto.last_message?.created_at || dto.created_at,
     };
 }
 
@@ -292,7 +296,6 @@ export function useChats(
         const finalMime = file.type || 'application/octet-stream';
         const originalName = file.name;
 
-        // Upload with encryption if possible
         try {
             if (cryptoManager.hasChatKey(chatId)) {
                 try {
@@ -414,8 +417,8 @@ export function useChats(
         wsManager.send({ type: 'delete_message', payload: { message_id: messageId } });
     }, []);
 
-    const createChat = useCallback(async (memberIds: string[], isGroup: boolean, name?: string) => {
-        const nc = await api.createChat(memberIds, isGroup, name);
+    const createChat = useCallback(async (memberIds: string[], isGroup: boolean, name?: string, isChannel?: boolean) => {
+        const nc = await api.createChat(memberIds, isGroup, name, isChannel);
         const lc = chatDtoToLocal(nc, currentUserId);
         if (cryptoManager.hasKeys()) await setupNewChatEncryption(nc, currentUserId);
         setChats(prev => prev.find(c => c.id === nc.id) ? prev : [lc, ...prev]);
@@ -423,6 +426,13 @@ export function useChats(
         saveSelectedId(nc.id);
         return nc;
     }, [currentUserId]);
+
+    const togglePinChat = useCallback(async (chatId: string) => {
+        try {
+            await api.togglePin(chatId);
+            setChats(prev => prev.map(c => c.id !== chatId ? c : { ...c, isPinned: !c.isPinned }));
+        } catch (e: any) { console.error('Pin toggle failed:', e); }
+    }, []);
 
     // ── WebSocket ────────────────────────────────────────
 
@@ -444,6 +454,7 @@ export function useChats(
                         }),
                         lastMessageText: 'Вы: ' + (c.messages.find(m => m.client_id === client_id)?.content || message.content),
                         lastMessageTime: formatTime(message.created_at),
+                        lastActivityAt: message.created_at,
                     }));
                     break;
                 }
@@ -480,6 +491,7 @@ export function useChats(
                                 unread_count: (isSelected && isWindowActive) ? 0 : c.unread_count + 1,
                                 lastMessageText: pref + display,
                                 lastMessageTime: formatTime(message.created_at),
+                                lastActivityAt: message.created_at,
                             };
                         });
                     });
@@ -635,6 +647,6 @@ export function useChats(
         loadingChats, loadingMessages,
         selectChat, sendMessage, sendVoiceMessage, sendFileMessage, forwardMessage,
         editMessage, deleteMessage, createChat, loadChats, refreshChat,
-        loadMoreMessages, deleteChatAction, leaveChatAction,
+        loadMoreMessages, deleteChatAction, leaveChatAction, togglePinChat,
     };
 }

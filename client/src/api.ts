@@ -1,4 +1,4 @@
-import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey, UserProfileDto, AvatarHistoryDto } from './types';
+import type { AuthRes, ChatDto, MessageDto, UserDto, InviteDto, PublicKeyBundle, AttachmentDto, EncryptedChatKey, UserProfileDto, AvatarHistoryDto, ChatInviteDto } from './types';
 
 const SERVER_URL = 'http://163.5.180.138:3000';
 const API_URL = `${SERVER_URL}/api`;
@@ -53,9 +53,11 @@ export function getAvatarUrl(userId: string): string { return `${API_URL}/users/
 export async function searchUsers(query?: string): Promise<UserDto[]> { const q = query ? `?q=${encodeURIComponent(query)}` : ''; return request<UserDto[]>(`/users${q}`); }
 export async function getChats(): Promise<ChatDto[]> { return request<ChatDto[]>('/chats'); }
 export async function getChat(chatId: string): Promise<ChatDto> { return request<ChatDto>(`/chats/${chatId}`); }
-export async function createChat(member_ids: string[], is_group: boolean = false, name?: string): Promise<ChatDto> {
-    return request<ChatDto>('/chats', { method: 'POST', body: JSON.stringify({ member_ids, is_group, name }) });
+
+export async function createChat(member_ids: string[], is_group: boolean = false, name?: string, is_channel?: boolean): Promise<ChatDto> {
+    return request<ChatDto>('/chats', { method: 'POST', body: JSON.stringify({ member_ids, is_group, name, is_channel }) });
 }
+
 export async function deleteChat(chatId: string): Promise<void> { await request<void>(`/chats/${chatId}`, { method: 'DELETE' }); }
 export async function leaveChat(chatId: string): Promise<void> { await request<void>(`/chats/${chatId}/leave`, { method: 'POST' }); }
 export async function updateChatKeys(chatId: string, encrypted_keys: Record<string, EncryptedChatKey>): Promise<void> {
@@ -73,4 +75,23 @@ export async function uploadFile(file: Blob, filename: string): Promise<Attachme
     const res = await fetch(`${API_URL}/upload`, { method: 'POST', headers, body: formData });
     if (!res.ok) { const body = await res.json().catch(() => ({ error: res.statusText })); throw new ApiError(res.status, body.error || 'Upload failed'); }
     return res.json();
+}
+
+export async function togglePin(chatId: string): Promise<void> {
+    await request<void>(`/chats/${chatId}/pin`, { method: 'POST' });
+}
+
+export async function createChatInvite(chatId: string, expiresInHours?: number, maxUses?: number): Promise<ChatInviteDto> {
+    return request<ChatInviteDto>(`/chats/${chatId}/invite`, {
+        method: 'POST',
+        body: JSON.stringify({ expires_in_hours: expiresInHours, max_uses: maxUses }),
+    });
+}
+
+export async function getChatInvites(chatId: string): Promise<ChatInviteDto[]> {
+    return request<ChatInviteDto[]>(`/chats/${chatId}/invites`);
+}
+
+export async function joinByCode(code: string): Promise<ChatDto> {
+    return request<ChatDto>(`/join/${code}`, { method: 'POST' });
 }

@@ -1,5 +1,3 @@
-// FILE: ./shared/src/lib.rs
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -96,12 +94,14 @@ pub struct CreateChatReq {
     pub member_ids: Vec<Uuid>,
     pub is_group: bool,
     pub name: Option<String>,
+    pub is_channel: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatDto {
     pub id: Uuid,
     pub is_group: bool,
+    pub is_channel: bool,
     pub name: Option<String>,
     pub members: Vec<ChatMemberDto>,
     pub last_message: Option<MessageDto>,
@@ -120,6 +120,24 @@ pub struct ChatMemberDto {
     pub public_keys: Option<PublicKeyBundle>,
     pub encrypted_chat_key: Option<EncryptedChatKey>,
     pub member_key_id: Option<String>,
+    pub is_pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatInviteDto {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub code: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub max_uses: Option<i32>,
+    pub use_count: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateChatInviteReq {
+    pub expires_in_hours: Option<i64>,
+    pub max_uses: Option<i32>,
 }
 
 // ═══════════════════════════════════════════════════════════
