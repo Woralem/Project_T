@@ -1,258 +1,175 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { LocalChat, LocalMessage, ContextMenuItem, ActiveVoice } from '../../types';
-import type { MediaInfo } from './MessageBubble';
-import { formatTime } from '../../utils';
-import { Icon } from '../../icons';
+import React, { useEffect, useRef, useState } from 'react';
+import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2 } from 'lucide-react';
+import { useChatStore } from '../../store/useChatStore';
+import { useUiStore } from '../../store/useUiStore';
 import { Avatar } from '../ui/Avatar';
-import { ContextMenu } from '../ui/ContextMenu';
 import { MessageBubble } from './MessageBubble';
 import { InputBar } from './InputBar';
-import { ChatSecurityBanner } from './ChatSecurityBanner';
-import { MediaViewer } from '../ui/MediaViewer';
-import { VoicePlayerBar } from './VoicePlayerBar';
+import { ContextMenu } from '../ui/ContextMenu';
 import { ChatInfoPanel } from './ChatInfoPanel';
-import { getFileUrl } from '../../api';
-import { cryptoManager } from '../../crypto';
+import { UserProfilePanel } from './UserProfilePanel';
+import { ForwardModal } from './ForwardModal';
+import type { LocalMessage, E2EStatus } from '../../types';
+import type { ContextMenuItem } from '../ui/ContextMenu';
+import { useCallStore } from '../../store/useCallStore';
 
-interface Props {
-    chat: LocalChat;
-    currentUserId: string;
-    loadingMessages?: boolean;
-    onSendMessage: (text: string, replyToId?: string) => void;
-    onSendVoice: (chatId: string, blob: Blob) => void;
-    onSendFile: (chatId: string, file: File, caption: string, replyToId?: string) => Promise<void>;
-    onDeleteMessage: (msgId: string) => void;
-    onEditMessage: (msgId: string, newText: string) => void;
-    onRefreshChat: (chatId: string) => void;
-    onStartCall: (chatId: string) => void;
-    onOpenProfile?: (userId: string) => void;
-    onForwardMessage: (msg: LocalMessage) => void;
-    onLoadMore?: (chatId: string) => void;
-    onDeleteChat?: (chatId: string) => void;
-    onLeaveChat?: (chatId: string) => void;
-    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
-    activeVoice?: ActiveVoice | null;
-    onVoiceActivate?: (v: ActiveVoice) => void;
-    onVoiceDeactivate?: () => void;
+interface Props { currentUserId: string; currentUserName: string }
+
+function E2EBanner({ status }: { status?: E2EStatus }) {
+    if (!status) return null;
+    const cfg: Record<string, { bg: string; icon: React.ReactNode; label: string }> = {
+        ready: { bg: 'bg-green-500/10 text-green-600 dark:text-green-400', icon: <Lock size={14} />, label: 'Сквозное шифрование включено' },
+        no_identity: { bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', icon: <AlertTriangle size={14} />, label: 'Настройте E2E в настройках' },
+        peer_no_e2e: { bg: 'bg-gray-200/60 dark:bg-gray-800/60 text-gray-500', icon: <Shield size={14} />, label: 'Собеседник не настроил E2E' },
+        waiting: { bg: 'bg-blue-500/10 text-blue-500', icon: <Clock size={14} />, label: 'Синхронизация ключей...' },
+        error: { bg: 'bg-red-500/10 text-red-500', icon: <AlertTriangle size={14} />, label: 'Ошибка шифрования' },
+    };
+    const c = cfg[status]; if (!c) return null;
+    return <div className={`flex items-center justify-center gap-2 mb-4 px-4 py-2 text-xs font-semibold rounded-2xl w-fit mx-auto select-none ${c.bg}`}>{c.icon} {c.label}</div>;
 }
 
-async function triggerDownload(fileUrl: string, filename: string, chatId?: string, nonce?: string, attachmentId?: string) {
-    try {
-        const resp = await fetch(fileUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        let data = await resp.arrayBuffer();
-        if (chatId && nonce && cryptoManager.hasChatKey(chatId)) {
-            data = await cryptoManager.decryptBuffer(chatId, data, nonce, attachmentId);
-        }
-        const blob = new Blob([data]);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 2000);
-    } catch (e) {
-        console.error('Download failed:', e);
-    }
-}
-
-export function ChatView({
-    chat, currentUserId, loadingMessages,
-    onSendMessage, onSendVoice, onSendFile,
-    onDeleteMessage, onEditMessage, onRefreshChat, onStartCall,
-    onOpenProfile, onForwardMessage, onLoadMore, onDeleteChat, onLeaveChat, showToast,
-    activeVoice, onVoiceActivate, onVoiceDeactivate,
-}: Props) {
-    const [inputText, setInputText] = useState('');
+export function ChatView({ currentUserId, currentUserName }: Props) {
+    const { chats, selectedId, loadingMessages, sendMessage, deleteMessage, editMessage, forwardMessage } = useChatStore();
+    const showToast = useUiStore(s => s.showToast);
+    const [panelOpen, setPanelOpen] = useState(false);
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
     const [replyTo, setReplyTo] = useState<LocalMessage | null>(null);
-    const [pendingFile, setPendingFile] = useState<File | null>(null);
-    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
-    const [mediaView, setMediaView] = useState<MediaInfo | null>(null);
-    const [sending, setSending] = useState(false);
-    const [infoOpen, setInfoOpen] = useState(false);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [isRecording, setIsRecording] = useState(false);
+    const [forwardMsg, setForwardMsg] = useState<LocalMessage | null>(null);
+    const chat = chats.find(c => c.id === selectedId);
     const bottomRef = useRef<HTMLDivElement>(null);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const startCall = useCallStore(s => s.startCall);
+    const allChats = useChatStore(s => s.chats);
 
-    const isChannel = chat.isChannel;
-    const myRole = chat.members.find(m => m.user_id === currentUserId)?.role || 'member';
-    const canPost = !isChannel || myRole === 'owner' || myRole === 'admin';
+    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat?.messages.length, chat?.id]);
+    useEffect(() => { setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null); }, [selectedId]);
 
-    const getChatAvatar = (): string | undefined => {
-        if (chat.is_group) return undefined;
-        return chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
-    };
+    if (!chat) return null;
 
-    useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50); }, [chat.id]);
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat.messages.length, chat.id]);
+    const other = chat.members.find(m => m.user_id !== currentUserId);
+    const isDM = !chat.is_group && !chat.isChannel;
 
-    useEffect(() => {
-        if (!isRecording) setInputText('');
-        setEditingMsg(null); setReplyTo(null); setPendingFile(null);
-        setCtxMenu(null); setMediaView(null); setInfoOpen(false);
-    }, [chat.id]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                if (mediaView) setMediaView(null);
-                else if (ctxMenu) setCtxMenu(null);
-                else if (infoOpen) setInfoOpen(false);
-                else if (editingMsg) { setEditingMsg(null); setInputText(''); }
-                else if (replyTo) setReplyTo(null);
-                else if (pendingFile) setPendingFile(null);
-            }
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [ctxMenu, editingMsg, replyTo, pendingFile, mediaView, infoOpen]);
-
-    const handleScroll = useCallback(() => {
-        const el = scrollRef.current;
-        if (!el || loadingMore || !chat.hasMore || !onLoadMore) return;
-        if (el.scrollTop < 100) {
-            setLoadingMore(true);
-            const prevHeight = el.scrollHeight;
-            onLoadMore(chat.id);
-            requestAnimationFrame(() => {
-                if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prevHeight;
-                setLoadingMore(false);
-            });
+    const getCtxItems = (msg: LocalMessage): ContextMenuItem[] => {
+        const items: ContextMenuItem[] = [
+            { label: 'Ответить', icon: <Reply size={16} />, onClick: () => setReplyTo(msg) },
+            { label: 'Переслать', icon: <Share2 size={16} />, onClick: () => setForwardMsg(msg) },
+            { label: 'Копировать', icon: <Copy size={16} />, onClick: () => { navigator.clipboard.writeText(msg.decrypted_content || msg.content); showToast('Скопировано'); } },
+        ];
+        if (msg.own && msg.status !== 'pending') {
+            items.push({ label: 'Редактировать', icon: <Edit2 size={16} />, onClick: () => { setEditingMsg(msg); setReplyTo(null); } });
+            items.push({ label: 'Удалить', icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMessage(msg.id) });
         }
-    }, [chat.id, chat.hasMore, loadingMore, onLoadMore]);
-
-    const handleMessagesClick = useCallback(() => { inputRef.current?.focus(); }, []);
-
-    const handleSend = useCallback(async () => {
-        if (sending) return;
-        if (editingMsg) {
-            const t = inputText.trim();
-            if (t && t !== editingMsg.content) onEditMessage(editingMsg.id, t);
-            setEditingMsg(null); setInputText(''); return;
-        }
-        if (pendingFile) {
-            setSending(true);
-            try { await onSendFile(chat.id, pendingFile, inputText.trim(), replyTo?.id); setPendingFile(null); setReplyTo(null); setInputText(''); }
-            catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
-            finally { setSending(false); } return;
-        }
-        const t = inputText.trim(); if (!t) return;
-        onSendMessage(t, replyTo?.id); setReplyTo(null); setInputText('');
-    }, [inputText, editingMsg, pendingFile, replyTo, chat.id, sending, onSendMessage, onEditMessage, onSendFile, showToast]);
-
-    const handleSendVoice = useCallback((cid: string, blob: Blob) => { onSendVoice(cid, blob); }, [onSendVoice]);
-    const handleSendFile = useCallback((file: File) => { setPendingFile(file); }, []);
-    const handleContextMenu = (e: React.MouseEvent, msg: LocalMessage) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, message: msg }); };
-
-    const ctxItems = (msg: LocalMessage): ContextMenuItem[] => {
-        const items: ContextMenuItem[] = [];
-        items.push({ label: 'Ответить', icon: Icon.reply(16), onClick: () => { setReplyTo(msg); setEditingMsg(null); } });
-        items.push({ label: 'Переслать', icon: Icon.forward(16), onClick: () => onForwardMessage(msg) });
-        if (msg.own && msg.status !== 'pending' && !msg.attachment) items.push({ label: 'Редактировать', icon: Icon.edit(16), onClick: () => { setEditingMsg(msg); setInputText(msg.content); setReplyTo(null); } });
-        items.push({ label: 'Копировать', icon: Icon.copy(16), onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); } });
-        if (msg.attachment) {
-            items.push({
-                label: 'Скачать файл', icon: Icon.download(16), onClick: () => {
-                    const att = msg.attachment!; const isEnc = !!msg.encrypted?.nonce;
-                    triggerDownload(getFileUrl(att.id), att.filename, isEnc ? chat.id : undefined, isEnc ? msg.encrypted!.nonce : undefined, att.id);
-                }
-            });
-        }
-        if (msg.own) items.push({ label: 'Удалить', icon: Icon.trash(16), danger: true, onClick: () => onDeleteMessage(msg.id) });
         return items;
     };
 
-    const handleRefresh = useCallback(() => { onRefreshChat(chat.id); }, [onRefreshChat, chat.id]);
-    const handleCall = useCallback(() => {
-        if (chat.is_group) { showToast('Групповые звонки пока не поддерживаются', 'info'); return; }
-        onStartCall(chat.id);
-    }, [chat.id, chat.is_group, onStartCall, showToast]);
+    const handleSend = (text: string, attachmentId?: string, fileNonce?: string) => {
+        if (editingMsg) { editMessage(editingMsg.id, text); setEditingMsg(null); return; }
+        sendMessage(chat.id, text, currentUserId, currentUserName, attachmentId, fileNonce, replyTo?.id);
+        setReplyTo(null);
+    };
 
-    // ЛС → профиль, группа/канал → инфо-панель
-    const handleHeaderClick = useCallback(() => {
-        if (!chat.is_group && !chat.isChannel) {
-            const other = chat.members.find(m => m.user_id !== currentUserId);
-            if (other && onOpenProfile) { onOpenProfile(other.user_id); return; }
+    const handleForward = (msg: LocalMessage, targetChatId: string) => {
+        forwardMessage(msg, targetChatId, currentUserId, currentUserName);
+        showToast('Сообщение переслано', 'success');
+    };
+
+    // Prevent left-click from stealing input focus (Telegram-like behavior)
+    const handleMessageAreaMouseDown = (e: React.MouseEvent) => {
+        if (e.button === 0) {
+            const target = e.target as HTMLElement;
+            if (!target.closest('button, a, input, textarea, video, audio, [role="button"], img')) {
+                e.preventDefault();
+            }
         }
-        setInfoOpen(v => !v);
-    }, [chat, currentUserId, onOpenProfile]);
+    };
 
-    const handleAuthorClick = useCallback((userId: string) => { if (onOpenProfile) onOpenProfile(userId); }, [onOpenProfile]);
-    const handleClickReply = useCallback((messageId: string) => {
-        const el = document.getElementById(`msg-${messageId}`);
-        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('msg-highlight'); setTimeout(() => el.classList.remove('msg-highlight'), 1500); }
-    }, []);
-    const handleOpenMedia = useCallback((info: MediaInfo) => { setMediaView(info); }, []);
-
-    const handleLeave = useCallback(() => { if (!confirm('Покинуть этот чат?')) return; onLeaveChat?.(chat.id); }, [chat.id, onLeaveChat]);
-    const handleDelete = useCallback(() => { if (!confirm('Удалить этот чат для всех?')) return; onDeleteChat?.(chat.id); }, [chat.id, onDeleteChat]);
+    const subtitle = chat.isChannel ? `${chat.members.length} подписчиков` : chat.is_group ? `${chat.members.length} участников` : other?.online ? 'в сети' : 'был(а) недавно';
 
     return (
-        <section className="chat-view">
-            <div className="chat-view-main">
-                <div className="chat-header">
-                    <div className="chat-header-left" style={{ cursor: 'pointer' }} onClick={handleHeaderClick}>
-                        <Avatar name={chat.name} size={38} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar()} />
-                        <div className="chat-header-info">
-                            <h3>{isChannel ? '📢 ' : ''}{chat.name}</h3>
-                            <span className="chat-header-sub">
-                                {isChannel ? `${chat.members.length} подписчиков` : chat.is_group ? `${chat.members.length} участников` : chat.online ? 'в сети' : 'был(а) недавно'}
-                            </span>
+        <section className="flex flex-1 overflow-hidden relative bg-gray-50 dark:bg-[#0c0c10]">
+            <div className="flex flex-col flex-1 min-w-0 h-full">
+                <header className="flex justify-between items-center px-5 py-3 bg-white dark:bg-[#15151c] border-b border-gray-200 dark:border-gray-800 shadow-sm z-10 flex-shrink-0">
+                    <div className="flex items-center gap-3 cursor-pointer select-none min-w-0" onClick={() => setPanelOpen(v => !v)}>
+                        <Avatar name={chat.name} size={40} online={isDM ? other?.online : undefined} avatarUrl={isDM ? other?.avatar_url : undefined} />
+                        <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-[15px] leading-tight truncate">{chat.isChannel ? '📢 ' : ''}{chat.name}</h3>
+                                {chat.e2eStatus === 'ready' && <Lock size={12} className="text-green-500 flex-shrink-0" />}
+                            </div>
+                            <span className="text-xs text-gray-500">{subtitle}</span>
                         </div>
                     </div>
-                    <div className="chat-header-actions">
-                        {!isChannel && !chat.is_group && <button className="icon-btn" title="Позвонить" onClick={handleCall}>{Icon.phone(20)}</button>}
-                        <button className="icon-btn" title="Инфо" onClick={() => setInfoOpen(v => !v)}>{Icon.info(20)}</button>
+                    <div className="flex gap-1 flex-shrink-0">
+                        {isDM && (
+                            <button className="p-2 text-gray-500 hover:text-accent hover:bg-accent/10 rounded-xl transition active:scale-95" title="Позвонить" onClick={() => startCall(chat.id, allChats, currentUserId)}>
+                                <Phone size={20} />
+                            </button>
+                        )}
+                        <button className={`p-2 rounded-xl transition active:scale-95 ${panelOpen ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:text-accent hover:bg-accent/10'}`} onClick={() => setPanelOpen(v => !v)}><Info size={20} /></button>
                     </div>
-                </div>
+                </header>
 
-                <ChatSecurityBanner chat={chat} currentUserId={currentUserId} onRefresh={handleRefresh} showToast={showToast} />
-                {activeVoice && <VoicePlayerBar voice={activeVoice} onClose={() => onVoiceDeactivate?.()} />}
+                <div
+                    className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar"
+                    onMouseDown={handleMessageAreaMouseDown}
+                    onClick={() => setCtxMenu(null)}
+                >
+                    <div className="flex flex-col justify-end min-h-full w-full">
+                        <E2EBanner status={chat.e2eStatus} />
+                        {loadingMessages && !chat.messages.length && (
+                            <div className="flex flex-col items-center gap-3 py-8">
+                                <div className="flex gap-1">{[0, 1, 2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />)}</div>
+                                <p className="text-gray-400 text-[13px]">Загрузка сообщений...</p>
+                            </div>
+                        )}
+                        {!loadingMessages && chat.messagesLoaded && !chat.messages.length && <p className="text-center text-gray-400 text-[13px] py-4">Нет сообщений. Напишите первое!</p>}
 
-                <div className="messages-scroll" ref={scrollRef} onScroll={handleScroll} onClick={handleMessagesClick}>
-                    <div className="messages-inner">
-                        {loadingMore && <div className="messages-loading" style={{ padding: 8 }}>Загрузка...</div>}
-                        <div className="encryption-notice">{Icon.lock(14)}<span>Сообщения защищены сквозным шифрованием</span></div>
-                        {loadingMessages && chat.messages.length === 0 && <div className="messages-loading">Загрузка сообщений...</div>}
-                        {!loadingMessages && chat.messagesLoaded && chat.messages.length === 0 && <div className="messages-loading">Нет сообщений.{canPost ? ' Напишите первое!' : ''}</div>}
                         {chat.messages.map((msg, i) => {
                             const prev = chat.messages[i - 1];
                             const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
-                            return <MessageBubble key={msg.id} message={msg} isFirst={isFirst} isGroup={chat.is_group || isChannel}
-                                chatId={chat.id} onContextMenu={e => handleContextMenu(e, msg)}
-                                onClickAuthor={handleAuthorClick} onClickReply={handleClickReply}
-                                onOpenMedia={handleOpenMedia} onVoiceActivate={onVoiceActivate} onVoiceDeactivate={onVoiceDeactivate} />;
+                            return (
+                                <div key={msg.id} className={`w-full flex ${msg.own ? 'justify-end' : 'justify-start'} ${isFirst ? 'mt-2.5' : 'mt-0.5'}`} onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, message: msg }); }}>
+                                    <MessageBubble message={msg} isFirst={isFirst} isGroup={chat.is_group || chat.isChannel} onReply={setReplyTo} />
+                                </div>
+                            );
                         })}
-                        <div ref={bottomRef} />
+                        <div ref={bottomRef} className="h-2" />
                     </div>
                 </div>
 
-                {canPost ? (
-                    <InputBar chatId={chat.id} value={inputText} onChange={setInputText}
-                        onSend={handleSend} onSendVoice={handleSendVoice} onSendFile={handleSendFile}
-                        editingMessage={editingMsg ? { id: editingMsg.id, text: editingMsg.content, author: editingMsg.sender_name, time: formatTime(editingMsg.created_at), own: editingMsg.own } : null}
-                        onCancelEdit={() => { setEditingMsg(null); setInputText(''); }}
-                        replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
-                        pendingFile={pendingFile} onCancelFile={() => setPendingFile(null)}
-                        inputRef={inputRef} onRecordingChange={setIsRecording} />
-                ) : (
-                    <div className="channel-readonly-bar">📢 Только администраторы могут писать в этот канал</div>
-                )}
-
-                {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
-                {mediaView && <MediaViewer {...mediaView} onClose={() => setMediaView(null)} />}
+                <div className="px-4 pb-3 flex-shrink-0">
+                    <div className="rounded-2xl overflow-hidden shadow-[0_2px_15px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-200 dark:border-gray-800">
+                        <InputBar
+                            chatId={chat.id}
+                            onSend={handleSend}
+                            editingText={editingMsg?.content}
+                            onCancelEdit={() => setEditingMsg(null)}
+                            replyTo={replyTo ? { sender_name: replyTo.sender_name, content: replyTo.decrypted_content || replyTo.content, attachment: replyTo.attachment } : null}
+                            onCancelReply={() => setReplyTo(null)}
+                        />
+                    </div>
+                </div>
             </div>
 
-            {infoOpen && (chat.is_group || isChannel) && (
-                <ChatInfoPanel chat={chat} currentUserId={currentUserId}
-                    onClose={() => setInfoOpen(false)} onOpenProfile={handleAuthorClick}
-                    onLeaveChat={handleLeave} onDeleteChat={handleDelete} showToast={showToast} />
+            {panelOpen && (
+                <>
+                    <div className="absolute inset-0 z-20 bg-black/10 dark:bg-black/30" onClick={() => setPanelOpen(false)} />
+                    <div className="absolute right-0 top-0 bottom-0 z-30">
+                        {isDM && other ? <UserProfilePanel member={other} onClose={() => setPanelOpen(false)} /> : <ChatInfoPanel chat={chat} currentUserId={currentUserId} onClose={() => setPanelOpen(false)} />}
+                    </div>
+                </>
             )}
+
+            {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={getCtxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
+
+            <ForwardModal
+                open={!!forwardMsg}
+                message={forwardMsg}
+                chats={chats}
+                currentUserId={currentUserId}
+                onForward={handleForward}
+                onClose={() => setForwardMsg(null)}
+            />
         </section>
     );
 }

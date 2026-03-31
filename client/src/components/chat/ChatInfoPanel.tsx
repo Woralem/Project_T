@@ -1,110 +1,76 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import type { LocalChat, ChatInviteDto } from '../../types';
+import React, { useState } from 'react';
+import { X, LogOut, Trash2, Link2, Copy, Users } from 'lucide-react';
+import type { LocalChat } from '../../types';
 import { Avatar } from '../ui/Avatar';
-import { Icon } from '../../icons';
+import { useUiStore } from '../../store/useUiStore';
 import * as api from '../../api';
 
-interface Props {
-    chat: LocalChat;
-    currentUserId: string;
-    onClose: () => void;
-    onOpenProfile: (userId: string) => void;
-    onLeaveChat: () => void;
-    onDeleteChat: () => void;
-    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
-}
+interface Props { chat: LocalChat; currentUserId: string; onClose: () => void }
 
-export function ChatInfoPanel({ chat, currentUserId, onClose, onOpenProfile, onLeaveChat, onDeleteChat, showToast }: Props) {
-    const myRole = useMemo(() => chat.members.find(m => m.user_id === currentUserId)?.role || 'member', [chat, currentUserId]);
-    const canDelete = myRole === 'owner';
-    const canInvite = myRole === 'owner' || myRole === 'admin';
-    const avatarUrl = chat.is_group ? undefined : chat.members.find(m => m.user_id !== currentUserId)?.avatar_url || undefined;
-
+export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
+    const showToast = useUiStore(s => s.showToast);
     const [inviteCode, setInviteCode] = useState<string | null>(null);
-    const [creatingInvite, setCreatingInvite] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    const sharedImages = useMemo(() => {
-        return chat.messages.filter(m => m.attachment && m.attachment.mime_type.startsWith('image/')).slice(-12).reverse();
-    }, [chat.messages]);
+    const myRole = chat.members.find(m => m.user_id === currentUserId)?.role || 'member';
+    const avatarUrl = chat.is_group ? undefined : chat.members.find(m => m.user_id !== currentUserId)?.avatar_url;
 
     const handleCreateInvite = async () => {
-        setCreatingInvite(true);
-        try {
-            const inv = await api.createChatInvite(chat.id, 168); // 7 дней
-            setInviteCode(inv.code);
-            showToast('Ссылка создана!', 'success');
-        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
-        finally { setCreatingInvite(false); }
-    };
-
-    const copyInvite = () => {
-        if (inviteCode) { navigator.clipboard.writeText(inviteCode); showToast('Код скопирован', 'success'); }
+        setLoading(true);
+        try { const inv = await api.createChatInvite(chat.id, 168); setInviteCode(inv.code); showToast('Ссылка создана!', 'success'); }
+        catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+        finally { setLoading(false); }
     };
 
     return (
-        <aside className="chat-info-panel">
-            <div className="cip-header">
-                <h3>Информация</h3>
-                <button className="icon-btn" onClick={onClose}>{Icon.x(18)}</button>
+        <aside className="w-[320px] h-full flex flex-col bg-white dark:bg-[#15151c] shadow-2xl animate-in slide-in-from-right-8 duration-300">
+            <div className="flex justify-between items-center px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+                <h3 className="font-bold text-[16px]">Информация</h3>
+                <button className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition" onClick={onClose}><X size={20} /></button>
             </div>
 
-            <div className="cip-avatar-section">
-                <Avatar name={chat.name} size={80} avatarUrl={avatarUrl} />
-                <h3 className="cip-name">{chat.isChannel ? '📢 ' : ''}{chat.name}</h3>
-                <span className="cip-sub">
-                    {chat.isChannel ? `${chat.members.length} подписчиков` : `${chat.members.length} участников`}
-                </span>
-            </div>
-
-            {/* Ссылка-приглашение */}
-            {canInvite && (
-                <div className="cip-section">
-                    <div className="cip-section-label">Пригласительная ссылка</div>
-                    {inviteCode ? (
-                        <div className="cip-invite-result">
-                            <code className="cip-invite-code">{inviteCode}</code>
-                            <button className="cip-invite-copy" onClick={copyInvite}>{Icon.copy(14)} Копировать</button>
-                        </div>
-                    ) : (
-                        <button className="cip-action-btn" onClick={handleCreateInvite} disabled={creatingInvite}>
-                            {Icon.plus(16)} {creatingInvite ? 'Создание...' : 'Создать ссылку'}
-                        </button>
-                    )}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex flex-col items-center gap-2 px-4 pt-6 pb-4">
+                    <Avatar name={chat.name} size={80} avatarUrl={avatarUrl} />
+                    <h3 className="text-[17px] font-bold mt-2">{chat.isChannel ? '📢 ' : ''}{chat.name}</h3>
+                    <span className="text-[13px] text-gray-500">{chat.members.length} {chat.isChannel ? 'подписчиков' : 'участников'}</span>
                 </div>
-            )}
 
-            {/* Участники */}
-            <div className="cip-section">
-                <div className="cip-section-label">Участники ({chat.members.length})</div>
-                <div className="cip-member-list">
-                    {chat.members.map(m => (
-                        <button key={m.user_id} className="cip-member" onClick={() => onOpenProfile(m.user_id)}>
-                            <Avatar name={m.display_name} size={36} online={m.online} avatarUrl={m.avatar_url} />
-                            <div className="cip-member-info">
-                                <span className="cip-member-name">{m.display_name}{m.user_id === currentUserId ? ' (вы)' : ''}</span>
-                                <span className="cip-member-role">{m.role === 'owner' ? 'Создатель' : m.role === 'admin' ? 'Админ' : chat.isChannel ? 'Подписчик' : 'Участник'}</span>
+                {(myRole === 'owner' || myRole === 'admin') && (
+                    <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+                        <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Приглашение</div>
+                        {inviteCode ? (
+                            <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-[#1a1a24] rounded-xl border border-gray-200 dark:border-white/5">
+                                <code className="flex-1 font-mono text-[13px] font-bold text-accent truncate pl-2">{inviteCode}</code>
+                                <button className="p-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition" onClick={() => { navigator.clipboard.writeText(inviteCode); showToast('Скопировано', 'success'); }}><Copy size={14} /></button>
                             </div>
-                        </button>
-                    ))}
-                </div>
-            </div>
+                        ) : (
+                            <button className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-[#1a1a24] dark:hover:bg-[#20202c] text-[13px] font-medium rounded-xl transition border border-gray-200 dark:border-white/5" onClick={handleCreateInvite} disabled={loading}>
+                                <Link2 size={16} className="text-accent" /> {loading ? 'Создание...' : 'Создать ссылку'}
+                            </button>
+                        )}
+                    </div>
+                )}
 
-            {sharedImages.length > 0 && (
-                <div className="cip-section">
-                    <div className="cip-section-label">Медиа ({sharedImages.length})</div>
-                    <div className="cip-media-grid">
-                        {sharedImages.map(m => (
-                            <div key={m.id} className="cip-media-thumb">
-                                <img src={api.getFileUrl(m.attachment!.id)} alt="" />
+                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+                    <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Users size={14} /> Участники ({chat.members.length})</div>
+                    <div className="flex flex-col gap-1 mt-3">
+                        {chat.members.map(m => (
+                            <div key={m.user_id} className="flex items-center gap-3 w-full p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-[#20202c] transition">
+                                <Avatar name={m.display_name} size={36} online={m.online} avatarUrl={m.avatar_url} />
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[14px] font-medium truncate">{m.display_name}{m.user_id === currentUserId ? ' (вы)' : ''}</div>
+                                    <div className="text-[11px] text-gray-500">{m.role === 'owner' ? 'Создатель' : m.role === 'admin' ? 'Админ' : 'Участник'}</div>
+                                </div>
                             </div>
                         ))}
                     </div>
                 </div>
-            )}
 
-            <div className="cip-section cip-actions">
-                <button className="cip-action-btn danger" onClick={onLeaveChat}>{Icon.leave(18)} Покинуть</button>
-                {canDelete && <button className="cip-action-btn danger" onClick={onDeleteChat}>{Icon.trash(18)} Удалить</button>}
+                <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-2 mt-4">
+                    <button className="w-full flex items-center gap-3 px-4 py-3 text-[14px] font-medium text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition"><LogOut size={18} /> Покинуть чат</button>
+                    {myRole === 'owner' && <button className="w-full flex items-center gap-3 px-4 py-3 text-[14px] font-medium text-red-500 hover:bg-red-500/10 rounded-xl transition"><Trash2 size={18} /> Удалить для всех</button>}
+                </div>
             </div>
         </aside>
     );

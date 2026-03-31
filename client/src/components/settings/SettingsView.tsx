@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Icon } from '../../icons';
+import { Shield, Lock, Check, Copy, Plus, Sun, Moon, Camera, Trash2, Bell } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
-import { AvatarGallery } from '../ui/AvatarGallery';
 import * as api from '../../api';
 import { SERVER_URL } from '../../api';
 import type { UserDto, AvatarHistoryDto } from '../../types';
 import { cryptoManager } from '../../crypto';
-import { isNotificationEnabled, requestNotificationPermission, sendTestNotification } from '../../notifications';
 
 interface Props {
     darkMode: boolean;
@@ -16,382 +14,175 @@ interface Props {
     onUserUpdate?: (user: UserDto) => void;
 }
 
-function fullUrl(url: string): string {
-    if (url.startsWith('http')) return url;
-    return `${SERVER_URL}${url}`;
-}
-
 export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserUpdate }: Props) {
     const [inviteCode, setInviteCode] = useState<string | null>(null);
     const [creatingInvite, setCreatingInvite] = useState(false);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [settingUpE2E, setSettingUpE2E] = useState(false);
     const [e2eEnabled, setE2eEnabled] = useState(() => cryptoManager.hasKeys());
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // ── Bio ──────────────────────────────────────────────
     const [bio, setBio] = useState(user?.bio || '');
     const [bioChanged, setBioChanged] = useState(false);
     const [savingBio, setSavingBio] = useState(false);
-
-    // ── Avatar History ──────────────────────────────────
     const [avatarHistory, setAvatarHistory] = useState<AvatarHistoryDto[]>([]);
-    const [loadingHistory, setLoadingHistory] = useState(false);
-    const [galleryOpen, setGalleryOpen] = useState(false);
-    const [galleryIndex, setGalleryIndex] = useState(0);
+    const fileRef = useRef<HTMLInputElement>(null);
 
-    // ── Notifications ───────────────────────────────────
-    const [isNotifEnabled, setIsNotifEnabled] = useState(() => isNotificationEnabled());
-
-    // ── Загрузка профиля при монтировании ───────────────
     const fetchProfile = useCallback(async () => {
         if (!user) return;
-        setLoadingHistory(true);
         try {
-            const profile = await api.getUserProfile(user.id);
-            setAvatarHistory(profile.avatars);
-            setBio(profile.bio);
-            setBioChanged(false);
-        } catch (e) {
-            console.warn('Failed to load profile:', e);
-        } finally {
-            setLoadingHistory(false);
-        }
+            const p = await api.getUserProfile(user.id);
+            setAvatarHistory(p.avatars);
+            setBio(p.bio); setBioChanged(false);
+        } catch { /* ignore */ }
     }, [user?.id]);
 
     useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
-    // ── Сохранение Bio ──────────────────────────────────
     const handleSaveBio = async () => {
         if (!bioChanged) return;
         setSavingBio(true);
-        try {
-            const updated = await api.updateProfile({ bio });
-            setBioChanged(false);
-            showToast('Био обновлено', 'success');
-            if (onUserUpdate) onUserUpdate(updated);
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        } finally {
-            setSavingBio(false);
-        }
+        try { const u = await api.updateProfile({ bio }); setBioChanged(false); showToast('Био обновлено', 'success'); onUserUpdate?.(u); }
+        catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+        finally { setSavingBio(false); }
     };
 
-    // ── Аватарка: загрузка ──────────────────────────────
-    const handleAvatarClick = () => { fileInputRef.current?.click(); };
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]; if (!file) return;
         if (!file.type.startsWith('image/')) { showToast('Выберите изображение', 'error'); return; }
-        if (file.size > 5 * 1024 * 1024) { showToast('Файл слишком большой (макс 5MB)', 'error'); return; }
-
+        if (file.size > 5 * 1024 * 1024) { showToast('Макс 5МБ', 'error'); return; }
         setUploadingAvatar(true);
         try {
-            const result = await api.uploadAvatar(file);
+            const r = await api.uploadAvatar(file);
             showToast('Аватарка обновлена!', 'success');
-            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: result.avatar_url });
+            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: r.avatar_url });
             await fetchProfile();
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка загрузки', 'error');
-        } finally {
-            setUploadingAvatar(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+        finally { setUploadingAvatar(false); if (fileRef.current) fileRef.current.value = ''; }
     };
 
-    // ── Аватарка: снять текущую ─────────────────────────
     const handleDeleteAvatar = async () => {
         if (!user?.avatar_url) return;
-        try {
-            await api.deleteAvatar();
-            showToast('Аватарка снята', 'success');
-            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: undefined });
-            await fetchProfile();
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        }
+        try { await api.deleteAvatar(); showToast('Аватарка снята', 'success'); if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: undefined }); await fetchProfile(); }
+        catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
-    // ── Аватарка: удалить из истории ─────────────────────
-    const handleDeleteFromHistory = async (avatarId: string) => {
-        try {
-            await api.deleteAvatarHistory(avatarId);
-            showToast('Удалено из истории', 'success');
-            await fetchProfile();
-            // Если удалили текущую — обновляем user
-            const entry = avatarHistory.find(a => a.id === avatarId);
-            if (entry?.is_current && user && onUserUpdate) {
-                onUserUpdate({ ...user, avatar_url: undefined });
-            }
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        }
-    };
-
-    // ── Аватарка: поставить из истории ───────────────────
-    const handleSetFromHistory = async (avatarId: string) => {
-        try {
-            const result = await api.setAvatarFromHistory(avatarId);
-            showToast('Аватарка установлена!', 'success');
-            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: result.avatar_url });
-            await fetchProfile();
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        }
-    };
-
-    // ── Галерея ─────────────────────────────────────────
-    const openGallery = (index: number) => {
-        setGalleryIndex(index);
-        setGalleryOpen(true);
-    };
-
-    const galleryUrls = avatarHistory.map(a => fullUrl(a.url));
-    const galleryDates = avatarHistory.map(a => a.set_at);
-
-    // ── Уведомления ─────────────────────────────────────
-    const handleTestNotif = async () => {
-        await sendTestNotification();
-        showToast('Тестовое уведомление отправлено', 'info');
-    };
-
-    const handleEnableNotifs = async () => {
-        const granted = await requestNotificationPermission();
-        setIsNotifEnabled(granted);
-        if (granted) showToast('Уведомления включены!', 'success');
-        else showToast('Браузер заблокировал уведомления.', 'error');
-    };
-
-    // ── Инвайты ─────────────────────────────────────────
-    const handleCreateInvite = async () => {
-        setCreatingInvite(true);
-        try {
-            const invite = await api.createInvite(48);
-            setInviteCode(invite.code);
-            showToast('Инвайт-код создан!', 'success');
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        } finally { setCreatingInvite(false); }
-    };
-
-    const copyInvite = () => {
-        if (inviteCode) {
-            navigator.clipboard.writeText(inviteCode);
-            showToast('Код скопирован', 'success');
-        }
-    };
-
-    // ── E2E ─────────────────────────────────────────────
     const handleSetupE2E = async () => {
         setSettingUpE2E(true);
         try {
-            const publicKeys = await cryptoManager.generateKeys();
-            const updatedUser = await api.updateProfile({ public_keys: publicKeys });
-            setE2eEnabled(true);
-            showToast('E2E шифрование настроено!', 'success');
-            if (onUserUpdate) onUserUpdate(updatedUser);
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка', 'error');
-        } finally { setSettingUpE2E(false); }
+            const pk = await cryptoManager.generateKeys();
+            const u = await api.updateProfile({ public_keys: pk });
+            setE2eEnabled(true); showToast('E2E настроено!', 'success');
+            onUserUpdate?.(u);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+        finally { setSettingUpE2E(false); }
     };
 
-    const handleResetE2E = async () => {
-        if (!confirm('Сбросить ключи шифрования?')) return;
-        try {
-            const publicKeys = await cryptoManager.generateKeys();
-            const updatedUser = await api.updateProfile({ public_keys: publicKeys });
-            setE2eEnabled(true);
-            showToast('Ключи обновлены.', 'success');
-            if (onUserUpdate) onUserUpdate(updatedUser);
-        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    const handleCreateInvite = async () => {
+        setCreatingInvite(true);
+        try { const inv = await api.createInvite(48); setInviteCode(inv.code); showToast('Код создан!', 'success'); }
+        catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+        finally { setCreatingInvite(false); }
     };
 
     const keyId = cryptoManager.getKeyId();
 
     return (
-        <section className="settings-view">
-            <div className="settings-inner">
-                <h2 className="settings-title">Настройки</h2>
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="max-w-xl mx-auto px-6 py-8 space-y-6">
+                <h2 className="text-2xl font-bold">Настройки</h2>
 
-                {/* ── Профиль ──────────────────────────────── */}
-                <div className="s-group">
-                    <div className="s-group-label">Профиль</div>
-                    <div className="s-profile">
-                        <div className="avatar-edit-wrap" onClick={handleAvatarClick}>
+                {/* Профиль */}
+                <Section title="Профиль">
+                    <div className="flex items-center gap-4">
+                        <div className="relative cursor-pointer group" onClick={() => fileRef.current?.click()}>
                             <Avatar name={user?.display_name || 'User'} size={72} avatarUrl={user?.avatar_url} />
-                            <div className="avatar-edit-overlay">
-                                {uploadingAvatar ? <span className="avatar-loading">…</span> : Icon.camera(24)}
+                            <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                <Camera size={24} className="text-white" />
                             </div>
                         </div>
-                        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
-                            style={{ display: 'none' }} onChange={handleFileChange} />
-                        <div className="profile-info">
-                            <strong>{user?.display_name || 'User'}</strong>
-                            <span className="s-sub">@{user?.username || 'username'}</span>
-                            {user?.avatar_url && (
-                                <button className="avatar-delete-btn" onClick={handleDeleteAvatar}>
-                                    Снять аватарку
-                                </button>
-                            )}
+                        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                        <div className="flex flex-col">
+                            <strong className="text-[16px]">{user?.display_name}</strong>
+                            <span className="text-[13px] text-gray-500">@{user?.username}</span>
+                            {user?.avatar_url && <button className="text-[12px] text-red-500 hover:underline mt-1 text-left" onClick={handleDeleteAvatar}>Снять аватарку</button>}
                         </div>
                     </div>
 
-                    {/* Bio */}
-                    <div className="s-bio-field">
-                        <label className="s-bio-label">О себе</label>
-                        <textarea
-                            className="s-bio-input"
-                            placeholder="Расскажите о себе…"
-                            value={bio}
-                            maxLength={200}
-                            rows={3}
-                            onChange={e => { setBio(e.target.value); setBioChanged(true); }}
-                        />
-                        <div className="s-bio-footer">
-                            <span className="s-bio-counter">{bio.length}/200</span>
-                            {bioChanged && (
-                                <button className="s-bio-save" onClick={handleSaveBio} disabled={savingBio}>
-                                    {savingBio ? 'Сохранение…' : 'Сохранить'}
-                                </button>
-                            )}
+                    <div className="mt-4">
+                        <label className="text-[12px] font-semibold text-gray-500 mb-1 block">О себе</label>
+                        <textarea className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/5 outline-none focus:border-accent text-[14px] resize-none transition" rows={3} maxLength={200} value={bio} onChange={e => { setBio(e.target.value); setBioChanged(true); }} placeholder="Расскажите о себе..." />
+                        <div className="flex justify-between items-center mt-1">
+                            <span className="text-[11px] text-gray-400">{bio.length}/200</span>
+                            {bioChanged && <button className="text-[12px] font-bold text-accent hover:underline" onClick={handleSaveBio} disabled={savingBio}>{savingBio ? 'Сохранение...' : 'Сохранить'}</button>}
                         </div>
                     </div>
-                </div>
+                </Section>
 
-                {/* ── История аватарок ─────────────────────── */}
-                {avatarHistory.length > 0 && (
-                    <div className="s-group">
-                        <div className="s-group-label">История аватарок ({avatarHistory.length})</div>
-                        <div className="s-avatar-history">
-                            {avatarHistory.map((a, i) => (
-                                <div key={a.id} className={`s-avatar-item ${a.is_current ? 'current' : ''}`}>
-                                    <img
-                                        src={fullUrl(a.url)}
-                                        alt=""
-                                        className="s-avatar-thumb"
-                                        onClick={() => openGallery(i)}
-                                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                    <div className="s-avatar-actions">
-                                        {!a.is_current && (
-                                            <button className="s-avatar-action-btn" onClick={() => handleSetFromHistory(a.id)} title="Установить">
-                                                {Icon.check(14)}
-                                            </button>
-                                        )}
-                                        <button className="s-avatar-action-btn danger" onClick={() => handleDeleteFromHistory(a.id)} title="Удалить">
-                                            {Icon.trash(14)}
-                                        </button>
-                                    </div>
-                                    {a.is_current && <span className="s-avatar-current-badge">Текущая</span>}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* ── E2E ──────────────────────────────────── */}
-                <div className="s-group">
-                    <div className="s-group-label">Сквозное шифрование (E2E)</div>
+                {/* E2E */}
+                <Section title="Сквозное шифрование">
                     {e2eEnabled ? (
-                        <div className="e2e-status-card">
-                            <div className="e2e-status-header">
-                                <span className="e2e-badge active">{Icon.shield(16)} Включено</span>
+                        <div className="flex items-start gap-3 p-3 bg-green-500/10 rounded-xl">
+                            <Shield size={20} className="text-green-500 mt-0.5" />
+                            <div>
+                                <div className="text-[14px] font-semibold text-green-600 dark:text-green-400">Включено</div>
+                                {keyId && <code className="text-[11px] text-gray-500 mt-1 block">{keyId}</code>}
+                                <button className="text-[12px] text-gray-500 hover:text-gray-900 dark:hover:text-white mt-2 hover:underline" onClick={handleSetupE2E}>Пересоздать ключи</button>
                             </div>
-                            {keyId && (
-                                <div className="e2e-key-row">
-                                    <span className="e2e-key-label">Отпечаток:</span>
-                                    <code className="e2e-key-value">{keyId}</code>
-                                </div>
-                            )}
-                            <p className="e2e-hint">Каждый чат шифруется своим ключом.</p>
-                            <button className="e2e-reset-btn" onClick={handleResetE2E}>Пересоздать ключи</button>
                         </div>
                     ) : (
-                        <div className="e2e-setup-card">
-                            <div className="e2e-setup-icon">{Icon.lock(32)}</div>
-                            <h3 className="e2e-setup-title">Шифрование не настроено</h3>
-                            <p className="e2e-setup-desc">Настройте сквозное шифрование.</p>
-                            <ul className="e2e-features">
-                                <li>{Icon.check(14)} Отдельный ключ для каждого чата</li>
-                                <li>{Icon.check(14)} Сервер не видит содержимое</li>
-                                <li>{Icon.check(14)} ECIES + AES-256-GCM</li>
-                            </ul>
-                            <button className="e2e-setup-btn" onClick={handleSetupE2E} disabled={settingUpE2E}>
-                                {settingUpE2E ? 'Генерация ключей...' : <>{Icon.shield(16)} Настроить E2E</>}
+                        <div className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-[#1a1a24] rounded-xl text-center">
+                            <Lock size={32} className="text-gray-400" />
+                            <div className="text-[14px] font-medium">Шифрование не настроено</div>
+                            <div className="text-[12px] text-gray-500">ECIES + AES-256-GCM для каждого чата</div>
+                            <button className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-[13px] font-bold rounded-xl transition active:scale-95 disabled:opacity-50" onClick={handleSetupE2E} disabled={settingUpE2E}>
+                                {settingUpE2E ? 'Генерация...' : 'Настроить E2E'}
                             </button>
                         </div>
                     )}
-                </div>
+                </Section>
 
-                {/* ── Инвайты ──────────────────────────────── */}
-                <div className="s-group">
-                    <div className="s-group-label">Пригласить друга</div>
+                {/* Инвайты */}
+                <Section title="Пригласить друга">
                     {inviteCode ? (
-                        <div className="invite-result">
-                            <div className="invite-code">{inviteCode}</div>
-                            <button className="invite-copy-btn" onClick={copyInvite}>{Icon.copy(16)} Копировать</button>
-                            <button className="invite-new-btn" onClick={handleCreateInvite}>Создать новый</button>
-                            <p className="invite-hint">Действителен 48 часов. Одноразовый.</p>
+                        <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-[#1a1a24] rounded-xl border border-gray-200 dark:border-white/5">
+                            <code className="flex-1 font-mono text-[14px] font-bold text-accent">{inviteCode}</code>
+                            <button className="p-2 bg-accent hover:bg-accent-hover text-white rounded-lg transition active:scale-95" onClick={() => { navigator.clipboard.writeText(inviteCode); showToast('Скопировано', 'success'); }}><Copy size={16} /></button>
                         </div>
                     ) : (
-                        <button className="s-row invite-create-btn" onClick={handleCreateInvite} disabled={creatingInvite}>
-                            <span className="s-row-left">{Icon.plus(19)} {creatingInvite ? 'Создаётся...' : 'Создать инвайт-код'}</span>
-                            <span className="s-arrow">→</span>
+                        <button className="w-full flex items-center gap-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 dark:bg-[#1a1a24] dark:hover:bg-[#20202c] rounded-xl transition text-[14px] font-medium border border-gray-200 dark:border-white/5 active:scale-[0.98]" onClick={handleCreateInvite} disabled={creatingInvite}>
+                            <Plus size={18} className="text-accent" /> {creatingInvite ? 'Создание...' : 'Создать инвайт-код'}
                         </button>
                     )}
-                </div>
+                </Section>
 
-                {/* ── Уведомления ──────────────────────────── */}
-                <div className="s-group">
-                    <div className="s-group-label">Уведомления</div>
-                    {isNotifEnabled ? (
-                        <>
-                            <div className="s-row">
-                                <span className="s-row-left">{Icon.check(19)} Уведомления включены</span>
-                                <span className="e2e-badge active" style={{ fontSize: 11 }}>✓ Активно</span>
-                            </div>
-                            <button className="s-row" onClick={handleTestNotif}>
-                                <span className="s-row-left">🔔 Тестовое уведомление</span>
-                                <span className="s-arrow">→</span>
-                            </button>
-                        </>
-                    ) : (
-                        <button className="s-row" onClick={handleEnableNotifs}>
-                            <span className="s-row-left">🔔 Включить уведомления</span>
-                            <span className="s-arrow">→</span>
-                        </button>
-                    )}
-                </div>
-
-                {/* ── Тема ─────────────────────────────────── */}
-                <div className="s-group">
-                    <div className="s-group-label">Внешний вид</div>
-                    <button className="s-row" onClick={onToggleTheme}>
-                        <span className="s-row-left">{darkMode ? Icon.moon(19) : Icon.sun(19)} Тёмная тема</span>
-                        <span className={`toggle ${darkMode ? 'on' : ''}`}><span className="toggle-dot" /></span>
+                {/* Тема */}
+                <Section title="Внешний вид">
+                    <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 dark:bg-[#1a1a24] dark:hover:bg-[#20202c] rounded-xl transition active:scale-[0.98]" onClick={onToggleTheme}>
+                        <span className="flex items-center gap-2 text-[14px] font-medium">{darkMode ? <Moon size={18} /> : <Sun size={18} />} Тёмная тема</span>
+                        <div className={`w-10 h-6 rounded-full p-0.5 transition ${darkMode ? 'bg-accent' : 'bg-gray-300'}`}>
+                            <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${darkMode ? 'translate-x-4' : ''}`} />
+                        </div>
                     </button>
-                </div>
+                </Section>
 
-                {/* ── О приложении ─────────────────────────── */}
-                <div className="s-group">
-                    <div className="s-group-label">О приложении</div>
-                    <div className="s-row">
-                        <span className="s-row-left">Версия</span>
-                        <span className="s-sub">0.4.0-alpha (Profiles)</span>
+                {/* Версия */}
+                <Section title="О приложении">
+                    <div className="px-4 py-3 flex justify-between text-[14px]">
+                        <span className="text-gray-500">Версия</span>
+                        <span className="font-medium">0.5.0</span>
                     </div>
-                </div>
+                </Section>
             </div>
+        </div>
+    );
+}
 
-            {/* Галерея аватарок */}
-            {galleryOpen && galleryUrls.length > 0 && (
-                <AvatarGallery
-                    urls={galleryUrls}
-                    dates={galleryDates}
-                    startIndex={galleryIndex}
-                    onClose={() => setGalleryOpen(false)}
-                />
-            )}
-        </section>
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <div className="bg-white dark:bg-[#15151c] rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+                <h3 className="text-[13px] font-bold text-gray-400 uppercase tracking-wider">{title}</h3>
+            </div>
+            <div className="p-4">{children}</div>
+        </div>
     );
 }

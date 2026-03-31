@@ -1,14 +1,8 @@
-import type { LocalChat, LocalMessage } from './types';
-
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
-const AVATAR_COLORS = [
-    '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71',
-    '#1abc9c', '#3498db', '#9b59b6', '#e91e8a',
-];
+const AVATAR_COLORS = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e8a'];
 
-export const getInitials = (name: string) =>
-    name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+export const getInitials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
 export const getAvatarColor = (name: string) => {
     let h = 0;
@@ -16,78 +10,57 @@ export const getAvatarColor = (name: string) => {
     return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 };
 
-export const getNow = () => {
-    const d = new Date();
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
-
 export function formatTime(iso: string): string {
     try {
         const d = new Date(iso);
         if (isNaN(d.getTime())) return '';
         const now = new Date();
-        const isToday = d.toDateString() === now.toDateString();
-        if (isToday) {
-            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        }
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (d.toDateString() === yesterday.toDateString()) {
-            return 'Вчера';
-        }
+        if (d.toDateString() === now.toDateString()) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const y = new Date(now); y.setDate(y.getDate() - 1);
+        if (d.toDateString() === y.toDateString()) return 'Вчера';
         return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
-    } catch {
-        return '';
-    }
+    } catch { return ''; }
 }
 
-const MONTH_NAMES = [
-    'янв', 'фев', 'мар', 'апр', 'май', 'июн',
-    'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
-];
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
 export function formatDate(iso: string): string {
-    try {
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return '';
-        return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-    } catch {
-        return '';
-    }
+    try { const d = new Date(iso); return isNaN(d.getTime()) ? '' : `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; }
+    catch { return ''; }
 }
 
 export function formatDateFull(iso: string): string {
-    try {
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return '';
-        return `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    } catch {
-        return '';
-    }
+    try { const d = new Date(iso); return isNaN(d.getTime()) ? '' : `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
+    catch { return ''; }
 }
 
-/** Получить превью последнего сообщения для списка чатов */
-export function getChatPreview(chat: LocalChat): { text: string; time: string } {
-    if (chat.messages.length > 0) {
-        const m = chat.messages[chat.messages.length - 1];
-        const prefix = chat.is_group && !m.own
-            ? `${m.sender_name}: `
-            : m.own ? 'Вы: ' : '';
-        const full = prefix + m.content;
-        return {
-            text: full.length > 42 ? full.slice(0, 42) + '…' : full,
-            time: formatTime(m.created_at),
-        };
-    }
+export function formatDuration(s: number): string {
+    if (!s || !isFinite(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+}
 
-    if (chat.lastMessageText) {
-        return {
-            text: chat.lastMessageText.length > 42
-                ? chat.lastMessageText.slice(0, 42) + '…'
-                : chat.lastMessageText,
-            time: chat.lastMessageTime,
-        };
-    }
+export function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} Б`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
+}
 
-    return { text: 'Нет сообщений', time: '' };
+export function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'file' {
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return 'file';
+}
+
+export function getFileIcon(mime: string): string {
+    if (mime.startsWith('image/')) return '🖼️';
+    if (mime.startsWith('video/')) return '🎬';
+    if (mime.startsWith('audio/')) return '🎵';
+    if (mime.includes('pdf')) return '📄';
+    if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z')) return '📦';
+    if (mime.includes('word') || mime.includes('doc')) return '📝';
+    if (mime.includes('sheet') || mime.includes('excel') || mime.includes('xls')) return '📊';
+    return '📎';
 }

@@ -1,5 +1,3 @@
-// FILE: ./shared/src/lib.rs
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -196,6 +194,8 @@ pub struct EncryptedPayload {
     pub nonce: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_key_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_nonce: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,7 +269,6 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         message_id: Uuid,
     },
-    // ── Calls ────────────────────────────────────────────
     CallOffer {
         chat_id: Uuid,
         call_id: String,
@@ -301,7 +300,6 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         call_id: String,
     },
-    // ── Shared Media ─────────────────────────────────────
     CallMediaShare {
         chat_id: Uuid,
         call_id: String,
@@ -371,7 +369,6 @@ pub enum WsServerMsg {
     Error {
         message: String,
     },
-    // ── Calls ────────────────────────────────────────────
     CallIncoming {
         chat_id: Uuid,
         call_id: String,
@@ -406,7 +403,6 @@ pub enum WsServerMsg {
         chat_id: Uuid,
         call_id: String,
     },
-    // ── Shared Media ─────────────────────────────────────
     CallMediaShared {
         chat_id: Uuid,
         call_id: String,

@@ -13,6 +13,7 @@ export interface EncryptedPayload {
     ciphertext: string;
     nonce: string;
     sender_key_id?: string;
+    file_nonce?: string;
 }
 
 export interface EncryptedChatKey {
@@ -185,6 +186,7 @@ export type WsClientMsg =
 export type View = 'auth' | 'main';
 export type Tab = 'chats' | 'calls' | 'settings';
 export type AuthTab = 'login' | 'register';
+export type E2EStatus = 'ready' | 'no_identity' | 'peer_no_e2e' | 'waiting' | 'error';
 
 export interface LocalMessage {
     id: string;
@@ -220,6 +222,7 @@ export interface LocalChat {
     isPinned: boolean;
     isChannel: boolean;
     lastActivityAt: string;
+    e2eStatus?: E2EStatus;
 }
 
 export interface ToastData {
@@ -227,33 +230,6 @@ export interface ToastData {
     text: string;
     type?: 'info' | 'success' | 'error';
 }
-
-export interface ContextMenuItem {
-    label: string;
-    icon?: JSX.Element;
-    danger?: boolean;
-    onClick: () => void;
-}
-
-export interface Chat {
-    id: string;
-    name: string;
-    group: boolean;
-    online: boolean;
-    unread: number;
-    messages: {
-        id: string;
-        author: string;
-        text: string;
-        time: string;
-        own: boolean;
-        status?: string;
-    }[];
-}
-
-// ═══════════════════════════════════════════════════════════
-//  Call типы
-// ═══════════════════════════════════════════════════════════
 
 export interface SharedMediaItem {
     id: string;
@@ -300,10 +276,6 @@ export interface NotificationData {
     text: string;
     isGroup: boolean;
 }
-
-// ═══════════════════════════════════════════════════════════
-//  Voice Player типы
-// ═══════════════════════════════════════════════════════════
 
 export interface ActiveVoice {
     audio: HTMLAudioElement;

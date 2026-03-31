@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(400%);
+    }
+}
+
+@theme {
+    --color-accent: #6366f1;
+    --color-accent-hover: #5558e0;
+    --color-accent-dim: rgba(99, 102, 241, 0.1);
+}
+
+@layer base {
+    body {
+        @apply antialiased overflow-hidden text-gray-900 bg-gray-50 dark:bg-[#0c0c10] dark:text-[#e4e4ec];
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    ::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+    }
+}
