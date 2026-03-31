@@ -45,6 +45,14 @@ pub fn create_app(state: AppState) -> Router {
         .route("/chats/:chat_id/messages", get(api::messages::list))
         .route("/chats/:chat_id/pin", post(api::chats::toggle_pin))
         .route(
+            "/chats/:chat_id/kick/:user_id",
+            post(api::chats::kick_member),
+        )
+        .route(
+            "/chats/:chat_id/avatar",
+            post(api::chats::upload_chat_avatar),
+        )
+        .route(
             "/chats/:chat_id/invite",
             post(api::chats::create_chat_invite),
         )

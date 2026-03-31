@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Shield, Lock, Check, Copy, Plus, Sun, Moon, Camera, Trash2, Bell } from 'lucide-react';
+import { Shield, Lock, Check, Copy, Plus, Sun, Moon, Camera, Trash2, Image as ImageIcon } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
+import { MediaViewer } from '../ui/MediaViewer';
 import * as api from '../../api';
 import { SERVER_URL } from '../../api';
 import type { UserDto, AvatarHistoryDto } from '../../types';
@@ -24,6 +25,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [bioChanged, setBioChanged] = useState(false);
     const [savingBio, setSavingBio] = useState(false);
     const [avatarHistory, setAvatarHistory] = useState<AvatarHistoryDto[]>([]);
+    const [viewerSrc, setViewerSrc] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const fetchProfile = useCallback(async () => {
@@ -65,6 +67,20 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
+    const handleDeleteAvatarHistory = async (avatarId: string) => {
+        try { await api.deleteAvatarHistory(avatarId); showToast('Удалено', 'success'); await fetchProfile(); }
+        catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleSetAvatar = async (avatarId: string) => {
+        try {
+            const r = await api.setAvatarFromHistory(avatarId);
+            showToast('Аватарка установлена!', 'success');
+            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: r.avatar_url });
+            await fetchProfile();
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
     const handleSetupE2E = async () => {
         setSettingUpE2E(true);
         try {
@@ -83,6 +99,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         finally { setCreatingInvite(false); }
     };
 
+    const getFullUrl = (url: string) => url.startsWith('http') ? url : `${SERVER_URL}${url}`;
     const keyId = cryptoManager.getKeyId();
 
     return (
@@ -117,6 +134,41 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </div>
                 </Section>
 
+                {/* Avatar History */}
+                {avatarHistory.length > 0 && (
+                    <Section title={`Фотографии (${avatarHistory.length})`}>
+                        <div className="grid grid-cols-4 gap-2">
+                            {avatarHistory.map(a => (
+                                <div key={a.id} className="relative group aspect-square rounded-xl overflow-hidden">
+                                    <img
+                                        src={getFullUrl(a.url)}
+                                        alt=""
+                                        className={`w-full h-full object-cover cursor-pointer hover:opacity-90 transition ring-2 ${a.is_current ? 'ring-accent' : 'ring-transparent'}`}
+                                        onClick={() => setViewerSrc(getFullUrl(a.url))}
+                                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                    {/* Controls on hover */}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                                        {!a.is_current && (
+                                            <button className="p-1.5 bg-white/90 rounded-lg text-accent hover:bg-white transition" onClick={() => handleSetAvatar(a.id)} title="Установить">
+                                                <Check size={14} />
+                                            </button>
+                                        )}
+                                        <button className="p-1.5 bg-white/90 rounded-lg text-red-500 hover:bg-white transition" onClick={() => handleDeleteAvatarHistory(a.id)} title="Удалить">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    {a.is_current && (
+                                        <div className="absolute top-1 right-1 bg-accent text-white rounded-full p-0.5">
+                                            <Check size={10} />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </Section>
+                )}
+
                 {/* E2E */}
                 <Section title="Сквозное шифрование">
                     {e2eEnabled ? (
@@ -132,7 +184,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                         <div className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-[#1a1a24] rounded-xl text-center">
                             <Lock size={32} className="text-gray-400" />
                             <div className="text-[14px] font-medium">Шифрование не настроено</div>
-                            <div className="text-[12px] text-gray-500">ECIES + AES-256-GCM для каждого чата</div>
                             <button className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-[13px] font-bold rounded-xl transition active:scale-95 disabled:opacity-50" onClick={handleSetupE2E} disabled={settingUpE2E}>
                                 {settingUpE2E ? 'Генерация...' : 'Настроить E2E'}
                             </button>
@@ -140,7 +191,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </Section>
 
-                {/* Инвайты */}
+                {/* Invites */}
                 <Section title="Пригласить друга">
                     {inviteCode ? (
                         <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-[#1a1a24] rounded-xl border border-gray-200 dark:border-white/5">
@@ -154,7 +205,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </Section>
 
-                {/* Тема */}
+                {/* Theme */}
                 <Section title="Внешний вид">
                     <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 dark:bg-[#1a1a24] dark:hover:bg-[#20202c] rounded-xl transition active:scale-[0.98]" onClick={onToggleTheme}>
                         <span className="flex items-center gap-2 text-[14px] font-medium">{darkMode ? <Moon size={18} /> : <Sun size={18} />} Тёмная тема</span>
@@ -164,14 +215,18 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </button>
                 </Section>
 
-                {/* Версия */}
                 <Section title="О приложении">
                     <div className="px-4 py-3 flex justify-between text-[14px]">
                         <span className="text-gray-500">Версия</span>
-                        <span className="font-medium">0.5.0</span>
+                        <span className="font-medium">0.6.0</span>
                     </div>
                 </Section>
             </div>
+
+            {/* Avatar viewer */}
+            {viewerSrc && (
+                <MediaViewer src={viewerSrc} mediaType="image" filename="avatar" onClose={() => setViewerSrc(null)} />
+            )}
         </div>
     );
 }

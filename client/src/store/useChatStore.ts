@@ -75,19 +75,23 @@ async function autoWrapMissing(chatId: string, members: ChatMemberDto[]) {
 //  Message processing
 // ═══════════════════════════════════════════════════════════
 
-function hasEncText(enc?: EncryptedPayload): boolean {
-    return !!(enc?.ciphertext && enc.ciphertext.length > 0);
+function hasRealEncText(enc?: EncryptedPayload): boolean {
+    return !!(enc && enc.ciphertext && enc.ciphertext.length > 0);
+}
+
+async function decryptText(chatId: string, enc: EncryptedPayload, msgId?: string): Promise<string | null> {
+    if (!hasRealEncText(enc)) return null;
+    if (!cryptoManager.hasChatKey(chatId)) return null;
+    try {
+        return await cryptoManager.decrypt(chatId, enc.ciphertext, enc.nonce, msgId);
+    } catch { return null; }
 }
 
 async function decryptReply(reply: ReplyInfoDto | null | undefined, chatId: string): Promise<ReplyInfoDto | undefined> {
     if (!reply) return undefined;
-    if (hasEncText(reply.encrypted) && cryptoManager.hasChatKey(chatId)) {
-        try {
-            const plain = await cryptoManager.decrypt(chatId, reply.encrypted!.ciphertext, reply.encrypted!.nonce, reply.id);
-            return { ...reply, content: plain };
-        } catch { return { ...reply, content: '🔒 Зашифровано' }; }
-    }
-    if (hasEncText(reply.encrypted)) return { ...reply, content: '🔒 Зашифровано' };
+    const plain = await decryptText(chatId, reply.encrypted!);
+    if (plain) return { ...reply, content: plain };
+    if (hasRealEncText(reply.encrypted)) return { ...reply, content: '🔒 Зашифровано' };
     return reply;
 }
 
@@ -95,13 +99,17 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
     let content = msg.content;
     let decrypted_content: string | undefined;
 
-    if (hasEncText(msg.encrypted) && cryptoManager.hasChatKey(msg.chat_id)) {
-        try {
-            content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
-            decrypted_content = content;
-        } catch { content = '🔒 Не удалось расшифровать'; }
-    } else if (hasEncText(msg.encrypted)) {
+    // Try to decrypt text if there's actual encrypted text content
+    const plain = await decryptText(msg.chat_id, msg.encrypted!, msg.id);
+    if (plain !== null) {
+        content = plain;
+        decrypted_content = plain;
+    } else if (hasRealEncText(msg.encrypted)) {
         content = '🔒 Зашифровано';
+    }
+    // If content is just the server placeholder, clean it up
+    if (content === '[Зашифрованное сообщение]' && !hasRealEncText(msg.encrypted)) {
+        content = msg.attachment ? '' : content;
     }
 
     const reply_to = await decryptReply(msg.reply_to, msg.chat_id);
@@ -118,7 +126,7 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
 
 async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage[]> {
     return Promise.all(messages.map(async msg => {
-        if (!hasEncText(msg.encrypted) || msg.decrypted_content) return msg;
+        if (!hasRealEncText(msg.encrypted) || msg.decrypted_content) return msg;
         if (!cryptoManager.hasChatKey(msg.chat_id)) return msg;
         try {
             const content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
@@ -127,38 +135,46 @@ async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage
     }));
 }
 
-/** Build decrypted preview for chat list */
-async function buildDecryptedPreview(lm: MessageDto | null, isGroup: boolean, userId: string): Promise<{ text: string; time: string }> {
-    if (!lm) return { text: 'Нет сообщений', time: '' };
-    const own = lm.sender_id === userId;
-    const prefix = isGroup && !own ? `${lm.sender_name}: ` : own ? 'Вы: ' : '';
+/** Build decrypted preview for sidebar */
+function buildPreview(msg: LocalMessage | null, isGroup: boolean, userId: string): { text: string; time: string } {
+    if (!msg) return { text: 'Нет сообщений', time: '' };
+    const own = msg.sender_id === userId;
+    const prefix = isGroup && !own ? `${msg.sender_name}: ` : own ? 'Вы: ' : '';
+    const displayText = msg.decrypted_content || msg.content;
 
     let text: string;
-    if (lm.attachment) {
-        text = prefix + '📎 ' + lm.attachment.filename;
-    } else if (hasEncText(lm.encrypted) && cryptoManager.hasChatKey(lm.chat_id)) {
-        try {
-            const plain = await cryptoManager.decrypt(lm.chat_id, lm.encrypted!.ciphertext, lm.encrypted!.nonce, lm.id);
-            text = prefix + plain;
-        } catch {
-            text = prefix + '🔒 Зашифровано';
-        }
-    } else if (hasEncText(lm.encrypted)) {
-        text = prefix + '🔒 Зашифровано';
+    if (msg.attachment) {
+        text = prefix + '📎 ' + msg.attachment.filename;
+    } else if (displayText === '[Зашифрованное сообщение]' || displayText === '🔒 Зашифровано') {
+        text = prefix + '🔒 Сообщение';
     } else {
-        text = prefix + lm.content;
+        text = prefix + displayText;
     }
-
-    return { text, time: formatTime(lm.created_at) };
+    return { text, time: formatTime(msg.created_at) };
 }
 
-function buildPreviewSync(lm: MessageDto | null, isGroup: boolean, userId: string) {
+/** Build preview from raw DTO (for initial load) — async version that decrypts */
+async function buildPreviewFromDto(lm: MessageDto | null, isGroup: boolean, userId: string): Promise<{ text: string; time: string }> {
     if (!lm) return { text: 'Нет сообщений', time: '' };
     const own = lm.sender_id === userId;
     const prefix = isGroup && !own ? `${lm.sender_name}: ` : own ? 'Вы: ' : '';
-    let text = prefix + lm.content;
-    if (lm.attachment) text = prefix + '📎 ' + lm.attachment.filename;
-    return { text, time: formatTime(lm.created_at) };
+
+    if (lm.attachment) {
+        return { text: prefix + '📎 ' + lm.attachment.filename, time: formatTime(lm.created_at) };
+    }
+
+    // Try decrypt
+    const plain = await decryptText(lm.chat_id, lm.encrypted!, lm.id);
+    if (plain) {
+        return { text: prefix + plain, time: formatTime(lm.created_at) };
+    }
+    if (hasRealEncText(lm.encrypted)) {
+        return { text: prefix + '🔒 Сообщение', time: formatTime(lm.created_at) };
+    }
+    // Not encrypted — use content directly, but clean up server placeholder
+    let text = lm.content;
+    if (text === '[Зашифрованное сообщение]') text = '🔒 Сообщение';
+    return { text: prefix + text, time: formatTime(lm.created_at) };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -200,13 +216,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             for (const dto of dtos) {
                 const others = dto.members.filter(m => m.user_id !== currentUserId);
                 const name = dto.is_group ? (dto.name || 'Группа') : (others[0]?.display_name || 'Чат');
-                const p = await buildDecryptedPreview(dto.last_message, dto.is_group, currentUserId);
+                const p = await buildPreviewFromDto(dto.last_message, dto.is_group, currentUserId);
                 chats.push({
                     id: dto.id, is_group: dto.is_group, isChannel: dto.is_channel || false,
                     name, members: dto.members, messages: [], messagesLoaded: false,
                     unread_count: dto.unread_count, online: !dto.is_group && (others[0]?.online || false),
                     created_at: dto.created_at, lastMessageText: p.text, lastMessageTime: p.time,
-                    lastActivityAt: dto.last_message?.created_at || dto.created_at, isPinned: dto.members.find(m => m.user_id === currentUserId)?.is_pinned || false,
+                    lastActivityAt: dto.last_message?.created_at || dto.created_at,
+                    isPinned: dto.members.find(m => m.user_id === currentUserId)?.is_pinned || false,
                     hasMore: true,
                 });
             }
@@ -230,31 +247,43 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (!hadKey && cryptoManager.hasChatKey(id) && chat.messagesLoaded) {
             const msgs = await reDecryptMessages(chat.messages);
             if (get().selectedId !== id) return;
-            set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs }) }));
-            // Update preview too
-            const lastRaw = msgs[msgs.length - 1];
-            if (lastRaw) {
-                const previewText = lastRaw.own ? 'Вы: ' + (lastRaw.decrypted_content || lastRaw.content) : (lastRaw.decrypted_content || lastRaw.content);
-                set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, lastMessageText: previewText }) }));
-            }
+            const lastProcessed = msgs[msgs.length - 1];
+            const preview = buildPreview(lastProcessed, chat.is_group, currentUserId);
+            set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs, lastMessageText: preview.text }) }));
             return;
         }
 
-        if (chat.messagesLoaded) return;
+        if (chat.messagesLoaded) {
+            // Already loaded — just mark read
+            const last = chat.messages[chat.messages.length - 1];
+            if (last && !last.own) {
+                wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: last.id } });
+            }
+            return;
+        }
 
         set({ loadingMessages: true });
         try {
             const raw = await api.getMessages(id, 50);
             if (get().selectedId !== id) { set({ loadingMessages: false }); return; }
             const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
+
+            // Update preview with decrypted last message
+            const lastProcessed = msgs[msgs.length - 1];
+            const preview = buildPreview(lastProcessed, chat.is_group, currentUserId);
+
             set(s => ({
                 chats: s.chats.map(c => c.id !== id ? c : {
                     ...c, messages: msgs, messagesLoaded: true, unread_count: 0,
                     hasMore: raw.length >= 50,
+                    lastMessageText: preview.text, lastMessageTime: preview.time,
                 }),
                 loadingMessages: false,
             }));
-            if (raw.length) wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: raw[raw.length - 1].id } });
+
+            if (raw.length) {
+                wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: raw[raw.length - 1].id } });
+            }
         } catch { set({ loadingMessages: false }); }
     },
 
@@ -270,12 +299,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             const raw = await api.getMessages(chatId, 50, oldest.id);
             if (get().selectedId !== chatId) { set({ loadingOlder: false }); return; }
             const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
-
             set(s => ({
                 chats: s.chats.map(c => c.id !== chatId ? c : {
-                    ...c,
-                    messages: [...msgs, ...c.messages],
-                    hasMore: raw.length >= 50,
+                    ...c, messages: [...msgs, ...c.messages], hasMore: raw.length >= 50,
                 }),
                 loadingOlder: false,
             }));
@@ -288,19 +314,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         const clientId = uid();
         const now = new Date().toISOString();
+        const displayContent = trimmed || (attachmentId ? '📎 Файл' : '');
 
         let enc: EncryptedPayload | undefined;
         if (trimmed && cryptoManager.hasChatKey(chatId)) {
             try { enc = await cryptoManager.encrypt(chatId, trimmed); } catch { /* fallback */ }
         }
-
         if (fileNonce) {
             if (enc) { enc.file_nonce = fileNonce; }
             else { enc = { ciphertext: '', nonce: '', file_nonce: fileNonce }; }
         }
-
-        const encHasText = hasEncText(enc);
-        const displayContent = trimmed || '📎 Файл';
 
         set(s => ({
             chats: s.chats.map(c => c.id !== chatId ? c : {
@@ -308,7 +331,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 messages: [...c.messages, {
                     id: clientId, client_id: clientId, chat_id: chatId,
                     sender_id: currentUserId, sender_name: currentUserName,
-                    content: displayContent, edited: false, created_at: now,
+                    content: displayContent, decrypted_content: trimmed || undefined,
+                    edited: false, created_at: now,
                     own: true, status: 'pending' as const, encrypted: enc,
                 }],
                 lastMessageText: 'Вы: ' + displayContent,
@@ -320,7 +344,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: chatId,
-                content: encHasText ? '[Зашифрованное сообщение]' : displayContent,
+                content: hasRealEncText(enc) ? '[Зашифрованное сообщение]' : displayContent,
                 client_id: clientId, attachment_id: attachmentId,
                 encrypted: enc, reply_to_id: replyToId,
             },
@@ -333,15 +357,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         const clientId = uid();
         const now = new Date().toISOString();
+        const displayContent = content || '📎 Файл';
 
         let enc: EncryptedPayload | undefined;
         if (content && cryptoManager.hasChatKey(targetChatId)) {
-            try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { /* fallback */ }
+            try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { /* */ }
         }
 
         const canForwardAtt = originalMsg.attachment && !originalMsg.encrypted?.file_nonce;
-        const encHasText = hasEncText(enc);
-        const displayContent = content || '📎 Файл';
 
         set(s => ({
             chats: s.chats.map(c => c.id !== targetChatId ? c : {
@@ -349,7 +372,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 messages: [...c.messages, {
                     id: clientId, client_id: clientId, chat_id: targetChatId,
                     sender_id: currentUserId, sender_name: currentUserName,
-                    content: displayContent, edited: false, created_at: now,
+                    content: displayContent, decrypted_content: content || undefined,
+                    edited: false, created_at: now,
                     own: true, status: 'pending' as const, encrypted: enc,
                     forwarded_from: { original_message_id: originalMsg.id, original_sender_name: originalMsg.sender_name },
                 }],
@@ -362,7 +386,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: targetChatId,
-                content: encHasText ? '[Зашифрованное сообщение]' : displayContent,
+                content: hasRealEncText(enc) ? '[Зашифрованное сообщение]' : displayContent,
                 client_id: clientId,
                 attachment_id: canForwardAtt ? originalMsg.attachment!.id : undefined,
                 encrypted: enc,
@@ -399,7 +423,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     if (chat.messages.some(m => m.id === raw.id)) return s;
 
                     const pendingIdx = clientId ? chat.messages.findIndex(m => m.client_id === clientId) : -1;
-
                     let msgs = [...chat.messages];
                     if (pendingIdx !== -1) {
                         msgs[pendingIdx] = { ...local, status: 'sent' };
@@ -407,25 +430,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                         msgs.push(local);
                     }
 
-                    // Decrypted preview
-                    const previewContent = local.decrypted_content || local.content;
-                    const isGroup = chat.is_group;
-                    const own = local.own;
-                    const prefix = isGroup && !own ? `${local.sender_name}: ` : own ? 'Вы: ' : '';
-                    const previewText = local.attachment
-                        ? prefix + '📎 ' + local.attachment.filename
-                        : prefix + previewContent;
-
+                    const preview = buildPreview(local, chat.is_group, currentUserId);
                     const isActive = s.selectedId === raw.chat_id && document.hasFocus() && !document.hidden;
                     const newChats = [...s.chats];
                     newChats[idx] = {
                         ...chat, messages: msgs,
                         unread_count: isActive ? 0 : chat.unread_count + (local.own ? 0 : 1),
-                        lastMessageText: previewText,
-                        lastMessageTime: formatTime(raw.created_at),
+                        lastMessageText: preview.text, lastMessageTime: preview.time,
                         lastActivityAt: raw.created_at,
                     };
 
+                    // Auto mark read if chat is active
                     if (isActive && !local.own) {
                         wsManager.send({ type: 'mark_read', payload: { chat_id: raw.chat_id, message_id: raw.id } });
                     }
@@ -437,11 +452,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             case 'message_edited': {
                 const { chat_id, message_id, new_content, encrypted } = msg.payload;
                 let content = new_content;
-                if (hasEncText(encrypted) && cryptoManager.hasChatKey(chat_id)) {
-                    try { content = await cryptoManager.decrypt(chat_id, encrypted!.ciphertext, encrypted!.nonce, message_id); }
-                    catch { content = '🔒 Не удалось расшифровать'; }
-                } else if (hasEncText(encrypted)) content = '🔒 Зашифровано';
-                set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content, edited: true }) }) }));
+                const plain = await decryptText(chat_id, encrypted!, message_id);
+                if (plain !== null) content = plain;
+                else if (hasRealEncText(encrypted)) content = '🔒 Зашифровано';
+                set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content, edited: true, decrypted_content: plain || undefined }) }) }));
                 break;
             }
 
@@ -480,9 +494,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     if (chat?.members.some(m => m.user_id === u.id)) {
                         const status = await setupChatE2E(sel, chat.members, currentUserId);
                         set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, e2eStatus: status }) }));
-                        if (status === 'ready' && chat.messages.some(m => hasEncText(m.encrypted) && !m.decrypted_content)) {
+                        if (status === 'ready' && chat.messages.some(m => hasRealEncText(m.encrypted) && !m.decrypted_content)) {
                             const msgs = await reDecryptMessages(chat.messages);
-                            set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, messages: msgs }) }));
+                            const lastP = msgs[msgs.length - 1];
+                            const preview = buildPreview(lastP, chat.is_group, currentUserId);
+                            set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, messages: msgs, lastMessageText: preview.text }) }));
                         }
                     }
                 }
@@ -496,23 +512,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             case 'messages_read': {
                 const { chat_id, user_id, message_id } = msg.payload;
                 if (user_id === currentUserId) {
-                    // Mark our chat as read (reset unread)
                     set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, unread_count: 0 }) }));
                     break;
                 }
-                // Someone else read our messages — mark all own messages up to message_id as 'read'
+                // Other user read — mark all own msgs as read
                 set(s => ({
                     chats: s.chats.map(c => {
                         if (c.id !== chat_id) return c;
-                        let found = false;
-                        const msgs = c.messages.map(m => {
-                            if (m.id === message_id) found = true;
-                            if (m.own && m.status !== 'read') {
-                                return { ...m, status: 'read' as const };
-                            }
-                            return m;
-                        });
-                        return { ...c, messages: msgs };
+                        return {
+                            ...c,
+                            messages: c.messages.map(m =>
+                                m.own && (m.status === 'sent' || m.status === 'delivered')
+                                    ? { ...m, status: 'read' as const }
+                                    : m
+                            ),
+                        };
                     })
                 }));
                 break;

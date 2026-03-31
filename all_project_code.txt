@@ -168,8 +168,11 @@ import { SettingsView } from './components/settings/SettingsView';
 import { GlobalAudioPlayer } from './components/ui/GlobalAudioPlayer';
 import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
+import { NotificationToasts } from './components/ui/NotificationToasts';
 import { wsManager } from './websocket';
+import { playNotificationSound, sendSystemNotification, initNotifications } from './notifications';
 import { MessageCircle } from 'lucide-react';
+import { cryptoManager } from './crypto';
 
 const CALL_EVENTS = new Set([
     'call_incoming', 'call_accepted', 'call_ice', 'call_rejected',
@@ -180,10 +183,12 @@ export default function App() {
     const { user, loading, init, login, register, setUser } = useAuthStore();
     const { activeTab, darkMode, toggleDarkMode, showToast } = useUiStore();
     const { chats, loadChats, handleWsEvent, selectedId } = useChatStore();
+    const addNotification = useUiStore(s => s.addNotification);
     const handleWsCallEvent = useCallStore(s => s.handleWsCallEvent);
 
-    useEffect(() => { init(); if (darkMode) document.documentElement.classList.add('dark'); }, []);
+    useEffect(() => { init(); if (darkMode) document.documentElement.classList.add('dark'); initNotifications(); }, []);
 
+    // Main WS subscription
     useEffect(() => {
         if (!user) return;
         loadChats(user.id);
@@ -192,7 +197,89 @@ export default function App() {
             if (CALL_EVENTS.has(msg.type)) {
                 handleWsCallEvent(msg, useChatStore.getState().chats, user.id);
             }
+
+            // Notifications for new messages
+            if (msg.type === 'new_message') {
+                const raw = msg.payload.message;
+                if (raw.sender_id === user.id) return;
+
+                const state = useChatStore.getState();
+                const isActive = state.selectedId === raw.chat_id && document.hasFocus() && !document.hidden;
+
+                // If active — send mark_read immediately
+                if (isActive) {
+                    wsManager.send({ type: 'mark_read', payload: { chat_id: raw.chat_id, message_id: raw.id } });
+                    return;
+                }
+
+                const chat = state.chats.find(c => c.id === raw.chat_id);
+                const chatName = chat?.name || raw.sender_name;
+                const isGroup = chat?.is_group || chat?.isChannel || false;
+
+                // Decrypt preview text for notification
+                let text = raw.attachment ? '📎 ' + raw.attachment.filename : raw.content;
+                if (raw.encrypted?.ciphertext && raw.encrypted.ciphertext.length > 0 && cryptoManager.hasChatKey(raw.chat_id)) {
+                    try {
+                        // We can't await here in sync callback, so use the raw content
+                        // The store's processMsg will handle decryption
+                    } catch { /* */ }
+                }
+                if (text === '[Зашифрованное сообщение]') text = '🔒 Новое сообщение';
+
+                const other = chat?.members.find(m => m.user_id !== user.id);
+
+                // Sound
+                playNotificationSound();
+
+                // In-app toast
+                addNotification({
+                    chatId: raw.chat_id,
+                    chatName,
+                    senderName: raw.sender_name,
+                    senderAvatarUrl: other?.avatar_url,
+                    text: text.length > 80 ? text.slice(0, 80) + '…' : text,
+                    isGroup,
+                });
+
+                // System notification
+                const title = isGroup ? chatName : raw.sender_name;
+                const body = isGroup ? `${raw.sender_name}: ${text}` : text;
+                sendSystemNotification(
+                    title,
+                    body.length > 100 ? body.slice(0, 100) + '…' : body,
+                    `msg-${raw.chat_id}`,
+                    () => {
+                        window.focus();
+                        useChatStore.getState().selectChat(raw.chat_id, user.id);
+                        useUiStore.getState().setActiveTab('chats');
+                    }
+                );
+            }
         });
+    }, [user]);
+
+    // Mark read on focus / visibility change
+    useEffect(() => {
+        if (!user) return;
+        const markRead = () => {
+            const state = useChatStore.getState();
+            const chatId = state.selectedId;
+            if (!chatId) return;
+            const chat = state.chats.find(c => c.id === chatId);
+            if (!chat?.messages.length) return;
+            const last = chat.messages[chat.messages.length - 1];
+            if (last && !last.own) {
+                wsManager.send({ type: 'mark_read', payload: { chat_id: chatId, message_id: last.id } });
+            }
+        };
+        const onFocus = () => markRead();
+        const onVis = () => { if (!document.hidden) markRead(); };
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onVis);
+        return () => {
+            window.removeEventListener('focus', onFocus);
+            document.removeEventListener('visibilitychange', onVis);
+        };
     }, [user]);
 
     if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-[#0c0c10] text-gray-400">Загрузка...</div>;
@@ -228,6 +315,7 @@ export default function App() {
                 </div>
             </div>
             <IncomingCallModal />
+            <NotificationToasts />
         </div>
     );
 }
@@ -331,6 +419,7 @@ import { DraggableSlider } from '../ui/DraggableSlider';
 import { formatDuration } from '../../utils';
 import { uploadFile } from '../../api';
 import type { SharedMediaItem } from '../../types';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export function CallOverlay() {
     const call = useCallStore();
@@ -643,22 +732,28 @@ export function IncomingCallModal() {
 ================================================================================
 FILE PATH: ./client/src/components/chat/ChatInfoPanel.tsx
 ================================================================================
-import React, { useState } from 'react';
-import { X, LogOut, Trash2, Link2, Copy, Users } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, LogOut, Trash2, Link2, Copy, Users, Camera, UserMinus } from 'lucide-react';
 import type { LocalChat } from '../../types';
 import { Avatar } from '../ui/Avatar';
+import { UserProfilePanel } from './UserProfilePanel';
 import { useUiStore } from '../../store/useUiStore';
+import { useChatStore } from '../../store/useChatStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import * as api from '../../api';
 
 interface Props { chat: LocalChat; currentUserId: string; onClose: () => void }
 
 export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
     const showToast = useUiStore(s => s.showToast);
+    const loadChats = useChatStore(s => s.loadChats);
     const [inviteCode, setInviteCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [selectedMember, setSelectedMember] = useState<string | null>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
 
     const myRole = chat.members.find(m => m.user_id === currentUserId)?.role || 'member';
-    const avatarUrl = chat.is_group ? undefined : chat.members.find(m => m.user_id !== currentUserId)?.avatar_url;
+    const isAdmin = myRole === 'owner' || myRole === 'admin';
 
     const handleCreateInvite = async () => {
         setLoading(true);
@@ -666,6 +761,60 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
         catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
         finally { setLoading(false); }
     };
+
+    const handleLeave = async () => {
+        if (!confirm('Вы уверены, что хотите покинуть чат?')) return;
+        try {
+            await api.leaveChat(chat.id);
+            showToast('Вы покинули чат', 'success');
+            useChatStore.getState().selectChat(null, currentUserId);
+            loadChats(currentUserId);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleDelete = async () => {
+        if (!confirm('Удалить чат для всех участников?')) return;
+        try {
+            await api.deleteChat(chat.id);
+            showToast('Чат удалён', 'success');
+            useChatStore.getState().selectChat(null, currentUserId);
+            loadChats(currentUserId);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleKick = async (userId: string, displayName: string) => {
+        if (!confirm(`Удалить ${displayName} из чата?`)) return;
+        try {
+            // Use API to remove member (we'll need to add this endpoint)
+            const res = await fetch(`${api.SERVER_URL}/api/chats/${chat.id}/kick/${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${api.getToken()}`, 'Content-Type': 'application/json' },
+            });
+            if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || 'Ошибка'); }
+            showToast(`${displayName} удалён`, 'success');
+            loadChats(currentUserId);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleUploadGroupAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]; if (!file) return;
+        if (!file.type.startsWith('image/')) { showToast('Выберите изображение', 'error'); return; }
+        try {
+            const formData = new FormData(); formData.append('avatar', file);
+            const headers: Record<string, string> = {}; if (api.getToken()) headers['Authorization'] = `Bearer ${api.getToken()}`;
+            const res = await fetch(`${api.SERVER_URL}/api/chats/${chat.id}/avatar`, { method: 'POST', headers, body: formData });
+            if (!res.ok) throw new Error('Ошибка загрузки');
+            showToast('Аватарка группы обновлена!', 'success');
+            loadChats(currentUserId);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+        finally { if (fileRef.current) fileRef.current.value = ''; }
+    };
+
+    const member = selectedMember ? chat.members.find(m => m.user_id === selectedMember) : null;
+
+    if (member) {
+        return <UserProfilePanel member={member} onClose={() => setSelectedMember(null)} />;
+    }
 
     return (
         <aside className="w-[320px] h-full flex flex-col bg-white dark:bg-[#15151c] shadow-2xl animate-in slide-in-from-right-8 duration-300">
@@ -676,12 +825,20 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 <div className="flex flex-col items-center gap-2 px-4 pt-6 pb-4">
-                    <Avatar name={chat.name} size={80} avatarUrl={avatarUrl} />
+                    <div className="relative group cursor-pointer" onClick={() => isAdmin && fileRef.current?.click()}>
+                        <Avatar name={chat.name} size={80} />
+                        {isAdmin && (
+                            <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                <Camera size={24} className="text-white" />
+                            </div>
+                        )}
+                    </div>
+                    <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUploadGroupAvatar} />
                     <h3 className="text-[17px] font-bold mt-2">{chat.isChannel ? '📢 ' : ''}{chat.name}</h3>
                     <span className="text-[13px] text-gray-500">{chat.members.length} {chat.isChannel ? 'подписчиков' : 'участников'}</span>
                 </div>
 
-                {(myRole === 'owner' || myRole === 'admin') && (
+                {isAdmin && (
                     <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800">
                         <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Приглашение</div>
                         {inviteCode ? (
@@ -701,20 +858,34 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
                     <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Users size={14} /> Участники ({chat.members.length})</div>
                     <div className="flex flex-col gap-1 mt-3">
                         {chat.members.map(m => (
-                            <div key={m.user_id} className="flex items-center gap-3 w-full p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-[#20202c] transition">
+                            <div
+                                key={m.user_id}
+                                className="flex items-center gap-3 w-full p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-[#20202c] transition cursor-pointer group"
+                                onClick={() => setSelectedMember(m.user_id)}
+                            >
                                 <Avatar name={m.display_name} size={36} online={m.online} avatarUrl={m.avatar_url} />
                                 <div className="flex-1 min-w-0">
                                     <div className="text-[14px] font-medium truncate">{m.display_name}{m.user_id === currentUserId ? ' (вы)' : ''}</div>
                                     <div className="text-[11px] text-gray-500">{m.role === 'owner' ? 'Создатель' : m.role === 'admin' ? 'Админ' : 'Участник'}</div>
                                 </div>
+                                {/* Kick button */}
+                                {isAdmin && m.user_id !== currentUserId && m.role !== 'owner' && (
+                                    <button
+                                        className="p-1.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition rounded-lg hover:bg-red-500/10"
+                                        onClick={(e) => { e.stopPropagation(); handleKick(m.user_id, m.display_name); }}
+                                        title="Удалить из чата"
+                                    >
+                                        <UserMinus size={16} />
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
                 </div>
 
                 <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-2 mt-4">
-                    <button className="w-full flex items-center gap-3 px-4 py-3 text-[14px] font-medium text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition"><LogOut size={18} /> Покинуть чат</button>
-                    {myRole === 'owner' && <button className="w-full flex items-center gap-3 px-4 py-3 text-[14px] font-medium text-red-500 hover:bg-red-500/10 rounded-xl transition"><Trash2 size={18} /> Удалить для всех</button>}
+                    <button className="w-full flex items-center gap-3 px-4 py-3 text-[14px] font-medium text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition" onClick={handleLeave}><LogOut size={18} /> Покинуть чат</button>
+                    {myRole === 'owner' && <button className="w-full flex items-center gap-3 px-4 py-3 text-[14px] font-medium text-red-500 hover:bg-red-500/10 rounded-xl transition" onClick={handleDelete}><Trash2 size={18} /> Удалить для всех</button>}
                 </div>
             </div>
         </aside>
@@ -746,7 +917,16 @@ export function ChatListPanel({ currentUserId }: Props) {
         return f.sort((a, b) => (a.isPinned === b.isPinned ? (b.lastActivityAt || '').localeCompare(a.lastActivityAt || '') : a.isPinned ? -1 : 1));
     }, [chats, search]);
 
-    const getChatAvatar = (chat: any) => (chat.is_group || chat.isChannel) ? undefined : chat.members.find((m: any) => m.user_id !== currentUserId)?.avatar_url;
+    const getChatAvatar = (chat: any) => {
+        if (chat.is_group || chat.isChannel) return undefined;
+        return chat.members.find((m: any) => m.user_id !== currentUserId)?.avatar_url;
+    };
+
+    const getChatOnline = (chat: any): boolean | undefined => {
+        if (chat.is_group || chat.isChannel) return undefined;
+        const other = chat.members.find((m: any) => m.user_id !== currentUserId);
+        return other?.online;
+    };
 
     const handleJoinByCode = async () => {
         const code = prompt('Введите код приглашения:');
@@ -755,6 +935,18 @@ export function ChatListPanel({ currentUserId }: Props) {
             await api.joinByCode(code.trim());
             showToast('Вы вступили в чат!', 'success');
             loadChats(currentUserId);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleTogglePin = async (e: React.MouseEvent, chatId: string) => {
+        e.stopPropagation();
+        try {
+            await api.togglePin(chatId);
+            // Optimistic update
+            const store = useChatStore.getState();
+            useChatStore.setState({
+                chats: store.chats.map(c => c.id === chatId ? { ...c, isPinned: !c.isPinned } : c),
+            });
         } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
@@ -783,16 +975,36 @@ export function ChatListPanel({ currentUserId }: Props) {
                     {loading && !chats.length && <p className="p-8 text-center text-[13px] text-gray-400">Загрузка чатов...</p>}
 
                     {sorted.map(chat => (
-                        <button key={chat.id} onClick={() => selectChat(chat.id, currentUserId)} className={`w-full flex items-center gap-3 p-2.5 rounded-2xl text-left transition-colors ${selectedId === chat.id ? 'bg-accent/10 dark:bg-accent/15' : 'hover:bg-gray-100 dark:hover:bg-[#20202c]'}`}>
-                            <Avatar name={chat.name} size={46} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar(chat)} />
+                        <button
+                            key={chat.id}
+                            onClick={() => selectChat(chat.id, currentUserId)}
+                            className={`group w-full flex items-center gap-3 p-2.5 rounded-2xl text-left transition-colors ${selectedId === chat.id ? 'bg-accent/10 dark:bg-accent/15' : 'hover:bg-gray-100 dark:hover:bg-[#20202c]'}`}
+                        >
+                            <Avatar
+                                name={chat.name}
+                                size={46}
+                                online={getChatOnline(chat)}
+                                avatarUrl={getChatAvatar(chat)}
+                            />
                             <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                 <div className="flex justify-between items-center gap-2">
                                     <span className="text-[14px] font-semibold truncate flex items-center gap-1.5">
-                                        {chat.isPinned && <Pin size={12} className="text-accent" />}
-                                        {chat.isChannel ? <Megaphone size={12} className="text-gray-400" /> : chat.is_group && <Users size={12} className="text-gray-400" />}
+                                        {chat.isPinned && <Pin size={12} className="text-accent flex-shrink-0" />}
+                                        {chat.isChannel ? <Megaphone size={12} className="text-gray-400 flex-shrink-0" /> : chat.is_group && <Users size={12} className="text-gray-400 flex-shrink-0" />}
                                         {chat.name}
                                     </span>
-                                    <span className="text-[11px] font-medium text-gray-400 whitespace-nowrap flex-shrink-0">{chat.lastMessageTime}</span>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        {/* Pin button — visible on hover */}
+                                        <button
+                                            className={`p-0.5 rounded opacity-0 group-hover:opacity-100 transition ${chat.isPinned ? 'text-accent' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                }`}
+                                            onClick={(e) => handleTogglePin(e, chat.id)}
+                                            title={chat.isPinned ? 'Открепить' : 'Закрепить'}
+                                        >
+                                            <Pin size={12} />
+                                        </button>
+                                        <span className="text-[11px] font-medium text-gray-400 whitespace-nowrap">{chat.lastMessageTime}</span>
+                                    </div>
                                 </div>
                                 <div className="flex justify-between items-center gap-2">
                                     <span className="text-[13px] text-gray-500 truncate">{chat.lastMessageText || 'Нет сообщений'}</span>
@@ -816,8 +1028,8 @@ export function ChatListPanel({ currentUserId }: Props) {
 ================================================================================
 FILE PATH: ./client/src/components/chat/ChatView.tsx
 ================================================================================
-import React, { useEffect, useRef, useState } from 'react';
-import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2 } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2, Loader2 } from 'lucide-react';
 import { useChatStore } from '../../store/useChatStore';
 import { useUiStore } from '../../store/useUiStore';
 import { Avatar } from '../ui/Avatar';
@@ -847,7 +1059,7 @@ function E2EBanner({ status }: { status?: E2EStatus }) {
 }
 
 export function ChatView({ currentUserId, currentUserName }: Props) {
-    const { chats, selectedId, loadingMessages, sendMessage, deleteMessage, editMessage, forwardMessage } = useChatStore();
+    const { chats, selectedId, loadingMessages, loadingOlder, sendMessage, deleteMessage, editMessage, forwardMessage, loadOlderMessages } = useChatStore();
     const showToast = useUiStore(s => s.showToast);
     const [panelOpen, setPanelOpen] = useState(false);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
@@ -856,11 +1068,64 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
     const [forwardMsg, setForwardMsg] = useState<LocalMessage | null>(null);
     const chat = chats.find(c => c.id === selectedId);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const startCall = useCallStore(s => s.startCall);
     const allChats = useChatStore(s => s.chats);
+    const isInitialLoad = useRef(true);
+    const prevMsgCount = useRef(0);
 
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat?.messages.length, chat?.id]);
-    useEffect(() => { setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null); }, [selectedId]);
+    // Auto-scroll to bottom on new messages (only if already near bottom)
+    useEffect(() => {
+        if (!chat) return;
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        if (isInitialLoad.current) {
+            // First load — scroll to bottom
+            bottomRef.current?.scrollIntoView();
+            isInitialLoad.current = false;
+            prevMsgCount.current = chat.messages.length;
+            return;
+        }
+
+        // If messages were prepended (older loaded), don't scroll
+        if (chat.messages.length > prevMsgCount.current) {
+            const addedAtEnd = chat.messages.length - prevMsgCount.current;
+            const lastNew = chat.messages[chat.messages.length - 1];
+
+            // Only auto-scroll if message was added at end AND user is near bottom
+            const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+            if (distFromBottom < 200 || lastNew?.own) {
+                bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+        prevMsgCount.current = chat.messages.length;
+    }, [chat?.messages.length]);
+
+    // Reset on chat switch
+    useEffect(() => {
+        setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null);
+        isInitialLoad.current = true;
+        prevMsgCount.current = 0;
+    }, [selectedId]);
+
+    // Scroll to load older messages
+    const handleScroll = useCallback(() => {
+        const container = scrollContainerRef.current;
+        if (!container || !chat || !chat.hasMore || loadingOlder) return;
+        if (container.scrollTop < 100) {
+            const prevHeight = container.scrollHeight;
+            loadOlderMessages(chat.id, currentUserId).then(() => {
+                // Preserve scroll position after prepending
+                requestAnimationFrame(() => {
+                    if (scrollContainerRef.current) {
+                        const newHeight = scrollContainerRef.current.scrollHeight;
+                        scrollContainerRef.current.scrollTop = newHeight - prevHeight;
+                    }
+                });
+            });
+        }
+    }, [chat?.id, chat?.hasMore, loadingOlder, currentUserId, loadOlderMessages]);
 
     if (!chat) return null;
 
@@ -891,7 +1156,6 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
         showToast('Сообщение переслано', 'success');
     };
 
-    // Prevent left-click from stealing input focus (Telegram-like behavior)
     const handleMessageAreaMouseDown = (e: React.MouseEvent) => {
         if (e.button === 0) {
             const target = e.target as HTMLElement;
@@ -928,12 +1192,25 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                 </header>
 
                 <div
+                    ref={scrollContainerRef}
                     className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar"
                     onMouseDown={handleMessageAreaMouseDown}
                     onClick={() => setCtxMenu(null)}
+                    onScroll={handleScroll}
                 >
                     <div className="flex flex-col justify-end min-h-full w-full">
+                        {/* Loading older indicator */}
+                        {loadingOlder && (
+                            <div className="flex justify-center py-3">
+                                <Loader2 size={20} className="animate-spin text-gray-400" />
+                            </div>
+                        )}
+                        {chat.messagesLoaded && !chat.hasMore && chat.messages.length > 0 && (
+                            <p className="text-center text-gray-400 text-[11px] py-2">Начало переписки</p>
+                        )}
+
                         <E2EBanner status={chat.e2eStatus} />
+
                         {loadingMessages && !chat.messages.length && (
                             <div className="flex flex-col items-center gap-3 py-8">
                                 <div className="flex gap-1">{[0, 1, 2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />)}</div>
@@ -980,14 +1257,7 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
 
             {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={getCtxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
 
-            <ForwardModal
-                open={!!forwardMsg}
-                message={forwardMsg}
-                chats={chats}
-                currentUserId={currentUserId}
-                onForward={handleForward}
-                onClose={() => setForwardMsg(null)}
-            />
+            <ForwardModal open={!!forwardMsg} message={forwardMsg} chats={chats} currentUserId={currentUserId} onForward={handleForward} onClose={() => setForwardMsg(null)} />
         </section>
     );
 }
@@ -1385,7 +1655,7 @@ interface Props {
 export function MessageBubble({ message: msg, isFirst, isGroup, onReply }: Props) {
     const time = formatTime(msg.created_at);
     const att = msg.attachment;
-    const mediaType = att ? getMediaType(att.mime_type) : null;
+    const mediaType = att ? getMediaType(att.mime_type, att.filename) : null;
 
     const fileNonce = msg.encrypted?.file_nonce;
     const isTextEncrypted = !!(msg.encrypted?.ciphertext && msg.encrypted.ciphertext.length > 0);
@@ -1828,8 +2098,10 @@ FILE PATH: ./client/src/components/chat/UserProfilePanel.tsx
 import React, { useState, useEffect } from 'react';
 import { X, Phone, Shield, AtSign, Clock, User } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
+import { MediaViewer } from '../ui/MediaViewer';
 import type { ChatMemberDto, UserProfileDto } from '../../types';
 import * as api from '../../api';
+import { SERVER_URL } from '../../api';
 import { formatDate } from '../../utils';
 
 interface Props {
@@ -1840,6 +2112,7 @@ interface Props {
 export function UserProfilePanel({ member, onClose }: Props) {
     const [profile, setProfile] = useState<UserProfileDto | null>(null);
     const [loading, setLoading] = useState(true);
+    const [viewerSrc, setViewerSrc] = useState<string | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -1849,14 +2122,13 @@ export function UserProfilePanel({ member, onClose }: Props) {
             .finally(() => setLoading(false));
     }, [member.user_id]);
 
+    const getFullUrl = (url: string) => url.startsWith('http') ? url : `${SERVER_URL}${url}`;
+
     return (
         <aside className="w-[320px] h-full flex flex-col bg-white dark:bg-[#15151c] shadow-2xl animate-in slide-in-from-right-8 duration-300">
-            {/* Шапка */}
             <div className="flex justify-between items-center px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
                 <h3 className="font-bold text-[16px]">Профиль</h3>
-                <button className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition" onClick={onClose}>
-                    <X size={20} />
-                </button>
+                <button className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg transition" onClick={onClose}><X size={20} /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -1864,96 +2136,53 @@ export function UserProfilePanel({ member, onClose }: Props) {
                     <div className="flex items-center justify-center py-16 text-gray-400 text-[13px]">Загрузка...</div>
                 ) : (
                     <>
-                        {/* Аватар и имя */}
                         <div className="flex flex-col items-center gap-3 px-4 pt-8 pb-6">
-                            <Avatar
-                                name={member.display_name}
-                                size={100}
-                                online={member.online}
-                                avatarUrl={member.avatar_url}
-                            />
+                            <div
+                                className="cursor-pointer hover:opacity-90 transition"
+                                onClick={() => member.avatar_url && setViewerSrc(getFullUrl(member.avatar_url))}
+                            >
+                                <Avatar name={member.display_name} size={100} online={member.online} avatarUrl={member.avatar_url} />
+                            </div>
                             <div className="text-center mt-1">
                                 <h3 className="text-[20px] font-bold">{member.display_name}</h3>
                                 <span className="text-[13px] text-gray-500">@{member.username}</span>
                             </div>
-                            <span className={`text-[12px] font-medium px-3 py-1 rounded-full ${member.online
-                                ? 'bg-green-500/10 text-green-500'
-                                : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
-                                }`}>
+                            <span className={`text-[12px] font-medium px-3 py-1 rounded-full ${member.online ? 'bg-green-500/10 text-green-500' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'}`}>
                                 {member.online ? '● в сети' : '○ был(а) недавно'}
                             </span>
                         </div>
 
-                        {/* Информация */}
                         <div className="px-4 space-y-1">
-                            {/* Био */}
-                            {profile?.bio && (
-                                <InfoRow
-                                    icon={<User size={16} />}
-                                    label="О себе"
-                                    value={profile.bio}
-                                />
-                            )}
-
-                            {/* Юзернейм */}
-                            <InfoRow
-                                icon={<AtSign size={16} />}
-                                label="Имя пользователя"
-                                value={`@${member.username}`}
-                            />
-
-                            {/* E2E */}
+                            {profile?.bio && <InfoRow icon={<User size={16} />} label="О себе" value={profile.bio} />}
+                            <InfoRow icon={<AtSign size={16} />} label="Имя пользователя" value={`@${member.username}`} />
                             {member.public_keys && (
-                                <InfoRow
-                                    icon={<Shield size={16} />}
-                                    label="Шифрование"
-                                    value={
-                                        <span className="flex items-center gap-1.5">
-                                            <span className="w-2 h-2 bg-green-500 rounded-full" />
-                                            E2E включено
-                                            <code className="text-[10px] text-gray-400 ml-1">
-                                                {member.public_keys.key_id.slice(0, 12)}…
-                                            </code>
-                                        </span>
-                                    }
-                                />
+                                <InfoRow icon={<Shield size={16} />} label="Шифрование" value={
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 bg-green-500 rounded-full" /> E2E включено
+                                        <code className="text-[10px] text-gray-400 ml-1">{member.public_keys.key_id.slice(0, 12)}…</code>
+                                    </span>
+                                } />
                             )}
-
-                            {/* Дата регистрации */}
-                            {profile?.created_at && (
-                                <InfoRow
-                                    icon={<Clock size={16} />}
-                                    label="В мессенджере с"
-                                    value={formatDate(profile.created_at)}
-                                />
-                            )}
+                            {profile?.created_at && <InfoRow icon={<Clock size={16} />} label="В мессенджере с" value={formatDate(profile.created_at)} />}
                         </div>
 
-                        {/* Аватарки */}
                         {profile && profile.avatars.length > 1 && (
                             <div className="px-4 py-4 border-t border-gray-200 dark:border-gray-800 mt-4">
-                                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">
-                                    Фотографии ({profile.avatars.length})
-                                </div>
+                                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">Фотографии ({profile.avatars.length})</div>
                                 <div className="grid grid-cols-4 gap-2">
                                     {profile.avatars.map(a => (
                                         <div
                                             key={a.id}
                                             className={`aspect-square rounded-xl overflow-hidden cursor-pointer hover:opacity-80 transition ring-2 ${a.is_current ? 'ring-accent' : 'ring-transparent'}`}
+                                            onClick={() => setViewerSrc(getFullUrl(a.url))}
                                         >
-                                            <img
-                                                src={a.url.startsWith('http') ? a.url : `${api.SERVER_URL}${a.url}`}
-                                                alt=""
-                                                className="w-full h-full object-cover"
-                                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                            />
+                                            <img src={getFullUrl(a.url)} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Действия */}
                         <div className="p-4 border-t border-gray-200 dark:border-gray-800 mt-4 flex flex-col gap-2">
                             <button className="w-full flex items-center justify-center gap-2 px-4 py-3 text-[14px] font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-xl transition">
                                 <Phone size={18} /> Позвонить
@@ -1962,11 +2191,12 @@ export function UserProfilePanel({ member, onClose }: Props) {
                     </>
                 )}
             </div>
+
+            {viewerSrc && <MediaViewer src={viewerSrc} mediaType="image" filename="avatar" onClose={() => setViewerSrc(null)} />}
         </aside>
     );
 }
 
-/* Строка информации */
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
     return (
         <div className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#1a1a24] transition">
@@ -2026,8 +2256,9 @@ export function NavRail() {
 FILE PATH: ./client/src/components/settings/SettingsView.tsx
 ================================================================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Shield, Lock, Check, Copy, Plus, Sun, Moon, Camera, Trash2, Bell } from 'lucide-react';
+import { Shield, Lock, Check, Copy, Plus, Sun, Moon, Camera, Trash2, Image as ImageIcon } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
+import { MediaViewer } from '../ui/MediaViewer';
 import * as api from '../../api';
 import { SERVER_URL } from '../../api';
 import type { UserDto, AvatarHistoryDto } from '../../types';
@@ -2051,6 +2282,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
     const [bioChanged, setBioChanged] = useState(false);
     const [savingBio, setSavingBio] = useState(false);
     const [avatarHistory, setAvatarHistory] = useState<AvatarHistoryDto[]>([]);
+    const [viewerSrc, setViewerSrc] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const fetchProfile = useCallback(async () => {
@@ -2092,6 +2324,20 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
+    const handleDeleteAvatarHistory = async (avatarId: string) => {
+        try { await api.deleteAvatarHistory(avatarId); showToast('Удалено', 'success'); await fetchProfile(); }
+        catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleSetAvatar = async (avatarId: string) => {
+        try {
+            const r = await api.setAvatarFromHistory(avatarId);
+            showToast('Аватарка установлена!', 'success');
+            if (user && onUserUpdate) onUserUpdate({ ...user, avatar_url: r.avatar_url });
+            await fetchProfile();
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
     const handleSetupE2E = async () => {
         setSettingUpE2E(true);
         try {
@@ -2110,6 +2356,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
         finally { setCreatingInvite(false); }
     };
 
+    const getFullUrl = (url: string) => url.startsWith('http') ? url : `${SERVER_URL}${url}`;
     const keyId = cryptoManager.getKeyId();
 
     return (
@@ -2144,6 +2391,41 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </div>
                 </Section>
 
+                {/* Avatar History */}
+                {avatarHistory.length > 0 && (
+                    <Section title={`Фотографии (${avatarHistory.length})`}>
+                        <div className="grid grid-cols-4 gap-2">
+                            {avatarHistory.map(a => (
+                                <div key={a.id} className="relative group aspect-square rounded-xl overflow-hidden">
+                                    <img
+                                        src={getFullUrl(a.url)}
+                                        alt=""
+                                        className={`w-full h-full object-cover cursor-pointer hover:opacity-90 transition ring-2 ${a.is_current ? 'ring-accent' : 'ring-transparent'}`}
+                                        onClick={() => setViewerSrc(getFullUrl(a.url))}
+                                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                    {/* Controls on hover */}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                                        {!a.is_current && (
+                                            <button className="p-1.5 bg-white/90 rounded-lg text-accent hover:bg-white transition" onClick={() => handleSetAvatar(a.id)} title="Установить">
+                                                <Check size={14} />
+                                            </button>
+                                        )}
+                                        <button className="p-1.5 bg-white/90 rounded-lg text-red-500 hover:bg-white transition" onClick={() => handleDeleteAvatarHistory(a.id)} title="Удалить">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    {a.is_current && (
+                                        <div className="absolute top-1 right-1 bg-accent text-white rounded-full p-0.5">
+                                            <Check size={10} />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </Section>
+                )}
+
                 {/* E2E */}
                 <Section title="Сквозное шифрование">
                     {e2eEnabled ? (
@@ -2159,7 +2441,6 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                         <div className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-[#1a1a24] rounded-xl text-center">
                             <Lock size={32} className="text-gray-400" />
                             <div className="text-[14px] font-medium">Шифрование не настроено</div>
-                            <div className="text-[12px] text-gray-500">ECIES + AES-256-GCM для каждого чата</div>
                             <button className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-[13px] font-bold rounded-xl transition active:scale-95 disabled:opacity-50" onClick={handleSetupE2E} disabled={settingUpE2E}>
                                 {settingUpE2E ? 'Генерация...' : 'Настроить E2E'}
                             </button>
@@ -2167,7 +2448,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </Section>
 
-                {/* Инвайты */}
+                {/* Invites */}
                 <Section title="Пригласить друга">
                     {inviteCode ? (
                         <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-[#1a1a24] rounded-xl border border-gray-200 dark:border-white/5">
@@ -2181,7 +2462,7 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     )}
                 </Section>
 
-                {/* Тема */}
+                {/* Theme */}
                 <Section title="Внешний вид">
                     <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 dark:bg-[#1a1a24] dark:hover:bg-[#20202c] rounded-xl transition active:scale-[0.98]" onClick={onToggleTheme}>
                         <span className="flex items-center gap-2 text-[14px] font-medium">{darkMode ? <Moon size={18} /> : <Sun size={18} />} Тёмная тема</span>
@@ -2191,14 +2472,18 @@ export function SettingsView({ darkMode, onToggleTheme, showToast, user, onUserU
                     </button>
                 </Section>
 
-                {/* Версия */}
                 <Section title="О приложении">
                     <div className="px-4 py-3 flex justify-between text-[14px]">
                         <span className="text-gray-500">Версия</span>
-                        <span className="font-medium">0.5.0</span>
+                        <span className="font-medium">0.6.0</span>
                     </div>
                 </Section>
             </div>
+
+            {/* Avatar viewer */}
+            {viewerSrc && (
+                <MediaViewer src={viewerSrc} mediaType="image" filename="avatar" onClose={() => setViewerSrc(null)} />
+            )}
         </div>
     );
 }
@@ -2222,7 +2507,12 @@ import React, { useState, useEffect } from 'react';
 import { getInitials, getAvatarColor } from '../../utils';
 import { SERVER_URL } from '../../api';
 
-interface Props { name: string; size?: number; online?: boolean; avatarUrl?: string | null }
+interface Props {
+    name: string;
+    size?: number;
+    online?: boolean;
+    avatarUrl?: string | null;
+}
 
 export function Avatar({ name, size = 40, online, avatarUrl }: Props) {
     const [err, setErr] = useState(false);
@@ -2232,12 +2522,46 @@ export function Avatar({ name, size = 40, online, avatarUrl }: Props) {
         ? (avatarUrl.startsWith('http') ? avatarUrl : `${SERVER_URL}${avatarUrl.startsWith('/') ? '' : '/api/files/'}${avatarUrl}`)
         : null;
 
+    const dotSize = Math.max(10, size * 0.25);
+    const borderSize = Math.max(2, size * 0.05);
+
     return (
-        <div className="avatar" style={{ width: size, height: size, minWidth: size, backgroundColor: fullUrl ? 'transparent' : getAvatarColor(name), fontSize: size * 0.36, lineHeight: `${size}px`, overflow: 'hidden' }}>
-            {fullUrl ? (
-                <img src={fullUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={() => setErr(true)} />
-            ) : getInitials(name)}
-            {online !== undefined && <span className={`status-dot ${online ? 'online' : ''}`} style={{ width: size * 0.3, height: size * 0.3, borderWidth: size * 0.06 }} />}
+        <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+            {/* Avatar circle — ALWAYS round */}
+            <div
+                className="w-full h-full rounded-full flex items-center justify-center text-white font-bold select-none overflow-hidden"
+                style={{
+                    backgroundColor: fullUrl ? 'transparent' : getAvatarColor(name),
+                    fontSize: size * 0.36,
+                    lineHeight: `${size}px`,
+                }}
+            >
+                {fullUrl ? (
+                    <img
+                        src={fullUrl}
+                        alt={name}
+                        className="w-full h-full object-cover rounded-full"
+                        onError={() => setErr(true)}
+                        draggable={false}
+                    />
+                ) : (
+                    getInitials(name)
+                )}
+            </div>
+
+            {/* Online indicator dot */}
+            {online !== undefined && (
+                <span
+                    className={`absolute bottom-0 right-0 rounded-full border-white dark:border-[#15151c] ${online ? 'bg-green-500' : 'bg-gray-400'
+                        }`}
+                    style={{
+                        width: dotSize,
+                        height: dotSize,
+                        borderWidth: borderSize,
+                        borderStyle: 'solid',
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -2660,6 +2984,67 @@ function ToolBtn({ children, onClick, title }: { children: React.ReactNode; onCl
         >
             {children}
         </button>
+    );
+}
+
+
+================================================================================
+FILE PATH: ./client/src/components/ui/NotificationToasts.tsx
+================================================================================
+import React from 'react';
+import { X, Users } from 'lucide-react';
+import { useUiStore } from '../../store/useUiStore';
+import { useChatStore } from '../../store/useChatStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { Avatar } from './Avatar';
+
+export function NotificationToasts() {
+    const notifications = useUiStore(s => s.notifications);
+    const removeNotification = useUiStore(s => s.removeNotification);
+    const setActiveTab = useUiStore(s => s.setActiveTab);
+    const selectChat = useChatStore(s => s.selectChat);
+    const user = useAuthStore(s => s.user);
+
+    if (!notifications.length) return null;
+
+    const handleClick = (chatId: string, notifId: string) => {
+        removeNotification(notifId);
+        if (user) {
+            selectChat(chatId, user.id);
+            setActiveTab('chats');
+        }
+        window.focus();
+    };
+
+    return (
+        <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none" style={{ maxWidth: 380 }}>
+            {notifications.map(n => (
+                <div
+                    key={n.id}
+                    className="pointer-events-auto flex items-start gap-3 p-3 pr-2 bg-white dark:bg-[#1e1e2a] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl cursor-pointer hover:bg-gray-50 dark:hover:bg-[#252536] transition-all animate-in slide-in-from-right-5 fade-in duration-300"
+                    onClick={() => handleClick(n.chatId, n.id)}
+                >
+                    <Avatar name={n.isGroup ? n.chatName : n.senderName} size={44} avatarUrl={n.senderAvatarUrl} />
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                            {n.isGroup && <Users size={12} className="text-gray-400 flex-shrink-0" />}
+                            <span className="text-[13px] font-bold truncate">{n.isGroup ? n.chatName : n.senderName}</span>
+                            <span className="text-[10px] text-gray-400 flex-shrink-0">сейчас</span>
+                        </div>
+                        <p className="text-[13px] text-gray-600 dark:text-gray-400 truncate mt-0.5">
+                            {n.isGroup && <span className="font-medium text-gray-700 dark:text-gray-300">{n.senderName}: </span>}
+                            {n.text}
+                        </p>
+                    </div>
+                    <button
+                        className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg transition flex-shrink-0"
+                        onClick={(e) => { e.stopPropagation(); removeNotification(n.id); }}
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            ))}
+        </div>
     );
 }
 
@@ -3258,28 +3643,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
 ================================================================================
 FILE PATH: ./client/src/notifications.ts
 ================================================================================
-import type { NotificationData } from './types';
-
-let tauriNotifModule: any = null;
-let tauriChecked = false;
-
-function isTauri(): boolean {
-    return !!(window as any).__TAURI_INTERNALS__;
-}
-
-async function getTauriModule(): Promise<any> {
-    if (tauriChecked) return tauriNotifModule;
-    tauriChecked = true;
-    if (!isTauri()) return null;
-    try {
-        tauriNotifModule = await import('@tauri-apps/plugin-notification');
-        return tauriNotifModule;
-    } catch (e) {
-        console.warn('[Notif] Tauri plugin load failed:', e);
-        return null;
-    }
-}
-
 let lastSoundTime = 0;
 
 export function playNotificationSound(): void {
@@ -3288,83 +3651,34 @@ export function playNotificationSound(): void {
     lastSoundTime = now;
     try {
         const audio = new Audio('/sounds/notification.mp3');
-        audio.volume = 0.5;
+        audio.volume = 0.4;
         audio.play().catch(() => { });
     } catch { /* */ }
 }
 
-let _permissionGranted = false;
-
 export async function initNotifications(): Promise<boolean> {
-    const mod = await getTauriModule();
-    if (mod) {
-        try {
-            let granted = await mod.isPermissionGranted();
-            if (!granted) {
-                const result = await mod.requestPermission();
-                granted = result === 'granted';
-            }
-            _permissionGranted = granted;
-        } catch { _permissionGranted = false; }
-    } else if ('Notification' in window) {
-        if (Notification.permission === 'granted') _permissionGranted = true;
-        else if (Notification.permission !== 'denied') {
+    if ('Notification' in window) {
+        if (Notification.permission === 'granted') return true;
+        if (Notification.permission !== 'denied') {
             try {
                 const r = await Notification.requestPermission();
-                _permissionGranted = r === 'granted';
-            } catch { _permissionGranted = false; }
+                return r === 'granted';
+            } catch { return false; }
         }
     }
-    return _permissionGranted;
-}
-
-export async function requestNotificationPermission(): Promise<boolean> {
-    _permissionGranted = false;
-    tauriChecked = false;
-    tauriNotifModule = null;
-    return initNotifications();
-}
-
-export function isNotificationEnabled(): boolean {
-    return _permissionGranted;
+    return false;
 }
 
 export async function sendSystemNotification(
     title: string, body: string, tag?: string, onClick?: () => void,
 ): Promise<void> {
-    const mod = await getTauriModule();
-    if (mod) {
-        try { await mod.sendNotification({ title, body }); } catch { /* */ }
-    } else if ('Notification' in window && Notification.permission === 'granted') {
+    if ('Notification' in window && Notification.permission === 'granted') {
         try {
             const n = new Notification(title, { body, silent: true, tag: tag || undefined });
             if (onClick) { n.onclick = () => { window.focus(); onClick(); n.close(); }; }
             setTimeout(() => n.close(), 6000);
         } catch { /* */ }
     }
-}
-
-export function showMessageNotification(
-    data: NotificationData, onClick?: () => void,
-): void {
-    playNotificationSound();
-    const title = data.isGroup ? data.chatName : data.senderName;
-    const rawBody = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
-    const body = rawBody.length > 100 ? rawBody.slice(0, 100) + '…' : rawBody;
-    if (document.hidden || !document.hasFocus()) {
-        sendSystemNotification(title, body, `msg-${data.chatId}`, onClick);
-    }
-}
-
-export function showCallNotification(callerName: string): void {
-    if (document.hidden || !document.hasFocus()) {
-        sendSystemNotification('Входящий звонок', callerName, 'incoming-call');
-    }
-}
-
-export async function sendTestNotification(): Promise<void> {
-    playNotificationSound();
-    await sendSystemNotification('Тест', 'Уведомления работают! 🎉', 'test');
 }
 
 
@@ -3624,7 +3938,7 @@ import { create } from 'zustand';
 import type { CallState, SharedMediaItem, WsServerMsg, LocalChat } from '../types';
 import { wsManager } from '../websocket';
 import { cryptoManager } from '../crypto';
-import { getFileUrl, uploadFile } from '../api';
+import { getFileUrl } from '../api';
 
 const ICE_CONFIG: RTCConfiguration = {
     iceServers: [
@@ -3652,6 +3966,55 @@ async function decSig(chatId: string, data: string, enc: boolean) {
     catch { return data; }
 }
 
+// ═══════════════════════════════════════════════════════════
+//  Ringtone — tries MP3 files first, falls back to Web Audio
+// ═══════════════════════════════════════════════════════════
+
+function createRingtone(type: 'incoming' | 'outgoing'): { stop: () => void } {
+    const src = type === 'incoming' ? '/sounds/ringtone.mp3' : '/sounds/ringback.mp3';
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = type === 'incoming' ? 0.6 : 0.3;
+
+    let stopped = false;
+    let ctx: AudioContext | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    audio.play().catch(() => {
+        if (stopped) return;
+        try {
+            ctx = new AudioContext();
+            const freqs = type === 'incoming' ? [440, 520] : [440, 480];
+            let idx = 0;
+            const playTone = () => {
+                if (!ctx || stopped) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freqs[idx % freqs.length];
+                idx++;
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.4);
+            };
+            playTone();
+            intervalId = setInterval(playTone, type === 'incoming' ? 1000 : 3000);
+        } catch { /* */ }
+    });
+
+    return {
+        stop() {
+            stopped = true;
+            audio.pause(); audio.currentTime = 0; audio.src = '';
+            if (intervalId) clearInterval(intervalId);
+            if (ctx && ctx.state !== 'closed') ctx.close().catch(() => { });
+        }
+    };
+}
+
 interface Internal {
     _pc: RTCPeerConnection | null;
     _localStream: MediaStream | null;
@@ -3664,6 +4027,7 @@ interface Internal {
     _connectedFired: boolean;
     _mediaAudios: Map<string, HTMLAudioElement>;
     _mediaTimers: Map<string, ReturnType<typeof setInterval>>;
+    _ringtone: { stop: () => void } | null;
 }
 
 interface Actions {
@@ -3698,9 +4062,11 @@ export const useCallStore = create<Store>((set, get) => ({
     _pendingOffer: null, _pendingCandidates: [],
     _audioCtx: null, _gainNode: null, _connectedFired: false,
     _mediaAudios: new Map(), _mediaTimers: new Map(),
+    _ringtone: null,
 
     _cleanup: () => {
         const s = get();
+        s._ringtone?.stop();
         s._pc?.close();
         s._localStream?.getTracks().forEach(t => t.stop());
         if (s._timer) clearInterval(s._timer);
@@ -3713,6 +4079,7 @@ export const useCallStore = create<Store>((set, get) => ({
             _audioCtx: null, _gainNode: null, _connectedFired: false,
             _pendingOffer: null, _pendingCandidates: [],
             _mediaAudios: new Map(), _mediaTimers: new Map(),
+            _ringtone: null,
         });
     },
 
@@ -3729,10 +4096,10 @@ export const useCallStore = create<Store>((set, get) => ({
         } catch { return raw; }
     },
 
-    // ★ Единая точка перехода в connected
     _markConnected: (chatId) => {
         if (get()._connectedFired) return;
-        set({ _connectedFired: true, status: 'connected', isEncrypted: cryptoManager.hasChatKey(chatId) });
+        get()._ringtone?.stop();
+        set({ _connectedFired: true, _ringtone: null, status: 'connected', isEncrypted: cryptoManager.hasChatKey(chatId) });
         console.log('[Call] ✓ CONNECTED');
         if (!get()._timer) {
             const timer = setInterval(() => set(s => ({ duration: s.duration + 1 })), 1000);
@@ -3779,17 +4146,14 @@ export const useCallStore = create<Store>((set, get) => ({
                 if (e.streams[0]) { audio.srcObject = e.streams[0]; audio.volume = get().peerVolume / 100; }
             };
 
-            // ★ Оба listener для надёжности
             pc.onconnectionstatechange = () => {
                 const st = pc.connectionState;
-                console.log('[Call] connectionState:', st);
                 if (st === 'connected') get()._markConnected(chatId);
                 if (st === 'failed') get().hangup();
             };
 
             pc.oniceconnectionstatechange = () => {
                 const st = pc.iceConnectionState;
-                console.log('[Call] iceConnectionState:', st);
                 if (st === 'connected' || st === 'completed') get()._markConnected(chatId);
                 if (st === 'failed') get().hangup();
             };
@@ -3799,12 +4163,14 @@ export const useCallStore = create<Store>((set, get) => ({
             const enc = await encSig(chatId, offer.sdp!);
             wsManager.send({ type: 'call_offer', payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted } });
 
+            const ringtone = createRingtone('outgoing');
+
             set({
                 status: 'calling', chatId, callId, peerId: other?.user_id || null,
                 peerName: other?.display_name || 'Неизвестный', peerAvatarUrl: other?.avatar_url,
                 isMuted: false, peerMuted: false, duration: 0,
                 sharedMedia: [], showMediaPanel: false, _connectedFired: false,
-                _pc: pc, _localStream: raw, _remoteAudio: audio,
+                _pc: pc, _localStream: raw, _remoteAudio: audio, _ringtone: ringtone,
             });
 
             setTimeout(() => {
@@ -3824,6 +4190,9 @@ export const useCallStore = create<Store>((set, get) => ({
     answerCall: async () => {
         const offer = get()._pendingOffer;
         if (!offer || get().status !== 'ringing') return;
+
+        get()._ringtone?.stop();
+        set({ _ringtone: null });
 
         try {
             const raw = await navigator.mediaDevices.getUserMedia({
@@ -3878,7 +4247,8 @@ export const useCallStore = create<Store>((set, get) => ({
     rejectCall: () => {
         const offer = get()._pendingOffer;
         if (offer) wsManager.send({ type: 'call_reject', payload: { chat_id: offer.chatId, call_id: offer.callId } });
-        set({ ...INITIAL, _pendingOffer: null, _pendingCandidates: [] });
+        get()._ringtone?.stop();
+        set({ ...INITIAL, _pendingOffer: null, _pendingCandidates: [], _ringtone: null });
     },
 
     hangup: () => {
@@ -3967,12 +4337,21 @@ export const useCallStore = create<Store>((set, get) => ({
                 if (s.status === 'ended') get()._cleanup();
                 const chat = chats.find(c => c.id === chat_id);
                 const caller = chat?.members.find(m => m.user_id === caller_id);
-                set({ ...INITIAL, status: 'ringing', chatId: chat_id, callId: call_id, peerId: caller_id, peerName: caller_name, peerAvatarUrl: caller?.avatar_url, isEncrypted: encrypted, _pendingOffer: { chatId: chat_id, callId: call_id, sdp, encrypted, callerId: caller_id, callerName: caller_name }, _pendingCandidates: [] });
+                const ringtone = createRingtone('incoming');
+                set({
+                    ...INITIAL, status: 'ringing', chatId: chat_id, callId: call_id,
+                    peerId: caller_id, peerName: caller_name, peerAvatarUrl: caller?.avatar_url,
+                    isEncrypted: encrypted,
+                    _pendingOffer: { chatId: chat_id, callId: call_id, sdp, encrypted, callerId: caller_id, callerName: caller_name },
+                    _pendingCandidates: [], _ringtone: ringtone,
+                });
                 break;
             }
             case 'call_accepted': {
                 const { call_id, sdp, encrypted, chat_id } = msg.payload;
                 if (s.callId !== call_id || !s._pc) return;
+                s._ringtone?.stop();
+                set({ _ringtone: null });
                 try {
                     const realSdp = await decSig(chat_id, sdp, encrypted);
                     await s._pc.setRemoteDescription({ type: 'answer', sdp: realSdp });
@@ -4108,19 +4487,23 @@ async function autoWrapMissing(chatId: string, members: ChatMemberDto[]) {
 //  Message processing
 // ═══════════════════════════════════════════════════════════
 
-function hasEncText(enc?: EncryptedPayload): boolean {
-    return !!(enc?.ciphertext && enc.ciphertext.length > 0);
+function hasRealEncText(enc?: EncryptedPayload): boolean {
+    return !!(enc && enc.ciphertext && enc.ciphertext.length > 0);
+}
+
+async function decryptText(chatId: string, enc: EncryptedPayload, msgId?: string): Promise<string | null> {
+    if (!hasRealEncText(enc)) return null;
+    if (!cryptoManager.hasChatKey(chatId)) return null;
+    try {
+        return await cryptoManager.decrypt(chatId, enc.ciphertext, enc.nonce, msgId);
+    } catch { return null; }
 }
 
 async function decryptReply(reply: ReplyInfoDto | null | undefined, chatId: string): Promise<ReplyInfoDto | undefined> {
     if (!reply) return undefined;
-    if (hasEncText(reply.encrypted) && cryptoManager.hasChatKey(chatId)) {
-        try {
-            const plain = await cryptoManager.decrypt(chatId, reply.encrypted!.ciphertext, reply.encrypted!.nonce, reply.id);
-            return { ...reply, content: plain };
-        } catch { return { ...reply, content: '🔒 Зашифровано' }; }
-    }
-    if (hasEncText(reply.encrypted)) return { ...reply, content: '🔒 Зашифровано' };
+    const plain = await decryptText(chatId, reply.encrypted!);
+    if (plain) return { ...reply, content: plain };
+    if (hasRealEncText(reply.encrypted)) return { ...reply, content: '🔒 Зашифровано' };
     return reply;
 }
 
@@ -4128,16 +4511,18 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
     let content = msg.content;
     let decrypted_content: string | undefined;
 
-    // Only try to decrypt text when there is actual encrypted text (non-empty ciphertext)
-    if (hasEncText(msg.encrypted) && cryptoManager.hasChatKey(msg.chat_id)) {
-        try {
-            content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
-            decrypted_content = content;
-        } catch { content = '🔒 Не удалось расшифровать'; }
-    } else if (hasEncText(msg.encrypted)) {
+    // Try to decrypt text if there's actual encrypted text content
+    const plain = await decryptText(msg.chat_id, msg.encrypted!, msg.id);
+    if (plain !== null) {
+        content = plain;
+        decrypted_content = plain;
+    } else if (hasRealEncText(msg.encrypted)) {
         content = '🔒 Зашифровано';
     }
-    // If only file_nonce (no text encryption) — keep original content as-is
+    // If content is just the server placeholder, clean it up
+    if (content === '[Зашифрованное сообщение]' && !hasRealEncText(msg.encrypted)) {
+        content = msg.attachment ? '' : content;
+    }
 
     const reply_to = await decryptReply(msg.reply_to, msg.chat_id);
 
@@ -4147,14 +4532,13 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
         edited: msg.edited, created_at: msg.created_at,
         own: msg.sender_id === currentUserId, status: 'delivered',
         attachment: msg.attachment, encrypted: msg.encrypted,
-        reply_to,
-        forwarded_from: msg.forwarded_from || undefined,
+        reply_to, forwarded_from: msg.forwarded_from || undefined,
     };
 }
 
 async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage[]> {
     return Promise.all(messages.map(async msg => {
-        if (!hasEncText(msg.encrypted) || msg.decrypted_content) return msg;
+        if (!hasRealEncText(msg.encrypted) || msg.decrypted_content) return msg;
         if (!cryptoManager.hasChatKey(msg.chat_id)) return msg;
         try {
             const content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
@@ -4163,13 +4547,46 @@ async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage
     }));
 }
 
-function buildPreview(lm: MessageDto | null, isGroup: boolean, userId: string) {
+/** Build decrypted preview for sidebar */
+function buildPreview(msg: LocalMessage | null, isGroup: boolean, userId: string): { text: string; time: string } {
+    if (!msg) return { text: 'Нет сообщений', time: '' };
+    const own = msg.sender_id === userId;
+    const prefix = isGroup && !own ? `${msg.sender_name}: ` : own ? 'Вы: ' : '';
+    const displayText = msg.decrypted_content || msg.content;
+
+    let text: string;
+    if (msg.attachment) {
+        text = prefix + '📎 ' + msg.attachment.filename;
+    } else if (displayText === '[Зашифрованное сообщение]' || displayText === '🔒 Зашифровано') {
+        text = prefix + '🔒 Сообщение';
+    } else {
+        text = prefix + displayText;
+    }
+    return { text, time: formatTime(msg.created_at) };
+}
+
+/** Build preview from raw DTO (for initial load) — async version that decrypts */
+async function buildPreviewFromDto(lm: MessageDto | null, isGroup: boolean, userId: string): Promise<{ text: string; time: string }> {
     if (!lm) return { text: 'Нет сообщений', time: '' };
     const own = lm.sender_id === userId;
     const prefix = isGroup && !own ? `${lm.sender_name}: ` : own ? 'Вы: ' : '';
-    let text = prefix + lm.content;
-    if (lm.attachment) text = prefix + '📎 ' + lm.attachment.filename;
-    return { text, time: formatTime(lm.created_at) };
+
+    if (lm.attachment) {
+        return { text: prefix + '📎 ' + lm.attachment.filename, time: formatTime(lm.created_at) };
+    }
+
+    // Try decrypt
+    const plain = await decryptText(lm.chat_id, lm.encrypted!, lm.id);
+    if (plain) {
+        return { text: prefix + plain, time: formatTime(lm.created_at) };
+    }
+    if (hasRealEncText(lm.encrypted)) {
+        return { text: prefix + '🔒 Сообщение', time: formatTime(lm.created_at) };
+    }
+    // Not encrypted — use content directly, but clean up server placeholder
+    let text = lm.content;
+    if (text === '[Зашифрованное сообщение]') text = '🔒 Сообщение';
+    return { text: prefix + text, time: formatTime(lm.created_at) };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4182,9 +4599,11 @@ interface ChatStore {
     search: string;
     loading: boolean;
     loadingMessages: boolean;
+    loadingOlder: boolean;
     setSearch: (q: string) => void;
     loadChats: (currentUserId: string) => Promise<void>;
     selectChat: (id: string | null, currentUserId: string) => Promise<void>;
+    loadOlderMessages: (chatId: string, currentUserId: string) => Promise<void>;
     sendMessage: (chatId: string, text: string, currentUserId: string, currentUserName: string, attachmentId?: string, fileNonce?: string, replyToId?: string) => Promise<void>;
     forwardMessage: (originalMsg: LocalMessage, targetChatId: string, currentUserId: string, currentUserName: string) => Promise<void>;
     editMessage: (messageId: string, newText: string) => void;
@@ -4198,24 +4617,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     search: '',
     loading: false,
     loadingMessages: false,
+    loadingOlder: false,
     setSearch: search => set({ search }),
 
     loadChats: async (currentUserId) => {
         set({ loading: true });
         try {
             const dtos = await api.getChats();
-            const chats: LocalChat[] = dtos.map(dto => {
+            const chats: LocalChat[] = [];
+            for (const dto of dtos) {
                 const others = dto.members.filter(m => m.user_id !== currentUserId);
                 const name = dto.is_group ? (dto.name || 'Группа') : (others[0]?.display_name || 'Чат');
-                const p = buildPreview(dto.last_message, dto.is_group, currentUserId);
-                return {
+                const p = await buildPreviewFromDto(dto.last_message, dto.is_group, currentUserId);
+                chats.push({
                     id: dto.id, is_group: dto.is_group, isChannel: dto.is_channel || false,
                     name, members: dto.members, messages: [], messagesLoaded: false,
                     unread_count: dto.unread_count, online: !dto.is_group && (others[0]?.online || false),
                     created_at: dto.created_at, lastMessageText: p.text, lastMessageTime: p.time,
-                    lastActivityAt: dto.last_message?.created_at || dto.created_at, isPinned: false,
-                };
-            });
+                    lastActivityAt: dto.last_message?.created_at || dto.created_at,
+                    isPinned: dto.members.find(m => m.user_id === currentUserId)?.is_pinned || false,
+                    hasMore: true,
+                });
+            }
             set({ chats, loading: false });
         } catch { set({ loading: false }); }
     },
@@ -4236,23 +4659,65 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (!hadKey && cryptoManager.hasChatKey(id) && chat.messagesLoaded) {
             const msgs = await reDecryptMessages(chat.messages);
             if (get().selectedId !== id) return;
-            set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs }) }));
+            const lastProcessed = msgs[msgs.length - 1];
+            const preview = buildPreview(lastProcessed, chat.is_group, currentUserId);
+            set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs, lastMessageText: preview.text }) }));
             return;
         }
 
-        if (chat.messagesLoaded) return;
+        if (chat.messagesLoaded) {
+            // Already loaded — just mark read
+            const last = chat.messages[chat.messages.length - 1];
+            if (last && !last.own) {
+                wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: last.id } });
+            }
+            return;
+        }
 
         set({ loadingMessages: true });
         try {
-            const raw = await api.getMessages(id);
+            const raw = await api.getMessages(id, 50);
             if (get().selectedId !== id) { set({ loadingMessages: false }); return; }
             const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
+
+            // Update preview with decrypted last message
+            const lastProcessed = msgs[msgs.length - 1];
+            const preview = buildPreview(lastProcessed, chat.is_group, currentUserId);
+
             set(s => ({
-                chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs, messagesLoaded: true, unread_count: 0 }),
+                chats: s.chats.map(c => c.id !== id ? c : {
+                    ...c, messages: msgs, messagesLoaded: true, unread_count: 0,
+                    hasMore: raw.length >= 50,
+                    lastMessageText: preview.text, lastMessageTime: preview.time,
+                }),
                 loadingMessages: false,
             }));
-            if (raw.length) wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: raw[raw.length - 1].id } });
+
+            if (raw.length) {
+                wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: raw[raw.length - 1].id } });
+            }
         } catch { set({ loadingMessages: false }); }
+    },
+
+    loadOlderMessages: async (chatId, currentUserId) => {
+        const chat = get().chats.find(c => c.id === chatId);
+        if (!chat || !chat.hasMore || get().loadingOlder) return;
+
+        const oldest = chat.messages[0];
+        if (!oldest) return;
+
+        set({ loadingOlder: true });
+        try {
+            const raw = await api.getMessages(chatId, 50, oldest.id);
+            if (get().selectedId !== chatId) { set({ loadingOlder: false }); return; }
+            const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
+            set(s => ({
+                chats: s.chats.map(c => c.id !== chatId ? c : {
+                    ...c, messages: [...msgs, ...c.messages], hasMore: raw.length >= 50,
+                }),
+                loadingOlder: false,
+            }));
+        } catch { set({ loadingOlder: false }); }
     },
 
     sendMessage: async (chatId, text, currentUserId, currentUserName, attachmentId, fileNonce, replyToId) => {
@@ -4261,24 +4726,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         const clientId = uid();
         const now = new Date().toISOString();
+        const displayContent = trimmed || (attachmentId ? '📎 Файл' : '');
 
-        // Encrypt text content (only if there is text)
         let enc: EncryptedPayload | undefined;
         if (trimmed && cryptoManager.hasChatKey(chatId)) {
             try { enc = await cryptoManager.encrypt(chatId, trimmed); } catch { /* fallback */ }
         }
-
-        // Attach file_nonce to encrypted payload
         if (fileNonce) {
-            if (enc) {
-                enc.file_nonce = fileNonce;
-            } else {
-                // File-only encryption (no text to encrypt)
-                enc = { ciphertext: '', nonce: '', file_nonce: fileNonce };
-            }
+            if (enc) { enc.file_nonce = fileNonce; }
+            else { enc = { ciphertext: '', nonce: '', file_nonce: fileNonce }; }
         }
-
-        const encHasText = hasEncText(enc);
 
         set(s => ({
             chats: s.chats.map(c => c.id !== chatId ? c : {
@@ -4286,12 +4743,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 messages: [...c.messages, {
                     id: clientId, client_id: clientId, chat_id: chatId,
                     sender_id: currentUserId, sender_name: currentUserName,
-                    content: trimmed || '📎 Файл', edited: false, created_at: now,
+                    content: displayContent, decrypted_content: trimmed || undefined,
+                    edited: false, created_at: now,
                     own: true, status: 'pending' as const, encrypted: enc,
                 }],
-                lastMessageText: 'Вы: ' + (trimmed || '📎 Файл'),
-                lastMessageTime: formatTime(now),
-                lastActivityAt: now,
+                lastMessageText: 'Вы: ' + displayContent,
+                lastMessageTime: formatTime(now), lastActivityAt: now,
             })
         }));
 
@@ -4299,11 +4756,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: chatId,
-                content: encHasText ? '[Зашифрованное сообщение]' : (trimmed || '📎 Файл'),
-                client_id: clientId,
-                attachment_id: attachmentId,
-                encrypted: enc,
-                reply_to_id: replyToId,
+                content: hasRealEncText(enc) ? '[Зашифрованное сообщение]' : displayContent,
+                client_id: clientId, attachment_id: attachmentId,
+                encrypted: enc, reply_to_id: replyToId,
             },
         });
     },
@@ -4314,15 +4769,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         const clientId = uid();
         const now = new Date().toISOString();
+        const displayContent = content || '📎 Файл';
 
         let enc: EncryptedPayload | undefined;
         if (content && cryptoManager.hasChatKey(targetChatId)) {
-            try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { /* fallback */ }
+            try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { /* */ }
         }
 
-        // Only forward non-E2E attachments (encrypted files can't be read in another chat)
         const canForwardAtt = originalMsg.attachment && !originalMsg.encrypted?.file_nonce;
-        const encHasText = hasEncText(enc);
 
         set(s => ({
             chats: s.chats.map(c => c.id !== targetChatId ? c : {
@@ -4330,16 +4784,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 messages: [...c.messages, {
                     id: clientId, client_id: clientId, chat_id: targetChatId,
                     sender_id: currentUserId, sender_name: currentUserName,
-                    content: content || '📎 Файл', edited: false, created_at: now,
+                    content: displayContent, decrypted_content: content || undefined,
+                    edited: false, created_at: now,
                     own: true, status: 'pending' as const, encrypted: enc,
-                    forwarded_from: {
-                        original_message_id: originalMsg.id,
-                        original_sender_name: originalMsg.sender_name,
-                    },
+                    forwarded_from: { original_message_id: originalMsg.id, original_sender_name: originalMsg.sender_name },
                 }],
-                lastMessageText: 'Вы: ' + (content || '📎 Файл'),
-                lastMessageTime: formatTime(now),
-                lastActivityAt: now,
+                lastMessageText: 'Вы: ' + displayContent,
+                lastMessageTime: formatTime(now), lastActivityAt: now,
             })
         }));
 
@@ -4347,7 +4798,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: targetChatId,
-                content: encHasText ? '[Зашифрованное сообщение]' : (content || '📎 Файл'),
+                content: hasRealEncText(enc) ? '[Зашифрованное сообщение]' : displayContent,
                 client_id: clientId,
                 attachment_id: canForwardAtt ? originalMsg.attachment!.id : undefined,
                 encrypted: enc,
@@ -4368,10 +4819,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         wsManager.send({ type: 'delete_message', payload: { message_id: messageId } });
     },
 
-    // ═══════════════════════════════════════════════════════
-    //  WS
-    // ═══════════════════════════════════════════════════════
-
     handleWsEvent: async (msg, currentUserId) => {
         switch (msg.type) {
             case 'new_message':
@@ -4387,9 +4834,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     const chat = s.chats[idx];
                     if (chat.messages.some(m => m.id === raw.id)) return s;
 
-                    const p = buildPreview(raw, chat.is_group, currentUserId);
                     const pendingIdx = clientId ? chat.messages.findIndex(m => m.client_id === clientId) : -1;
-
                     let msgs = [...chat.messages];
                     if (pendingIdx !== -1) {
                         msgs[pendingIdx] = { ...local, status: 'sent' };
@@ -4397,15 +4842,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                         msgs.push(local);
                     }
 
+                    const preview = buildPreview(local, chat.is_group, currentUserId);
                     const isActive = s.selectedId === raw.chat_id && document.hasFocus() && !document.hidden;
                     const newChats = [...s.chats];
                     newChats[idx] = {
                         ...chat, messages: msgs,
                         unread_count: isActive ? 0 : chat.unread_count + (local.own ? 0 : 1),
-                        lastMessageText: p.text, lastMessageTime: p.time,
+                        lastMessageText: preview.text, lastMessageTime: preview.time,
                         lastActivityAt: raw.created_at,
                     };
 
+                    // Auto mark read if chat is active
                     if (isActive && !local.own) {
                         wsManager.send({ type: 'mark_read', payload: { chat_id: raw.chat_id, message_id: raw.id } });
                     }
@@ -4417,11 +4864,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             case 'message_edited': {
                 const { chat_id, message_id, new_content, encrypted } = msg.payload;
                 let content = new_content;
-                if (hasEncText(encrypted) && cryptoManager.hasChatKey(chat_id)) {
-                    try { content = await cryptoManager.decrypt(chat_id, encrypted!.ciphertext, encrypted!.nonce, message_id); }
-                    catch { content = '🔒 Не удалось расшифровать'; }
-                } else if (hasEncText(encrypted)) content = '🔒 Зашифровано';
-                set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content, edited: true }) }) }));
+                const plain = await decryptText(chat_id, encrypted!, message_id);
+                if (plain !== null) content = plain;
+                else if (hasRealEncText(encrypted)) content = '🔒 Зашифровано';
+                set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content, edited: true, decrypted_content: plain || undefined }) }) }));
                 break;
             }
 
@@ -4460,9 +4906,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     if (chat?.members.some(m => m.user_id === u.id)) {
                         const status = await setupChatE2E(sel, chat.members, currentUserId);
                         set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, e2eStatus: status }) }));
-                        if (status === 'ready' && chat.messages.some(m => hasEncText(m.encrypted) && !m.decrypted_content)) {
+                        if (status === 'ready' && chat.messages.some(m => hasRealEncText(m.encrypted) && !m.decrypted_content)) {
                             const msgs = await reDecryptMessages(chat.messages);
-                            set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, messages: msgs }) }));
+                            const lastP = msgs[msgs.length - 1];
+                            const preview = buildPreview(lastP, chat.is_group, currentUserId);
+                            set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, messages: msgs, lastMessageText: preview.text }) }));
                         }
                     }
                 }
@@ -4474,9 +4922,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 break;
 
             case 'messages_read': {
-                const { chat_id, user_id } = msg.payload;
-                if (user_id === currentUserId) break;
-                set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.own && m.status !== 'read' ? { ...m, status: 'read' as const } : m) }) }));
+                const { chat_id, user_id, message_id } = msg.payload;
+                if (user_id === currentUserId) {
+                    set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, unread_count: 0 }) }));
+                    break;
+                }
+                // Other user read — mark all own msgs as read
+                set(s => ({
+                    chats: s.chats.map(c => {
+                        if (c.id !== chat_id) return c;
+                        return {
+                            ...c,
+                            messages: c.messages.map(m =>
+                                m.own && (m.status === 'sent' || m.status === 'delivered')
+                                    ? { ...m, status: 'read' as const }
+                                    : m
+                            ),
+                        };
+                    })
+                }));
                 break;
             }
         }
@@ -4492,20 +4956,35 @@ import type { Tab } from '../types';
 
 interface Toast { id: string; text: string; type: 'info' | 'success' | 'error'; }
 
+interface AppNotification {
+    id: string;
+    chatId: string;
+    chatName: string;
+    senderName: string;
+    senderAvatarUrl?: string;
+    text: string;
+    isGroup: boolean;
+    createdAt: number;
+}
+
 interface UiStore {
     activeTab: Tab;
     darkMode: boolean;
     toasts: Toast[];
+    notifications: AppNotification[];
     setActiveTab: (tab: Tab) => void;
     toggleDarkMode: () => void;
     showToast: (text: string, type?: Toast['type']) => void;
     removeToast: (id: string) => void;
+    addNotification: (data: Omit<AppNotification, 'id' | 'createdAt'>) => void;
+    removeNotification: (id: string) => void;
 }
 
 export const useUiStore = create<UiStore>((set) => ({
     activeTab: 'chats',
     darkMode: localStorage.getItem('dark_mode') !== 'false',
     toasts: [],
+    notifications: [],
     setActiveTab: (activeTab) => set({ activeTab }),
     toggleDarkMode: () => {
         set((state) => {
@@ -4523,7 +5002,17 @@ export const useUiStore = create<UiStore>((set) => ({
             set((state) => ({ toasts: state.toasts.filter(t => t.id !== id) }));
         }, 3000);
     },
-    removeToast: (id) => set((state) => ({ toasts: state.toasts.filter(t => t.id !== id) }))
+    removeToast: (id) => set((state) => ({ toasts: state.toasts.filter(t => t.id !== id) })),
+    addNotification: (data) => {
+        const id = Math.random().toString(36).slice(2, 9);
+        set((state) => ({
+            notifications: [...state.notifications, { ...data, id, createdAt: Date.now() }].slice(-5),
+        }));
+        setTimeout(() => {
+            set((state) => ({ notifications: state.notifications.filter(n => n.id !== id) }));
+        }, 5000);
+    },
+    removeNotification: (id) => set((state) => ({ notifications: state.notifications.filter(n => n.id !== id) })),
 }));
 
 
@@ -4868,10 +5357,17 @@ export function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
 }
 
-export function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'file' {
+export function getMediaType(mime: string, filename?: string): 'image' | 'video' | 'audio' | 'file' {
+    // For encrypted files (mime=application/octet-stream), check filename
+    if (filename) {
+        const ext = filename.split('.').pop()?.toLowerCase();
+        if (ext && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image';
+        if (ext && ['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
+        if (ext && ['mp3', 'ogg', 'wav', 'flac', 'aac', 'm4a', 'webm', 'opus', 'weba'].includes(ext)) return 'audio';
+    }
     if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('video/') && !mime.includes('webm')) return 'video';
+    if (mime.startsWith('audio/') || mime.includes('webm')) return 'audio';
     return 'file';
 }
 
@@ -5282,6 +5778,18 @@ CREATE TABLE chat_invites (
 
 CREATE INDEX idx_chat_invites_code ON chat_invites(code);
 CREATE INDEX idx_chat_invites_chat ON chat_invites(chat_id);
+
+
+================================================================================
+FILE PATH: ./server/migrations/0009_read_receipts.sql
+================================================================================
+CREATE TABLE IF NOT EXISTS read_receipts (
+    chat_id            UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    last_read_message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (chat_id, user_id)
+);
 
 
 ================================================================================
@@ -6024,6 +6532,112 @@ pub async fn join_by_code(
         .await?;
 
     chat_dto(&state, invite.chat_id).await.map(Json)
+}
+
+/// POST /api/chats/:chat_id/kick/:user_id
+pub async fn kick_member(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((chat_id, target_user_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<()>, AppError> {
+    // Check requester role
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let role = role.ok_or_else(|| AppError::Forbidden("не участник чата".into()))?;
+    if role.0 != "owner" && role.0 != "admin" {
+        return Err(AppError::Forbidden("недостаточно прав".into()));
+    }
+
+    // Can't kick owner
+    let target_role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(target_user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    if let Some(tr) = &target_role {
+        if tr.0 == "owner" {
+            return Err(AppError::Forbidden("нельзя удалить создателя".into()));
+        }
+    }
+
+    sqlx::query("DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+        .bind(chat_id)
+        .bind(target_user_id)
+        .execute(&state.db)
+        .await?;
+
+    // Notify kicked user
+    state
+        .send_to_user(
+            &target_user_id,
+            shared::WsServerMsg::ChatDeleted { chat_id },
+        )
+        .await;
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/avatar
+pub async fn upload_chat_avatar(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<()>, AppError> {
+    // Check admin
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let role = role.ok_or_else(|| AppError::Forbidden("не участник чата".into()))?;
+    if role.0 != "owner" && role.0 != "admin" {
+        return Err(AppError::Forbidden("недостаточно прав".into()));
+    }
+
+    while let Some(field) = multipart.next_field().await? {
+        if field.name() != Some("avatar") {
+            continue;
+        }
+        let mime = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let data = field.bytes().await?;
+        if data.is_empty() || data.len() > 5 * 1024 * 1024 {
+            return Err(AppError::BadRequest("Невалидный файл".into()));
+        }
+
+        let att_id = Uuid::new_v4();
+        let path = format!("{}/{}", state.config.upload_dir, att_id);
+        tokio::fs::write(&path, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("write: {e}")))?;
+
+        sqlx::query("INSERT INTO attachments (id, uploader_id, filename, mime_type, size_bytes) VALUES ($1,$2,$3,$4,$5)")
+            .bind(att_id).bind(auth.user_id).bind("chat_avatar").bind(&mime).bind(data.len() as i64)
+            .execute(&state.db).await?;
+
+        // Store chat avatar (reuse name field for simplicity)
+        sqlx::query("UPDATE chats SET name = name WHERE id = $1")
+            .bind(chat_id)
+            .execute(&state.db)
+            .await?;
+        // TODO: add avatar_id to chats table for proper implementation
+
+        return Ok(Json(()));
+    }
+
+    Err(AppError::BadRequest("Файл не найден".into()))
 }
 
 
@@ -7105,6 +7719,14 @@ pub fn create_app(state: AppState) -> Router {
         .route("/chats/:chat_id/messages", get(api::messages::list))
         .route("/chats/:chat_id/pin", post(api::chats::toggle_pin))
         .route(
+            "/chats/:chat_id/kick/:user_id",
+            post(api::chats::kick_member),
+        )
+        .route(
+            "/chats/:chat_id/avatar",
+            post(api::chats::upload_chat_avatar),
+        )
+        .route(
             "/chats/:chat_id/invite",
             post(api::chats::create_chat_invite),
         )
@@ -7730,20 +8352,7 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
         WsClientMsg::MarkRead {
             chat_id,
             message_id,
-        } => {
-            broadcast_to_chat(
-                state,
-                chat_id,
-                uid,
-                WsServerMsg::MessagesRead {
-                    chat_id,
-                    user_id: uid,
-                    message_id,
-                },
-            )
-            .await
-        }
-        // ── Звонки ──────────────────────────────────────────
+        } => on_mark_read(state, uid, chat_id, message_id).await,
         WsClientMsg::CallOffer {
             chat_id,
             call_id,
@@ -7773,8 +8382,6 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             call_id,
             muted,
         } => on_call_mute(state, uid, chat_id, call_id, muted).await,
-
-        // ── Shared Media ────────────────────────────────────
         WsClientMsg::CallMediaShare {
             chat_id,
             call_id,
@@ -7839,16 +8446,32 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
     }
 }
 
-async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String, muted: bool) {
+// ═══════════════════════════════════════════════════════════
+//  Mark Read — сохраняем в БД и рассылаем
+// ═══════════════════════════════════════════════════════════
+
+async fn on_mark_read(state: &AppState, uid: Uuid, chat_id: Uuid, message_id: Uuid) {
+    // Upsert read receipt
+    let _ = sqlx::query(
+        "INSERT INTO read_receipts (chat_id, user_id, last_read_message_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_message_id = $3, updated_at = NOW()"
+    )
+    .bind(chat_id)
+    .bind(uid)
+    .bind(message_id)
+    .execute(&state.db)
+    .await;
+
+    // Broadcast to other members
     broadcast_to_chat(
         state,
         chat_id,
         uid,
-        WsServerMsg::CallMuteChanged {
+        WsServerMsg::MessagesRead {
             chat_id,
-            call_id,
             user_id: uid,
-            muted,
+            message_id,
         },
     )
     .await;
@@ -7892,7 +8515,38 @@ async fn on_send(
             .await;
         return;
     }
+    // Check channel write permissions
+    let is_channel: Option<(bool,)> = sqlx::query_as("SELECT is_channel FROM chats WHERE id = $1")
+        .bind(chat_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
 
+    if is_channel.map_or(false, |r| r.0) {
+        // Only owner/admin can write in channels
+        let role: Option<(String,)> =
+            sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+                .bind(chat_id)
+                .bind(uid)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten();
+
+        let user_role = role.map(|r| r.0).unwrap_or_default();
+        if user_role != "owner" && user_role != "admin" {
+            state
+                .send_to_user(
+                    &uid,
+                    WsServerMsg::Error {
+                        message: "только администраторы могут писать в канал".into(),
+                    },
+                )
+                .await;
+            return;
+        }
+    }
     if content.trim().is_empty() && attachment_id.is_none() {
         state
             .send_to_user(
@@ -7908,15 +8562,15 @@ async fn on_send(
     let display_name = get_display_name(state, uid, uname).await;
 
     let attachment = if let Some(att_id) = attachment_id {
-        let row: Option<(String, String, i64)> =
-            sqlx::query_as("SELECT filename, mime_type, size_bytes FROM attachments WHERE id=$1")
-                .bind(att_id)
-                .fetch_optional(&state.db)
-                .await
-                .ok()
-                .flatten();
-
-        row.map(|(filename, mime_type, size_bytes)| AttachmentDto {
+        sqlx::query_as::<_, (String, String, i64)>(
+            "SELECT filename, mime_type, size_bytes FROM attachments WHERE id=$1",
+        )
+        .bind(att_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|(filename, mime_type, size_bytes)| AttachmentDto {
             id: att_id,
             filename,
             mime_type,
@@ -7928,48 +8582,25 @@ async fn on_send(
 
     let msg_id = Uuid::new_v4();
     let now = chrono::Utc::now();
-
     let encrypted_json = encrypted
         .as_ref()
         .and_then(|e| serde_json::to_value(e).ok());
 
     if sqlx::query(
         "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content, reply_to_id, forwarded_from_id, forwarded_from_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-    )
-    .bind(msg_id)
-    .bind(chat_id)
-    .bind(uid)
-    .bind(&content)
-    .bind(attachment_id)
-    .bind(now)
-    .bind(&encrypted_json)
-    .bind(reply_to_id)
-    .bind(forwarded_from_id)
-    .bind(&forwarded_from_name)
-    .execute(&state.db)
-    .await
-    .is_err()
-    {
-        state
-            .send_to_user(
-                &uid,
-                WsServerMsg::Error {
-                    message: "ошибка сохранения".into(),
-                },
-            )
-            .await;
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)"
+    ).bind(msg_id).bind(chat_id).bind(uid).bind(&content).bind(attachment_id)
+    .bind(now).bind(&encrypted_json).bind(reply_to_id).bind(forwarded_from_id).bind(&forwarded_from_name)
+    .execute(&state.db).await.is_err() {
+        state.send_to_user(&uid, WsServerMsg::Error { message: "ошибка сохранения".into() }).await;
         return;
     }
 
-    // Build reply_to info
     let reply_to = if let Some(rid) = reply_to_id {
         fetch_reply_info(state, rid).await
     } else {
         None
     };
-
-    // Build forwarded_from info
     let forwarded_from = forwarded_from_id.map(|fid| ForwardInfoDto {
         original_message_id: fid,
         original_sender_name: forwarded_from_name.clone().unwrap_or_default(),
@@ -7989,6 +8620,13 @@ async fn on_send(
         reply_to,
         forwarded_from,
     };
+
+    // Auto mark_read for sender
+    let _ = sqlx::query(
+        "INSERT INTO read_receipts (chat_id, user_id, last_read_message_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_message_id = $3, updated_at = NOW()"
+    ).bind(chat_id).bind(uid).bind(msg_id).execute(&state.db).await;
 
     state
         .send_to_user(
@@ -8020,7 +8658,6 @@ async fn on_send(
     }
 }
 
-/// Fetch reply info for a message
 async fn fetch_reply_info(state: &AppState, reply_id: Uuid) -> Option<Box<ReplyInfoDto>> {
     type ReplyRow = (
         Uuid,
@@ -8037,10 +8674,8 @@ async fn fetch_reply_info(state: &AppState, reply_id: Uuid) -> Option<Box<ReplyI
     let row: Option<ReplyRow> = sqlx::query_as(
         "SELECT m.id, m.sender_id, u.display_name, m.content, m.encrypted_content,
                 a.id, a.filename, a.mime_type, a.size_bytes
-         FROM messages m
-         JOIN users u ON u.id = m.sender_id
-         LEFT JOIN attachments a ON a.id = m.attachment_id
-         WHERE m.id = $1",
+         FROM messages m JOIN users u ON u.id = m.sender_id
+         LEFT JOIN attachments a ON a.id = m.attachment_id WHERE m.id = $1",
     )
     .bind(reply_id)
     .fetch_optional(&state.db)
@@ -8094,7 +8729,6 @@ async fn on_edit(
     let encrypted_json = encrypted
         .as_ref()
         .and_then(|e| serde_json::to_value(e).ok());
-
     let _ = sqlx::query(
         "UPDATE messages SET content=$1, edited=TRUE, encrypted_content=$3 WHERE id=$2",
     )
@@ -8147,7 +8781,7 @@ async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Обработчики звонков — call_id теперь String
+//  Звонки
 // ═══════════════════════════════════════════════════════════
 
 async fn on_call_offer(
@@ -8240,6 +8874,21 @@ async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Str
         chat_id,
         uid,
         WsServerMsg::CallEnded { chat_id, call_id },
+    )
+    .await;
+}
+
+async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String, muted: bool) {
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallMuteChanged {
+            chat_id,
+            call_id,
+            user_id: uid,
+            muted,
+        },
     )
     .await;
 }

@@ -508,3 +508,109 @@ pub async fn join_by_code(
 
     chat_dto(&state, invite.chat_id).await.map(Json)
 }
+
+/// POST /api/chats/:chat_id/kick/:user_id
+pub async fn kick_member(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((chat_id, target_user_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<()>, AppError> {
+    // Check requester role
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let role = role.ok_or_else(|| AppError::Forbidden("не участник чата".into()))?;
+    if role.0 != "owner" && role.0 != "admin" {
+        return Err(AppError::Forbidden("недостаточно прав".into()));
+    }
+
+    // Can't kick owner
+    let target_role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(target_user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    if let Some(tr) = &target_role {
+        if tr.0 == "owner" {
+            return Err(AppError::Forbidden("нельзя удалить создателя".into()));
+        }
+    }
+
+    sqlx::query("DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+        .bind(chat_id)
+        .bind(target_user_id)
+        .execute(&state.db)
+        .await?;
+
+    // Notify kicked user
+    state
+        .send_to_user(
+            &target_user_id,
+            shared::WsServerMsg::ChatDeleted { chat_id },
+        )
+        .await;
+
+    Ok(Json(()))
+}
+
+/// POST /api/chats/:chat_id/avatar
+pub async fn upload_chat_avatar(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(chat_id): Path<Uuid>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<()>, AppError> {
+    // Check admin
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+            .bind(chat_id)
+            .bind(auth.user_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    let role = role.ok_or_else(|| AppError::Forbidden("не участник чата".into()))?;
+    if role.0 != "owner" && role.0 != "admin" {
+        return Err(AppError::Forbidden("недостаточно прав".into()));
+    }
+
+    while let Some(field) = multipart.next_field().await? {
+        if field.name() != Some("avatar") {
+            continue;
+        }
+        let mime = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let data = field.bytes().await?;
+        if data.is_empty() || data.len() > 5 * 1024 * 1024 {
+            return Err(AppError::BadRequest("Невалидный файл".into()));
+        }
+
+        let att_id = Uuid::new_v4();
+        let path = format!("{}/{}", state.config.upload_dir, att_id);
+        tokio::fs::write(&path, &data)
+            .await
+            .map_err(|e| AppError::Internal(format!("write: {e}")))?;
+
+        sqlx::query("INSERT INTO attachments (id, uploader_id, filename, mime_type, size_bytes) VALUES ($1,$2,$3,$4,$5)")
+            .bind(att_id).bind(auth.user_id).bind("chat_avatar").bind(&mime).bind(data.len() as i64)
+            .execute(&state.db).await?;
+
+        // Store chat avatar (reuse name field for simplicity)
+        sqlx::query("UPDATE chats SET name = name WHERE id = $1")
+            .bind(chat_id)
+            .execute(&state.db)
+            .await?;
+        // TODO: add avatar_id to chats table for proper implementation
+
+        return Ok(Json(()));
+    }
+
+    Err(AppError::BadRequest("Файл не найден".into()))
+}

@@ -323,7 +323,38 @@ async fn on_send(
             .await;
         return;
     }
+    // Check channel write permissions
+    let is_channel: Option<(bool,)> = sqlx::query_as("SELECT is_channel FROM chats WHERE id = $1")
+        .bind(chat_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
 
+    if is_channel.map_or(false, |r| r.0) {
+        // Only owner/admin can write in channels
+        let role: Option<(String,)> =
+            sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
+                .bind(chat_id)
+                .bind(uid)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten();
+
+        let user_role = role.map(|r| r.0).unwrap_or_default();
+        if user_role != "owner" && user_role != "admin" {
+            state
+                .send_to_user(
+                    &uid,
+                    WsServerMsg::Error {
+                        message: "только администраторы могут писать в канал".into(),
+                    },
+                )
+                .await;
+            return;
+        }
+    }
     if content.trim().is_empty() && attachment_id.is_none() {
         state
             .send_to_user(

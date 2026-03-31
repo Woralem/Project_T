@@ -15,8 +15,10 @@ export async function initNotifications(): Promise<boolean> {
     if ('Notification' in window) {
         if (Notification.permission === 'granted') return true;
         if (Notification.permission !== 'denied') {
-            const r = await Notification.requestPermission();
-            return r === 'granted';
+            try {
+                const r = await Notification.requestPermission();
+                return r === 'granted';
+            } catch { return false; }
         }
     }
     return false;
@@ -31,24 +33,5 @@ export async function sendSystemNotification(
             if (onClick) { n.onclick = () => { window.focus(); onClick(); n.close(); }; }
             setTimeout(() => n.close(), 6000);
         } catch { /* */ }
-    }
-}
-
-export function showMessageNotification(
-    data: { chatId: string; chatName: string; senderName: string; text: string; isGroup: boolean },
-    onClick?: () => void,
-): void {
-    playNotificationSound();
-    const title = data.isGroup ? data.chatName : data.senderName;
-    const rawBody = data.isGroup ? `${data.senderName}: ${data.text}` : data.text;
-    const body = rawBody.length > 100 ? rawBody.slice(0, 100) + '…' : rawBody;
-    if (document.hidden || !document.hasFocus()) {
-        sendSystemNotification(title, body, `msg-${data.chatId}`, onClick);
-    }
-}
-
-export function showCallNotification(callerName: string): void {
-    if (document.hidden || !document.hasFocus()) {
-        sendSystemNotification('Входящий звонок', callerName, 'incoming-call');
     }
 }

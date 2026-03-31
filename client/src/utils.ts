@@ -47,10 +47,17 @@ export function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
 }
 
-export function getMediaType(mime: string): 'image' | 'video' | 'audio' | 'file' {
+export function getMediaType(mime: string, filename?: string): 'image' | 'video' | 'audio' | 'file' {
+    // For encrypted files (mime=application/octet-stream), check filename
+    if (filename) {
+        const ext = filename.split('.').pop()?.toLowerCase();
+        if (ext && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image';
+        if (ext && ['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
+        if (ext && ['mp3', 'ogg', 'wav', 'flac', 'aac', 'm4a', 'webm', 'opus', 'weba'].includes(ext)) return 'audio';
+    }
     if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('audio/')) return 'audio';
+    if (mime.startsWith('video/') && !mime.includes('webm')) return 'video';
+    if (mime.startsWith('audio/') || mime.includes('webm')) return 'audio';
     return 'file';
 }
 

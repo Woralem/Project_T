@@ -17,7 +17,7 @@ interface Props {
 export function MessageBubble({ message: msg, isFirst, isGroup, onReply }: Props) {
     const time = formatTime(msg.created_at);
     const att = msg.attachment;
-    const mediaType = att ? getMediaType(att.mime_type) : null;
+    const mediaType = att ? getMediaType(att.mime_type, att.filename) : null;
 
     const fileNonce = msg.encrypted?.file_nonce;
     const isTextEncrypted = !!(msg.encrypted?.ciphertext && msg.encrypted.ciphertext.length > 0);

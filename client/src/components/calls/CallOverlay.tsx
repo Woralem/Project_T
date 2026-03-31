@@ -1,3 +1,5 @@
+// FILE PATH: ./client/src/components/calls/CallOverlay.tsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import { PhoneOff, Mic, MicOff, Volume2, VolumeX, X, Sliders, Music, Upload, Trash2, Play, Pause, Repeat, Lock, Waves } from 'lucide-react';
 import { useCallStore } from '../../store/useCallStore';
@@ -6,6 +8,7 @@ import { DraggableSlider } from '../ui/DraggableSlider';
 import { formatDuration } from '../../utils';
 import { uploadFile } from '../../api';
 import type { SharedMediaItem } from '../../types';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export function CallOverlay() {
     const call = useCallStore();
@@ -18,6 +21,7 @@ export function CallOverlay() {
     const [showSliders, setShowSliders] = useState(false);
     const [uploading, setUploading] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
+    const user = useAuthStore(s => s.user);
 
     useEffect(() => {
         if (status === 'ended') {
@@ -147,6 +151,7 @@ export function CallOverlay() {
 
                     {sharedMedia.map(item => (
                         <MediaCard key={item.id} item={item}
+                            isOwner={user?.id === item.userId}
                             onPlayPause={() => controlMedia(item.id, item.isPlaying ? 'pause' : 'play')}
                             onLoop={() => controlMedia(item.id, 'loop')}
                             onSeek={(f) => controlMedia(item.id, 'seek', f * item.duration)}
@@ -210,8 +215,8 @@ function VolumeRow({ icon, label, value, onChange }: {
 
 // ── Карточка медиа-трека ──
 
-function MediaCard({ item, onPlayPause, onLoop, onSeek, onRemove, onVolumeChange, onMuteToggle }: {
-    item: SharedMediaItem; onPlayPause: () => void; onLoop: () => void;
+function MediaCard({ item, isOwner, onPlayPause, onLoop, onSeek, onRemove, onVolumeChange, onMuteToggle }: {
+    item: SharedMediaItem; isOwner?: boolean; onPlayPause: () => void; onLoop: () => void;
     onSeek: (f: number) => void; onRemove: () => void;
     onVolumeChange: (v: number) => void; onMuteToggle: () => void;
 }) {
@@ -222,7 +227,11 @@ function MediaCard({ item, onPlayPause, onLoop, onSeek, onRemove, onVolumeChange
             <div className="flex items-center gap-2 mb-2">
                 <span className="text-[12px] font-semibold truncate flex-1 text-white/80">🎵 {item.title || item.fileName}</span>
                 <span className="text-[10px] text-white/30">{item.userName}</span>
-                <button className="p-1 text-white/30 hover:text-red-400 transition active:scale-90" onClick={onRemove}><Trash2 size={12} /></button>
+                {isOwner && (
+                    <button className="p-1 text-white/30 hover:text-red-400 transition active:scale-90" onClick={onRemove} title="Удалить">
+                        <Trash2 size={12} />
+                    </button>
+                )}
             </div>
 
             <DraggableSlider value={pct} onChange={onSeek} className="mb-2" height="h-1" fillClassName="bg-white/60" thumbClassName="bg-white" />
@@ -244,6 +253,3 @@ function MediaCard({ item, onPlayPause, onLoop, onSeek, onRemove, onVolumeChange
         </div>
     );
 }
-
-// Нужен для shimmer анимации — добавь в index.css:
-// @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }

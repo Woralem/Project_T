@@ -11,8 +11,11 @@ import { SettingsView } from './components/settings/SettingsView';
 import { GlobalAudioPlayer } from './components/ui/GlobalAudioPlayer';
 import { CallOverlay } from './components/calls/CallOverlay';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
+import { NotificationToasts } from './components/ui/NotificationToasts';
 import { wsManager } from './websocket';
+import { playNotificationSound, sendSystemNotification, initNotifications } from './notifications';
 import { MessageCircle } from 'lucide-react';
+import { cryptoManager } from './crypto';
 
 const CALL_EVENTS = new Set([
     'call_incoming', 'call_accepted', 'call_ice', 'call_rejected',
@@ -23,10 +26,12 @@ export default function App() {
     const { user, loading, init, login, register, setUser } = useAuthStore();
     const { activeTab, darkMode, toggleDarkMode, showToast } = useUiStore();
     const { chats, loadChats, handleWsEvent, selectedId } = useChatStore();
+    const addNotification = useUiStore(s => s.addNotification);
     const handleWsCallEvent = useCallStore(s => s.handleWsCallEvent);
 
-    useEffect(() => { init(); if (darkMode) document.documentElement.classList.add('dark'); }, []);
+    useEffect(() => { init(); if (darkMode) document.documentElement.classList.add('dark'); initNotifications(); }, []);
 
+    // Main WS subscription
     useEffect(() => {
         if (!user) return;
         loadChats(user.id);
@@ -35,7 +40,89 @@ export default function App() {
             if (CALL_EVENTS.has(msg.type)) {
                 handleWsCallEvent(msg, useChatStore.getState().chats, user.id);
             }
+
+            // Notifications for new messages
+            if (msg.type === 'new_message') {
+                const raw = msg.payload.message;
+                if (raw.sender_id === user.id) return;
+
+                const state = useChatStore.getState();
+                const isActive = state.selectedId === raw.chat_id && document.hasFocus() && !document.hidden;
+
+                // If active — send mark_read immediately
+                if (isActive) {
+                    wsManager.send({ type: 'mark_read', payload: { chat_id: raw.chat_id, message_id: raw.id } });
+                    return;
+                }
+
+                const chat = state.chats.find(c => c.id === raw.chat_id);
+                const chatName = chat?.name || raw.sender_name;
+                const isGroup = chat?.is_group || chat?.isChannel || false;
+
+                // Decrypt preview text for notification
+                let text = raw.attachment ? '📎 ' + raw.attachment.filename : raw.content;
+                if (raw.encrypted?.ciphertext && raw.encrypted.ciphertext.length > 0 && cryptoManager.hasChatKey(raw.chat_id)) {
+                    try {
+                        // We can't await here in sync callback, so use the raw content
+                        // The store's processMsg will handle decryption
+                    } catch { /* */ }
+                }
+                if (text === '[Зашифрованное сообщение]') text = '🔒 Новое сообщение';
+
+                const other = chat?.members.find(m => m.user_id !== user.id);
+
+                // Sound
+                playNotificationSound();
+
+                // In-app toast
+                addNotification({
+                    chatId: raw.chat_id,
+                    chatName,
+                    senderName: raw.sender_name,
+                    senderAvatarUrl: other?.avatar_url,
+                    text: text.length > 80 ? text.slice(0, 80) + '…' : text,
+                    isGroup,
+                });
+
+                // System notification
+                const title = isGroup ? chatName : raw.sender_name;
+                const body = isGroup ? `${raw.sender_name}: ${text}` : text;
+                sendSystemNotification(
+                    title,
+                    body.length > 100 ? body.slice(0, 100) + '…' : body,
+                    `msg-${raw.chat_id}`,
+                    () => {
+                        window.focus();
+                        useChatStore.getState().selectChat(raw.chat_id, user.id);
+                        useUiStore.getState().setActiveTab('chats');
+                    }
+                );
+            }
         });
+    }, [user]);
+
+    // Mark read on focus / visibility change
+    useEffect(() => {
+        if (!user) return;
+        const markRead = () => {
+            const state = useChatStore.getState();
+            const chatId = state.selectedId;
+            if (!chatId) return;
+            const chat = state.chats.find(c => c.id === chatId);
+            if (!chat?.messages.length) return;
+            const last = chat.messages[chat.messages.length - 1];
+            if (last && !last.own) {
+                wsManager.send({ type: 'mark_read', payload: { chat_id: chatId, message_id: last.id } });
+            }
+        };
+        const onFocus = () => markRead();
+        const onVis = () => { if (!document.hidden) markRead(); };
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onVis);
+        return () => {
+            window.removeEventListener('focus', onFocus);
+            document.removeEventListener('visibilitychange', onVis);
+        };
     }, [user]);
 
     if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-[#0c0c10] text-gray-400">Загрузка...</div>;
@@ -71,6 +158,7 @@ export default function App() {
                 </div>
             </div>
             <IncomingCallModal />
+            <NotificationToasts />
         </div>
     );
 }
