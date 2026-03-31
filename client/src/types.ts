@@ -111,6 +111,7 @@ export interface ChatDto {
     last_message: MessageDto | null;
     unread_count: number;
     created_at: string;
+    avatar_url?: string;
 }
 
 export interface InviteDto {
@@ -223,6 +224,7 @@ export interface LocalChat {
     isChannel: boolean;
     lastActivityAt: string;
     e2eStatus?: E2EStatus;
+    avatar_url?: string;
 }
 
 export interface ToastData {

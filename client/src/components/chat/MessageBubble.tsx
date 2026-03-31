@@ -32,12 +32,10 @@ export function MessageBubble({ message: msg, isFirst, isGroup, onReply }: Props
             <div className={`relative flex flex-col shadow-sm overflow-hidden ${msg.own ? 'bg-accent text-white rounded-2xl rounded-br-[4px]' : 'bg-white dark:bg-[#1e1e2a] text-gray-900 dark:text-[#e4e4ec] rounded-2xl rounded-bl-[4px]'
                 } ${msg.status === 'pending' ? 'opacity-60' : ''} ${att && (mediaType === 'image' || mediaType === 'video') ? '' : 'px-3 py-2'}`}>
 
-                {/* Forwarded from */}
                 {msg.forwarded_from && (
                     <ForwardedHeader info={msg.forwarded_from} own={msg.own} />
                 )}
 
-                {/* Reply */}
                 {msg.reply_to && (
                     <ReplyPreview reply={msg.reply_to} own={msg.own} />
                 )}
@@ -49,7 +47,7 @@ export function MessageBubble({ message: msg, isFirst, isGroup, onReply }: Props
                     <VideoPreview att={att} own={msg.own} chatId={msg.chat_id} fileNonce={fileNonce} />
                 )}
                 {att && mediaType === 'audio' && (
-                    <AudioAttachment att={att} own={msg.own} senderName={msg.sender_name} messageId={msg.id} chatId={msg.chat_id} />
+                    <AudioAttachment att={att} own={msg.own} senderName={msg.sender_name} messageId={msg.id} chatId={msg.chat_id} fileNonce={fileNonce} />
                 )}
                 {att && mediaType === 'file' && (
                     <FileAttachment att={att} own={msg.own} chatId={msg.chat_id} fileNonce={fileNonce} />
@@ -79,9 +77,7 @@ export function MessageBubble({ message: msg, isFirst, isGroup, onReply }: Props
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Forwarded Header
-// ═══════════════════════════════════════════════════════════
+// ═══ Forwarded Header ═══
 
 function ForwardedHeader({ info, own }: { info: ForwardInfoDto; own: boolean }) {
     return (
@@ -92,9 +88,7 @@ function ForwardedHeader({ info, own }: { info: ForwardInfoDto; own: boolean }) 
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Reply Preview inside bubble
-// ═══════════════════════════════════════════════════════════
+// ═══ Reply Preview ═══
 
 function ReplyPreview({ reply, own }: { reply: ReplyInfoDto; own: boolean }) {
     const isEnc = reply.content === '🔒 Зашифровано';
@@ -105,7 +99,7 @@ function ReplyPreview({ reply, own }: { reply: ReplyInfoDto; own: boolean }) {
             : reply.content;
 
     return (
-        <div className={`flex gap-2 mb-1.5 ${own ? '' : ''}`}>
+        <div className={`flex gap-2 mb-1.5`}>
             <div className={`w-0.5 rounded-full flex-shrink-0 ${own ? 'bg-white/40' : 'bg-accent'}`} />
             <div className="min-w-0 flex-1">
                 <div className={`text-[11px] font-bold ${own ? 'text-white/80' : 'text-accent'}`}>
@@ -120,9 +114,7 @@ function ReplyPreview({ reply, own }: { reply: ReplyInfoDto; own: boolean }) {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Image Preview with MediaViewer
-// ═══════════════════════════════════════════════════════════
+// ═══ Image Preview ═══
 
 function ImagePreview({ att, own, chatId, fileNonce }: {
     att: AttachmentDto; own: boolean; chatId: string; fileNonce?: string;
@@ -212,9 +204,7 @@ function ImagePreview({ att, own, chatId, fileNonce }: {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Video Preview
-// ═══════════════════════════════════════════════════════════
+// ═══ Video Preview ═══
 
 function VideoPreview({ att, own, chatId, fileNonce }: {
     att: AttachmentDto; own: boolean; chatId: string; fileNonce?: string;
@@ -270,12 +260,10 @@ function VideoPreview({ att, own, chatId, fileNonce }: {
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Audio — opens in global player
-// ═══════════════════════════════════════════════════════════
+// ═══ Audio — с поддержкой E2E ═══
 
-function AudioAttachment({ att, own, senderName, messageId, chatId }: {
-    att: AttachmentDto; own: boolean; senderName: string; messageId: string; chatId: string;
+function AudioAttachment({ att, own, senderName, messageId, chatId, fileNonce }: {
+    att: AttachmentDto; own: boolean; senderName: string; messageId: string; chatId: string; fileNonce?: string;
 }) {
     const { play, fileId, playing } = useAudioStore();
     const isActive = fileId === att.id;
@@ -285,7 +273,7 @@ function AudioAttachment({ att, own, senderName, messageId, chatId }: {
     return (
         <div className="flex items-center gap-2.5 min-w-[200px]">
             <button
-                onClick={() => play({ fileId: att.id, fileName: att.filename, senderName, messageId, chatId })}
+                onClick={() => play({ fileId: att.id, fileName: att.filename, senderName, messageId, chatId, fileNonce })}
                 className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition active:scale-90 ${own ? 'bg-white/20 hover:bg-white/30' : 'bg-accent/10 hover:bg-accent/20 text-accent'
                     } ${isActive ? 'ring-2 ring-accent ring-offset-1' : ''}`}
             >
@@ -293,15 +281,16 @@ function AudioAttachment({ att, own, senderName, messageId, chatId }: {
             </button>
             <div className="flex-1 min-w-0">
                 <div className="text-[12px] font-medium truncate opacity-80">{name}</div>
-                <div className="text-[11px] opacity-50">{formatFileSize(att.size_bytes)}</div>
+                <div className="flex items-center gap-1 text-[11px] opacity-50">
+                    <span>{formatFileSize(att.size_bytes)}</span>
+                    {fileNonce && <><Lock size={9} /> <span>E2E</span></>}
+                </div>
             </div>
         </div>
     );
 }
 
-// ═══════════════════════════════════════════════════════════
-//  File with E2E decryption on download
-// ═══════════════════════════════════════════════════════════
+// ═══ File with E2E ═══
 
 function FileAttachment({ att, own, chatId, fileNonce }: {
     att: AttachmentDto; own: boolean; chatId: string; fileNonce?: string;
@@ -314,11 +303,9 @@ function FileAttachment({ att, own, chatId, fileNonce }: {
         try {
             const resp = await fetch(getFileUrl(att.id));
             let data = await resp.arrayBuffer();
-
             if (isE2E) {
                 data = await cryptoManager.decryptBuffer(chatId, data, fileNonce!);
             }
-
             const blob = new Blob([data]);
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);

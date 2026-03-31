@@ -12,20 +12,49 @@ import { cryptoManager } from '../crypto';
 //  E2E helpers
 // ═══════════════════════════════════════════════════════════
 
-async function setupChatE2E(chatId: string, members: ChatMemberDto[], currentUserId: string): Promise<E2EStatus> {
-    if (!cryptoManager.hasKeys()) return 'no_identity';
-    if (cryptoManager.hasChatKey(chatId)) { autoWrapMissing(chatId, members); return 'ready'; }
-    if (await cryptoManager.loadChatKeyFromCache(chatId)) { autoWrapMissing(chatId, members); return 'ready'; }
+/** Кеш чатов, для которых autoWrap уже выполнен */
+const _autoWrappedChats = new Set<string>();
 
+async function setupChatE2E(
+    chatId: string,
+    members: ChatMemberDto[],
+    currentUserId: string,
+    isChannel: boolean,
+    isGroup: boolean,
+): Promise<E2EStatus | undefined> {
+    // ★ Каналы — без E2E вообще
+    if (isChannel) return undefined;
+
+    if (!cryptoManager.hasKeys()) return 'no_identity';
+
+    // Уже есть ключ — используем
+    if (cryptoManager.hasChatKey(chatId)) {
+        autoWrapMissing(chatId, members);
+        return 'ready';
+    }
+
+    // Пробуем загрузить из кеша
+    if (await cryptoManager.loadChatKeyFromCache(chatId)) {
+        autoWrapMissing(chatId, members);
+        return 'ready';
+    }
+
+    // Пробуем развернуть ключ, полученный от других
     const me = members.find(m => m.user_id === currentUserId);
     if (me?.encrypted_chat_key) {
         if (me.member_key_id === cryptoManager.getKeyId()) {
-            try { await cryptoManager.unwrapChatKey(chatId, me.encrypted_chat_key); autoWrapMissing(chatId, members); return 'ready'; }
-            catch (e) { console.warn('[E2E] Unwrap failed:', e); }
+            try {
+                await cryptoManager.unwrapChatKey(chatId, me.encrypted_chat_key);
+                autoWrapMissing(chatId, members);
+                return 'ready';
+            } catch (e) {
+                console.warn('[E2E] Unwrap failed:', e);
+            }
         }
         return 'waiting';
     }
 
+    // Кто-то другой уже имеет ключ — пробуем получить свежие данные
     if (members.some(m => m.user_id !== currentUserId && m.encrypted_chat_key)) {
         try {
             const fresh = await api.getChat(chatId);
@@ -39,25 +68,48 @@ async function setupChatE2E(chatId: string, members: ChatMemberDto[], currentUse
         return 'waiting';
     }
 
+    // ★ Проверяем, все ли участники имеют E2E ключи
     const e2eMembers = members.filter(m => m.public_keys?.identity_key);
-    if (e2eMembers.length < 2) return 'peer_no_e2e';
 
+    // Для групп — ВСЕ участники должны иметь ключи
+    // Для DM — оба участника должны иметь ключи
+    if (e2eMembers.length < members.length) return 'peer_no_e2e';
+
+    // Генерируем новый ключ чата
     try {
         const chatKey = await cryptoManager.generateChatKey();
         const wrapped: Record<string, EncryptedChatKey> = {};
-        for (const m of e2eMembers) wrapped[m.user_id] = await cryptoManager.wrapChatKey(chatKey, m.public_keys!.identity_key);
+        for (const m of e2eMembers) {
+            wrapped[m.user_id] = await cryptoManager.wrapChatKey(chatKey, m.public_keys!.identity_key);
+        }
         await api.updateChatKeys(chatId, wrapped);
         cryptoManager.setChatKey(chatId, chatKey);
         await cryptoManager.saveChatKeyToCache(chatId, chatKey);
+        _autoWrappedChats.add(chatId);
         return 'ready';
-    } catch (e) { console.error('[E2E] Init failed:', e); return 'error'; }
+    } catch (e) {
+        console.error('[E2E] Init failed:', e);
+        return 'error';
+    }
 }
 
 async function autoWrapMissing(chatId: string, members: ChatMemberDto[]) {
+    // ★ Кеш — не перезаворачиваем каждый раз
+    if (_autoWrappedChats.has(chatId)) return;
+
     const chatKey = cryptoManager.getChatKey(chatId);
     if (!chatKey) return;
-    const missing = members.filter(m => m.public_keys?.identity_key && (!m.encrypted_chat_key || m.member_key_id !== m.public_keys.key_id));
-    if (!missing.length) return;
+
+    const missing = members.filter(m =>
+        m.public_keys?.identity_key &&
+        (!m.encrypted_chat_key || m.member_key_id !== m.public_keys.key_id)
+    );
+
+    if (!missing.length) {
+        _autoWrappedChats.add(chatId);
+        return;
+    }
+
     try {
         const fresh = await api.getChat(chatId);
         const wrapped: Record<string, EncryptedChatKey> = {};
@@ -67,8 +119,13 @@ async function autoWrapMissing(chatId: string, members: ChatMemberDto[]) {
             if (fm.encrypted_chat_key && fm.member_key_id === fm.public_keys.key_id) continue;
             wrapped[fm.user_id] = await cryptoManager.wrapChatKey(chatKey, fm.public_keys.identity_key);
         }
-        if (Object.keys(wrapped).length) await api.updateChatKeys(chatId, wrapped);
-    } catch (e) { console.warn('[E2E] Auto-wrap error:', e); }
+        if (Object.keys(wrapped).length) {
+            await api.updateChatKeys(chatId, wrapped);
+        }
+        _autoWrappedChats.add(chatId);
+    } catch (e) {
+        console.warn('[E2E] Auto-wrap error:', e);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -79,8 +136,8 @@ function hasRealEncText(enc?: EncryptedPayload): boolean {
     return !!(enc && enc.ciphertext && enc.ciphertext.length > 0);
 }
 
-async function decryptText(chatId: string, enc: EncryptedPayload, msgId?: string): Promise<string | null> {
-    if (!hasRealEncText(enc)) return null;
+async function decryptText(chatId: string, enc: EncryptedPayload | undefined | null, msgId?: string): Promise<string | null> {
+    if (!enc || !hasRealEncText(enc)) return null;
     if (!cryptoManager.hasChatKey(chatId)) return null;
     try {
         return await cryptoManager.decrypt(chatId, enc.ciphertext, enc.nonce, msgId);
@@ -89,7 +146,7 @@ async function decryptText(chatId: string, enc: EncryptedPayload, msgId?: string
 
 async function decryptReply(reply: ReplyInfoDto | null | undefined, chatId: string): Promise<ReplyInfoDto | undefined> {
     if (!reply) return undefined;
-    const plain = await decryptText(chatId, reply.encrypted!);
+    const plain = await decryptText(chatId, reply.encrypted);
     if (plain) return { ...reply, content: plain };
     if (hasRealEncText(reply.encrypted)) return { ...reply, content: '🔒 Зашифровано' };
     return reply;
@@ -99,15 +156,13 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
     let content = msg.content;
     let decrypted_content: string | undefined;
 
-    // Try to decrypt text if there's actual encrypted text content
-    const plain = await decryptText(msg.chat_id, msg.encrypted!, msg.id);
+    const plain = await decryptText(msg.chat_id, msg.encrypted, msg.id);
     if (plain !== null) {
         content = plain;
         decrypted_content = plain;
     } else if (hasRealEncText(msg.encrypted)) {
         content = '🔒 Зашифровано';
     }
-    // If content is just the server placeholder, clean it up
     if (content === '[Зашифрованное сообщение]' && !hasRealEncText(msg.encrypted)) {
         content = msg.attachment ? '' : content;
     }
@@ -135,7 +190,6 @@ async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage
     }));
 }
 
-/** Build decrypted preview for sidebar */
 function buildPreview(msg: LocalMessage | null, isGroup: boolean, userId: string): { text: string; time: string } {
     if (!msg) return { text: 'Нет сообщений', time: '' };
     const own = msg.sender_id === userId;
@@ -153,7 +207,6 @@ function buildPreview(msg: LocalMessage | null, isGroup: boolean, userId: string
     return { text, time: formatTime(msg.created_at) };
 }
 
-/** Build preview from raw DTO (for initial load) — async version that decrypts */
 async function buildPreviewFromDto(lm: MessageDto | null, isGroup: boolean, userId: string): Promise<{ text: string; time: string }> {
     if (!lm) return { text: 'Нет сообщений', time: '' };
     const own = lm.sender_id === userId;
@@ -163,15 +216,13 @@ async function buildPreviewFromDto(lm: MessageDto | null, isGroup: boolean, user
         return { text: prefix + '📎 ' + lm.attachment.filename, time: formatTime(lm.created_at) };
     }
 
-    // Try decrypt
-    const plain = await decryptText(lm.chat_id, lm.encrypted!, lm.id);
+    const plain = await decryptText(lm.chat_id, lm.encrypted, lm.id);
     if (plain) {
         return { text: prefix + plain, time: formatTime(lm.created_at) };
     }
     if (hasRealEncText(lm.encrypted)) {
         return { text: prefix + '🔒 Сообщение', time: formatTime(lm.created_at) };
     }
-    // Not encrypted — use content directly, but clean up server placeholder
     let text = lm.content;
     if (text === '[Зашифрованное сообщение]') text = '🔒 Сообщение';
     return { text: prefix + text, time: formatTime(lm.created_at) };
@@ -225,6 +276,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     lastActivityAt: dto.last_message?.created_at || dto.created_at,
                     isPinned: dto.members.find(m => m.user_id === currentUserId)?.is_pinned || false,
                     hasMore: true,
+                    avatar_url: dto.avatar_url,
                 });
             }
             set({ chats, loading: false });
@@ -239,8 +291,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const chat = get().chats.find(c => c.id === id);
         if (!chat) return;
 
+        // ★ Передаём isChannel и is_group
         const hadKey = cryptoManager.hasChatKey(id);
-        const e2eStatus = await setupChatE2E(id, chat.members, currentUserId);
+        const e2eStatus = await setupChatE2E(id, chat.members, currentUserId, chat.isChannel, chat.is_group);
         if (get().selectedId !== id) return;
         set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, e2eStatus }) }));
 
@@ -254,7 +307,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
 
         if (chat.messagesLoaded) {
-            // Already loaded — just mark read
             const last = chat.messages[chat.messages.length - 1];
             if (last && !last.own) {
                 wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: last.id } });
@@ -268,7 +320,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             if (get().selectedId !== id) { set({ loadingMessages: false }); return; }
             const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
 
-            // Update preview with decrypted last message
             const lastProcessed = msgs[msgs.length - 1];
             const preview = buildPreview(lastProcessed, chat.is_group, currentUserId);
 
@@ -440,7 +491,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                         lastActivityAt: raw.created_at,
                     };
 
-                    // Auto mark read if chat is active
                     if (isActive && !local.own) {
                         wsManager.send({ type: 'mark_read', payload: { chat_id: raw.chat_id, message_id: raw.id } });
                     }
@@ -452,7 +502,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             case 'message_edited': {
                 const { chat_id, message_id, new_content, encrypted } = msg.payload;
                 let content = new_content;
-                const plain = await decryptText(chat_id, encrypted!, message_id);
+                const plain = await decryptText(chat_id, encrypted, message_id);
                 if (plain !== null) content = plain;
                 else if (hasRealEncText(encrypted)) content = '🔒 Зашифровано';
                 set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content, edited: true, decrypted_content: plain || undefined }) }) }));
@@ -480,6 +530,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
             case 'user_updated': {
                 const u = msg.payload.user;
+                // ★ Сбрасываем кеш autoWrap — у пользователя могли обновиться ключи
+                _autoWrappedChats.clear();
+
                 set(s => ({
                     chats: s.chats.map(c => !c.members.some(m => m.user_id === u.id) ? c : {
                         ...c,
@@ -492,7 +545,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 if (sel && u.public_keys) {
                     const chat = get().chats.find(c => c.id === sel);
                     if (chat?.members.some(m => m.user_id === u.id)) {
-                        const status = await setupChatE2E(sel, chat.members, currentUserId);
+                        // ★ Передаём isChannel и is_group
+                        const status = await setupChatE2E(sel, chat.members, currentUserId, chat.isChannel, chat.is_group);
                         set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, e2eStatus: status }) }));
                         if (status === 'ready' && chat.messages.some(m => hasRealEncText(m.encrypted) && !m.decrypted_content)) {
                             const msgs = await reDecryptMessages(chat.messages);
@@ -515,7 +569,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, unread_count: 0 }) }));
                     break;
                 }
-                // Other user read — mark all own msgs as read
                 set(s => ({
                     chats: s.chats.map(c => {
                         if (c.id !== chat_id) return c;

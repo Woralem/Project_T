@@ -41,6 +41,12 @@ export default function App() {
                 handleWsCallEvent(msg, useChatStore.getState().chats, user.id);
             }
 
+            // ★ Обработка ошибок от сервера (напр. канал отклонил сообщение)
+            if (msg.type === 'error') {
+                const errorMsg = (msg.payload as any).message || 'Ошибка';
+                showToast(errorMsg, 'error');
+            }
+
             // Notifications for new messages
             if (msg.type === 'new_message') {
                 const raw = msg.payload.message;
@@ -49,7 +55,6 @@ export default function App() {
                 const state = useChatStore.getState();
                 const isActive = state.selectedId === raw.chat_id && document.hasFocus() && !document.hidden;
 
-                // If active — send mark_read immediately
                 if (isActive) {
                     wsManager.send({ type: 'mark_read', payload: { chat_id: raw.chat_id, message_id: raw.id } });
                     return;
@@ -59,22 +64,13 @@ export default function App() {
                 const chatName = chat?.name || raw.sender_name;
                 const isGroup = chat?.is_group || chat?.isChannel || false;
 
-                // Decrypt preview text for notification
                 let text = raw.attachment ? '📎 ' + raw.attachment.filename : raw.content;
-                if (raw.encrypted?.ciphertext && raw.encrypted.ciphertext.length > 0 && cryptoManager.hasChatKey(raw.chat_id)) {
-                    try {
-                        // We can't await here in sync callback, so use the raw content
-                        // The store's processMsg will handle decryption
-                    } catch { /* */ }
-                }
                 if (text === '[Зашифрованное сообщение]') text = '🔒 Новое сообщение';
 
                 const other = chat?.members.find(m => m.user_id !== user.id);
 
-                // Sound
                 playNotificationSound();
 
-                // In-app toast
                 addNotification({
                     chatId: raw.chat_id,
                     chatName,
@@ -84,7 +80,6 @@ export default function App() {
                     isGroup,
                 });
 
-                // System notification
                 const title = isGroup ? chatName : raw.sender_name;
                 const body = isGroup ? `${raw.sender_name}: ${text}` : text;
                 sendSystemNotification(

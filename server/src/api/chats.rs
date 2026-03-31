@@ -158,11 +158,15 @@ async fn ensure_member(state: &AppState, chat_id: Uuid, user_id: Uuid) -> Result
     }
 }
 
+// ★ ИСПРАВЛЕНО — включает avatar_url
 async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> {
     let chat: models::Chat = sqlx::query_as("SELECT * FROM chats WHERE id = $1")
         .bind(chat_id)
         .fetch_one(&state.db)
         .await?;
+
+    // ★ Аватарка чата
+    let chat_avatar_url = chat.avatar_id.map(|id| format!("/api/files/{}", id));
 
     type MemberRow = (
         Uuid,
@@ -297,6 +301,7 @@ async fn chat_dto(state: &AppState, chat_id: Uuid) -> Result<ChatDto, AppError> 
         last_message,
         unread_count: 0,
         created_at: chat.created_at,
+        avatar_url: chat_avatar_url, // ★ NEW
     })
 }
 
@@ -515,7 +520,6 @@ pub async fn kick_member(
     auth: AuthUser,
     Path((chat_id, target_user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<()>, AppError> {
-    // Check requester role
     let role: Option<(String,)> =
         sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
             .bind(chat_id)
@@ -528,7 +532,6 @@ pub async fn kick_member(
         return Err(AppError::Forbidden("недостаточно прав".into()));
     }
 
-    // Can't kick owner
     let target_role: Option<(String,)> =
         sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
             .bind(chat_id)
@@ -548,7 +551,6 @@ pub async fn kick_member(
         .execute(&state.db)
         .await?;
 
-    // Notify kicked user
     state
         .send_to_user(
             &target_user_id,
@@ -559,14 +561,14 @@ pub async fn kick_member(
     Ok(Json(()))
 }
 
+// ★ ИСПРАВЛЕНО — сохраняет avatar_id и возвращает avatar_url
 /// POST /api/chats/:chat_id/avatar
 pub async fn upload_chat_avatar(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(chat_id): Path<Uuid>,
     mut multipart: axum::extract::Multipart,
-) -> Result<Json<()>, AppError> {
-    // Check admin
+) -> Result<Json<serde_json::Value>, AppError> {
     let role: Option<(String,)> =
         sqlx::query_as("SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2")
             .bind(chat_id)
@@ -602,14 +604,18 @@ pub async fn upload_chat_avatar(
             .bind(att_id).bind(auth.user_id).bind("chat_avatar").bind(&mime).bind(data.len() as i64)
             .execute(&state.db).await?;
 
-        // Store chat avatar (reuse name field for simplicity)
-        sqlx::query("UPDATE chats SET name = name WHERE id = $1")
+        // ★ Сохраняем avatar_id в таблицу chats
+        sqlx::query("UPDATE chats SET avatar_id = $1 WHERE id = $2")
+            .bind(att_id)
             .bind(chat_id)
             .execute(&state.db)
             .await?;
-        // TODO: add avatar_id to chats table for proper implementation
 
-        return Ok(Json(()));
+        let avatar_url = format!("/api/files/{}", att_id);
+
+        tracing::info!(%chat_id, %att_id, "chat avatar uploaded");
+
+        return Ok(Json(serde_json::json!({ "avatar_url": avatar_url })));
     }
 
     Err(AppError::BadRequest("Файл не найден".into()))

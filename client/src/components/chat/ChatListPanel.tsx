@@ -20,7 +20,7 @@ export function ChatListPanel({ currentUserId }: Props) {
     }, [chats, search]);
 
     const getChatAvatar = (chat: any) => {
-        if (chat.is_group || chat.isChannel) return undefined;
+        if (chat.is_group || chat.isChannel) return chat.avatar_url;
         return chat.members.find((m: any) => m.user_id !== currentUserId)?.avatar_url;
     };
 

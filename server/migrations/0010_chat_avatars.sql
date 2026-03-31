@@ -1,0 +1,1 @@
+ALTER TABLE chats ADD COLUMN avatar_id UUID REFERENCES attachments(id);

@@ -1,5 +1,19 @@
 import { create } from 'zustand';
 import { getFileUrl } from '../api';
+import { cryptoManager } from '../crypto';
+
+function getMimeFromFilename(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        case 'mp3': return 'audio/mpeg';
+        case 'ogg': case 'opus': return 'audio/ogg';
+        case 'wav': return 'audio/wav';
+        case 'flac': return 'audio/flac';
+        case 'aac': case 'm4a': return 'audio/mp4';
+        case 'webm': case 'weba': return 'audio/webm';
+        default: return 'audio/webm';
+    }
+}
 
 interface AudioState {
     fileId: string | null;
@@ -14,10 +28,11 @@ interface AudioState {
     speed: number;
     loading: boolean;
     _audio: HTMLAudioElement | null;
+    _blobUrl: string | null;
 }
 
 interface AudioActions {
-    play: (opts: { fileId: string; fileName: string; senderName: string; messageId?: string; chatId?: string }) => void;
+    play: (opts: { fileId: string; fileName: string; senderName: string; messageId?: string; chatId?: string; fileNonce?: string }) => void;
     toggle: () => void;
     pause: () => void;
     stop: () => void;
@@ -32,9 +47,9 @@ const SPEEDS = [1, 1.25, 1.5, 2, 0.5, 0.75];
 export const useAudioStore = create<AudioState & AudioActions>((set, get) => ({
     fileId: null, fileName: '', senderName: '', messageId: null, chatId: null,
     playing: false, currentTime: 0, duration: 0, volume: 100, speed: 1,
-    loading: false, _audio: null,
+    loading: false, _audio: null, _blobUrl: null,
 
-    play: ({ fileId, fileName, senderName, messageId, chatId }) => {
+    play: ({ fileId, fileName, senderName, messageId, chatId, fileNonce }) => {
         const s = get();
 
         // Тот же трек — просто toggle
@@ -55,22 +70,24 @@ export const useAudioStore = create<AudioState & AudioActions>((set, get) => ({
             s._audio.removeAttribute('src');
             s._audio.load();
         }
+        // Очистить старый blob URL
+        if (s._blobUrl) {
+            URL.revokeObjectURL(s._blobUrl);
+        }
 
         const audio = new Audio();
         audio.preload = 'auto';
         audio.volume = s.volume / 100;
         audio.playbackRate = s.speed;
 
-        // Устанавливаем state ДО загрузки
         set({
-            fileId, fileName, senderName, messageId, chatId,
+            fileId, fileName, senderName, messageId: messageId || null, chatId: chatId || null,
             playing: false, currentTime: 0, duration: 0, loading: true,
-            _audio: audio,
+            _audio: audio, _blobUrl: null,
         });
 
-        // ★ Обработчики НЕ пересоздают audio
+        // ★ Обработчики
         audio.onloadedmetadata = () => {
-            // Только обновляем duration если это тот же файл
             if (get().fileId === fileId) {
                 set({ duration: audio.duration || 0, loading: false });
             }
@@ -100,15 +117,43 @@ export const useAudioStore = create<AudioState & AudioActions>((set, get) => ({
             }
         };
 
-        // Загружаем
-        audio.src = getFileUrl(fileId);
-        audio.play()
-            .then(() => {
-                if (get().fileId === fileId) set({ playing: true });
-            })
-            .catch(() => {
-                if (get().fileId === fileId) set({ loading: false });
-            });
+        // ★ E2E-зашифрованный файл — fetch → decrypt → blob URL
+        const isEncrypted = fileNonce && chatId && cryptoManager.hasChatKey(chatId);
+
+        if (isEncrypted) {
+            fetch(getFileUrl(fileId))
+                .then(res => {
+                    if (!res.ok) throw new Error('fetch failed');
+                    return res.arrayBuffer();
+                })
+                .then(encData => cryptoManager.decryptBuffer(chatId!, encData, fileNonce!, fileId))
+                .then(decData => {
+                    if (get().fileId !== fileId) return; // уже переключили трек
+                    const mime = getMimeFromFilename(fileName);
+                    const blob = new Blob([decData], { type: mime });
+                    const blobUrl = URL.createObjectURL(blob);
+                    set({ _blobUrl: blobUrl });
+                    audio.src = blobUrl;
+                    return audio.play();
+                })
+                .then(() => {
+                    if (get().fileId === fileId) set({ playing: true, loading: false });
+                })
+                .catch((e) => {
+                    console.error('[Audio] E2E playback failed:', e);
+                    if (get().fileId === fileId) set({ loading: false });
+                });
+        } else {
+            // Обычный файл — прямой URL
+            audio.src = getFileUrl(fileId);
+            audio.play()
+                .then(() => {
+                    if (get().fileId === fileId) set({ playing: true });
+                })
+                .catch(() => {
+                    if (get().fileId === fileId) set({ loading: false });
+                });
+        }
     },
 
     toggle: () => {
@@ -129,19 +174,21 @@ export const useAudioStore = create<AudioState & AudioActions>((set, get) => ({
     },
 
     stop: () => {
-        const { _audio } = get();
+        const { _audio, _blobUrl } = get();
         if (_audio) {
             _audio.pause();
             _audio.removeAttribute('src');
             _audio.load();
         }
+        if (_blobUrl) {
+            URL.revokeObjectURL(_blobUrl);
+        }
         set({
             fileId: null, fileName: '', senderName: '', messageId: null, chatId: null,
-            playing: false, currentTime: 0, duration: 0, _audio: null, loading: false,
+            playing: false, currentTime: 0, duration: 0, _audio: null, _blobUrl: null, loading: false,
         });
     },
 
-    // ★ ФИКС: seek не перезапускает аудио
     seek: (time) => {
         const { _audio, duration } = get();
         if (!_audio || !duration) return;

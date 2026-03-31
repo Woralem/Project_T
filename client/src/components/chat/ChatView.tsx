@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2, Loader2 } from 'lucide-react';
+import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2, Loader2, Megaphone } from 'lucide-react';
 import { useChatStore } from '../../store/useChatStore';
 import { useUiStore } from '../../store/useUiStore';
 import { Avatar } from '../ui/Avatar';
@@ -20,7 +20,7 @@ function E2EBanner({ status }: { status?: E2EStatus }) {
     const cfg: Record<string, { bg: string; icon: React.ReactNode; label: string }> = {
         ready: { bg: 'bg-green-500/10 text-green-600 dark:text-green-400', icon: <Lock size={14} />, label: 'Сквозное шифрование включено' },
         no_identity: { bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', icon: <AlertTriangle size={14} />, label: 'Настройте E2E в настройках' },
-        peer_no_e2e: { bg: 'bg-gray-200/60 dark:bg-gray-800/60 text-gray-500', icon: <Shield size={14} />, label: 'Собеседник не настроил E2E' },
+        peer_no_e2e: { bg: 'bg-gray-200/60 dark:bg-gray-800/60 text-gray-500', icon: <Shield size={14} />, label: 'Не все участники настроили E2E' },
         waiting: { bg: 'bg-blue-500/10 text-blue-500', icon: <Clock size={14} />, label: 'Синхронизация ключей...' },
         error: { bg: 'bg-red-500/10 text-red-500', icon: <AlertTriangle size={14} />, label: 'Ошибка шифрования' },
     };
@@ -44,26 +44,20 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
     const isInitialLoad = useRef(true);
     const prevMsgCount = useRef(0);
 
-    // Auto-scroll to bottom on new messages (only if already near bottom)
     useEffect(() => {
         if (!chat) return;
         const container = scrollContainerRef.current;
         if (!container) return;
 
         if (isInitialLoad.current) {
-            // First load — scroll to bottom
             bottomRef.current?.scrollIntoView();
             isInitialLoad.current = false;
             prevMsgCount.current = chat.messages.length;
             return;
         }
 
-        // If messages were prepended (older loaded), don't scroll
         if (chat.messages.length > prevMsgCount.current) {
-            const addedAtEnd = chat.messages.length - prevMsgCount.current;
             const lastNew = chat.messages[chat.messages.length - 1];
-
-            // Only auto-scroll if message was added at end AND user is near bottom
             const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
             if (distFromBottom < 200 || lastNew?.own) {
                 bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,21 +66,18 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
         prevMsgCount.current = chat.messages.length;
     }, [chat?.messages.length]);
 
-    // Reset on chat switch
     useEffect(() => {
         setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null);
         isInitialLoad.current = true;
         prevMsgCount.current = 0;
     }, [selectedId]);
 
-    // Scroll to load older messages
     const handleScroll = useCallback(() => {
         const container = scrollContainerRef.current;
         if (!container || !chat || !chat.hasMore || loadingOlder) return;
         if (container.scrollTop < 100) {
             const prevHeight = container.scrollHeight;
             loadOlderMessages(chat.id, currentUserId).then(() => {
-                // Preserve scroll position after prepending
                 requestAnimationFrame(() => {
                     if (scrollContainerRef.current) {
                         const newHeight = scrollContainerRef.current.scrollHeight;
@@ -99,15 +90,22 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
 
     if (!chat) return null;
 
+    // ★ Все производные переменные — ПОСЛЕ проверки на null
     const other = chat.members.find(m => m.user_id !== currentUserId);
     const isDM = !chat.is_group && !chat.isChannel;
+    const myRole = chat.members.find(m => m.user_id === currentUserId)?.role;
+    const canWrite = !chat.isChannel || myRole === 'owner' || myRole === 'admin';
+    const chatAvatarUrl = isDM ? other?.avatar_url : chat.avatar_url;
 
     const getCtxItems = (msg: LocalMessage): ContextMenuItem[] => {
-        const items: ContextMenuItem[] = [
-            { label: 'Ответить', icon: <Reply size={16} />, onClick: () => setReplyTo(msg) },
+        const items: ContextMenuItem[] = [];
+        if (canWrite) {
+            items.push({ label: 'Ответить', icon: <Reply size={16} />, onClick: () => setReplyTo(msg) });
+        }
+        items.push(
             { label: 'Переслать', icon: <Share2 size={16} />, onClick: () => setForwardMsg(msg) },
             { label: 'Копировать', icon: <Copy size={16} />, onClick: () => { navigator.clipboard.writeText(msg.decrypted_content || msg.content); showToast('Скопировано'); } },
-        ];
+        );
         if (msg.own && msg.status !== 'pending') {
             items.push({ label: 'Редактировать', icon: <Edit2 size={16} />, onClick: () => { setEditingMsg(msg); setReplyTo(null); } });
             items.push({ label: 'Удалить', icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMessage(msg.id) });
@@ -135,14 +133,18 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
         }
     };
 
-    const subtitle = chat.isChannel ? `${chat.members.length} подписчиков` : chat.is_group ? `${chat.members.length} участников` : other?.online ? 'в сети' : 'был(а) недавно';
+    const subtitle = chat.isChannel
+        ? `${chat.members.length} подписчиков`
+        : chat.is_group
+            ? `${chat.members.length} участников`
+            : other?.online ? 'в сети' : 'был(а) недавно';
 
     return (
         <section className="flex flex-1 overflow-hidden relative bg-gray-50 dark:bg-[#0c0c10]">
             <div className="flex flex-col flex-1 min-w-0 h-full">
                 <header className="flex justify-between items-center px-5 py-3 bg-white dark:bg-[#15151c] border-b border-gray-200 dark:border-gray-800 shadow-sm z-10 flex-shrink-0">
                     <div className="flex items-center gap-3 cursor-pointer select-none min-w-0" onClick={() => setPanelOpen(v => !v)}>
-                        <Avatar name={chat.name} size={40} online={isDM ? other?.online : undefined} avatarUrl={isDM ? other?.avatar_url : undefined} />
+                        <Avatar name={chat.name} size={40} online={isDM ? other?.online : undefined} avatarUrl={chatAvatarUrl} />
                         <div className="flex flex-col min-w-0">
                             <div className="flex items-center gap-2">
                                 <h3 className="font-bold text-[15px] leading-tight truncate">{chat.isChannel ? '📢 ' : ''}{chat.name}</h3>
@@ -169,7 +171,6 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                     onScroll={handleScroll}
                 >
                     <div className="flex flex-col justify-end min-h-full w-full">
-                        {/* Loading older indicator */}
                         {loadingOlder && (
                             <div className="flex justify-center py-3">
                                 <Loader2 size={20} className="animate-spin text-gray-400" />
@@ -194,7 +195,7 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                             const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
                             return (
                                 <div key={msg.id} className={`w-full flex ${msg.own ? 'justify-end' : 'justify-start'} ${isFirst ? 'mt-2.5' : 'mt-0.5'}`} onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, message: msg }); }}>
-                                    <MessageBubble message={msg} isFirst={isFirst} isGroup={chat.is_group || chat.isChannel} onReply={setReplyTo} />
+                                    <MessageBubble message={msg} isFirst={isFirst} isGroup={chat.is_group || chat.isChannel} onReply={canWrite ? setReplyTo : undefined} />
                                 </div>
                             );
                         })}
@@ -203,16 +204,23 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                 </div>
 
                 <div className="px-4 pb-3 flex-shrink-0">
-                    <div className="rounded-2xl overflow-hidden shadow-[0_2px_15px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-200 dark:border-gray-800">
-                        <InputBar
-                            chatId={chat.id}
-                            onSend={handleSend}
-                            editingText={editingMsg?.content}
-                            onCancelEdit={() => setEditingMsg(null)}
-                            replyTo={replyTo ? { sender_name: replyTo.sender_name, content: replyTo.decrypted_content || replyTo.content, attachment: replyTo.attachment } : null}
-                            onCancelReply={() => setReplyTo(null)}
-                        />
-                    </div>
+                    {canWrite ? (
+                        <div className="rounded-2xl overflow-hidden shadow-[0_2px_15px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-200 dark:border-gray-800">
+                            <InputBar
+                                chatId={chat.id}
+                                onSend={handleSend}
+                                editingText={editingMsg?.content}
+                                onCancelEdit={() => setEditingMsg(null)}
+                                replyTo={replyTo ? { sender_name: replyTo.sender_name, content: replyTo.decrypted_content || replyTo.content, attachment: replyTo.attachment } : null}
+                                onCancelReply={() => setReplyTo(null)}
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center gap-2 py-4 text-gray-400 text-[13px] bg-white dark:bg-[#15151c] rounded-2xl border border-gray-200 dark:border-gray-800">
+                            <Megaphone size={16} />
+                            <span>Только администраторы могут писать в канал</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

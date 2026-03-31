@@ -107,6 +107,7 @@ pub struct ChatDto {
     pub last_message: Option<MessageDto>,
     pub unread_count: i64,
     pub created_at: DateTime<Utc>,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

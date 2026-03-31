@@ -51,7 +51,6 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
     const handleKick = async (userId: string, displayName: string) => {
         if (!confirm(`Удалить ${displayName} из чата?`)) return;
         try {
-            // Use API to remove member (we'll need to add this endpoint)
             const res = await fetch(`${api.SERVER_URL}/api/chats/${chat.id}/kick/${userId}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${api.getToken()}`, 'Content-Type': 'application/json' },
@@ -62,16 +61,22 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
         } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
+    // ★ ИСПРАВЛЕНО — обновляет avatar_url в сторе без перезагрузки всех чатов
     const handleUploadGroupAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return;
         if (!file.type.startsWith('image/')) { showToast('Выберите изображение', 'error'); return; }
         try {
             const formData = new FormData(); formData.append('avatar', file);
-            const headers: Record<string, string> = {}; if (api.getToken()) headers['Authorization'] = `Bearer ${api.getToken()}`;
+            const headers: Record<string, string> = {};
+            if (api.getToken()) headers['Authorization'] = `Bearer ${api.getToken()}`;
             const res = await fetch(`${api.SERVER_URL}/api/chats/${chat.id}/avatar`, { method: 'POST', headers, body: formData });
             if (!res.ok) throw new Error('Ошибка загрузки');
-            showToast('Аватарка группы обновлена!', 'success');
-            loadChats(currentUserId);
+            const data = await res.json();
+            showToast('Аватарка обновлена!', 'success');
+            // ★ Обновляем только avatar_url этого чата в сторе
+            useChatStore.setState(s => ({
+                chats: s.chats.map(c => c.id === chat.id ? { ...c, avatar_url: data.avatar_url } : c)
+            }));
         } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
         finally { if (fileRef.current) fileRef.current.value = ''; }
     };
@@ -91,8 +96,9 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 <div className="flex flex-col items-center gap-2 px-4 pt-6 pb-4">
+                    {/* ★ Показываем аватарку чата */}
                     <div className="relative group cursor-pointer" onClick={() => isAdmin && fileRef.current?.click()}>
-                        <Avatar name={chat.name} size={80} />
+                        <Avatar name={chat.name} size={80} avatarUrl={chat.avatar_url} />
                         {isAdmin && (
                             <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
                                 <Camera size={24} className="text-white" />
@@ -134,7 +140,6 @@ export function ChatInfoPanel({ chat, currentUserId, onClose }: Props) {
                                     <div className="text-[14px] font-medium truncate">{m.display_name}{m.user_id === currentUserId ? ' (вы)' : ''}</div>
                                     <div className="text-[11px] text-gray-500">{m.role === 'owner' ? 'Создатель' : m.role === 'admin' ? 'Админ' : 'Участник'}</div>
                                 </div>
-                                {/* Kick button */}
                                 {isAdmin && m.user_id !== currentUserId && m.role !== 'owner' && (
                                     <button
                                         className="p-1.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition rounded-lg hover:bg-red-500/10"

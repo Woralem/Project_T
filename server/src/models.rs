@@ -24,7 +24,7 @@ pub struct Invite {
     pub created_by: Uuid,
     pub used_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
-    pub expires_at: Option<DateTime<Utc>>, // <--- Исправлено здесь
+    pub expires_at: Option<DateTime<Utc>>,
     pub used: bool,
 }
 
@@ -36,6 +36,7 @@ pub struct Chat {
     pub name: Option<String>,
     pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
+    pub avatar_id: Option<Uuid>, // ★ NEW
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
