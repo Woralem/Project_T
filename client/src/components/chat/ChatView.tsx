@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2 } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2, Loader2 } from 'lucide-react';
 import { useChatStore } from '../../store/useChatStore';
 import { useUiStore } from '../../store/useUiStore';
 import { Avatar } from '../ui/Avatar';
@@ -29,7 +29,7 @@ function E2EBanner({ status }: { status?: E2EStatus }) {
 }
 
 export function ChatView({ currentUserId, currentUserName }: Props) {
-    const { chats, selectedId, loadingMessages, sendMessage, deleteMessage, editMessage, forwardMessage } = useChatStore();
+    const { chats, selectedId, loadingMessages, loadingOlder, sendMessage, deleteMessage, editMessage, forwardMessage, loadOlderMessages } = useChatStore();
     const showToast = useUiStore(s => s.showToast);
     const [panelOpen, setPanelOpen] = useState(false);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
@@ -38,11 +38,64 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
     const [forwardMsg, setForwardMsg] = useState<LocalMessage | null>(null);
     const chat = chats.find(c => c.id === selectedId);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const startCall = useCallStore(s => s.startCall);
     const allChats = useChatStore(s => s.chats);
+    const isInitialLoad = useRef(true);
+    const prevMsgCount = useRef(0);
 
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat?.messages.length, chat?.id]);
-    useEffect(() => { setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null); }, [selectedId]);
+    // Auto-scroll to bottom on new messages (only if already near bottom)
+    useEffect(() => {
+        if (!chat) return;
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        if (isInitialLoad.current) {
+            // First load — scroll to bottom
+            bottomRef.current?.scrollIntoView();
+            isInitialLoad.current = false;
+            prevMsgCount.current = chat.messages.length;
+            return;
+        }
+
+        // If messages were prepended (older loaded), don't scroll
+        if (chat.messages.length > prevMsgCount.current) {
+            const addedAtEnd = chat.messages.length - prevMsgCount.current;
+            const lastNew = chat.messages[chat.messages.length - 1];
+
+            // Only auto-scroll if message was added at end AND user is near bottom
+            const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+            if (distFromBottom < 200 || lastNew?.own) {
+                bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+        prevMsgCount.current = chat.messages.length;
+    }, [chat?.messages.length]);
+
+    // Reset on chat switch
+    useEffect(() => {
+        setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null);
+        isInitialLoad.current = true;
+        prevMsgCount.current = 0;
+    }, [selectedId]);
+
+    // Scroll to load older messages
+    const handleScroll = useCallback(() => {
+        const container = scrollContainerRef.current;
+        if (!container || !chat || !chat.hasMore || loadingOlder) return;
+        if (container.scrollTop < 100) {
+            const prevHeight = container.scrollHeight;
+            loadOlderMessages(chat.id, currentUserId).then(() => {
+                // Preserve scroll position after prepending
+                requestAnimationFrame(() => {
+                    if (scrollContainerRef.current) {
+                        const newHeight = scrollContainerRef.current.scrollHeight;
+                        scrollContainerRef.current.scrollTop = newHeight - prevHeight;
+                    }
+                });
+            });
+        }
+    }, [chat?.id, chat?.hasMore, loadingOlder, currentUserId, loadOlderMessages]);
 
     if (!chat) return null;
 
@@ -73,7 +126,6 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
         showToast('Сообщение переслано', 'success');
     };
 
-    // Prevent left-click from stealing input focus (Telegram-like behavior)
     const handleMessageAreaMouseDown = (e: React.MouseEvent) => {
         if (e.button === 0) {
             const target = e.target as HTMLElement;
@@ -110,12 +162,25 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                 </header>
 
                 <div
+                    ref={scrollContainerRef}
                     className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar"
                     onMouseDown={handleMessageAreaMouseDown}
                     onClick={() => setCtxMenu(null)}
+                    onScroll={handleScroll}
                 >
                     <div className="flex flex-col justify-end min-h-full w-full">
+                        {/* Loading older indicator */}
+                        {loadingOlder && (
+                            <div className="flex justify-center py-3">
+                                <Loader2 size={20} className="animate-spin text-gray-400" />
+                            </div>
+                        )}
+                        {chat.messagesLoaded && !chat.hasMore && chat.messages.length > 0 && (
+                            <p className="text-center text-gray-400 text-[11px] py-2">Начало переписки</p>
+                        )}
+
                         <E2EBanner status={chat.e2eStatus} />
+
                         {loadingMessages && !chat.messages.length && (
                             <div className="flex flex-col items-center gap-3 py-8">
                                 <div className="flex gap-1">{[0, 1, 2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />)}</div>
@@ -162,14 +227,7 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
 
             {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={getCtxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
 
-            <ForwardModal
-                open={!!forwardMsg}
-                message={forwardMsg}
-                chats={chats}
-                currentUserId={currentUserId}
-                onForward={handleForward}
-                onClose={() => setForwardMsg(null)}
-            />
+            <ForwardModal open={!!forwardMsg} message={forwardMsg} chats={chats} currentUserId={currentUserId} onForward={handleForward} onClose={() => setForwardMsg(null)} />
         </section>
     );
 }

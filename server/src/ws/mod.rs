@@ -160,20 +160,7 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
         WsClientMsg::MarkRead {
             chat_id,
             message_id,
-        } => {
-            broadcast_to_chat(
-                state,
-                chat_id,
-                uid,
-                WsServerMsg::MessagesRead {
-                    chat_id,
-                    user_id: uid,
-                    message_id,
-                },
-            )
-            .await
-        }
-        // ── Звонки ──────────────────────────────────────────
+        } => on_mark_read(state, uid, chat_id, message_id).await,
         WsClientMsg::CallOffer {
             chat_id,
             call_id,
@@ -203,8 +190,6 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
             call_id,
             muted,
         } => on_call_mute(state, uid, chat_id, call_id, muted).await,
-
-        // ── Shared Media ────────────────────────────────────
         WsClientMsg::CallMediaShare {
             chat_id,
             call_id,
@@ -269,16 +254,32 @@ async fn process(state: &AppState, uid: Uuid, uname: &str, msg: WsClientMsg) {
     }
 }
 
-async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String, muted: bool) {
+// ═══════════════════════════════════════════════════════════
+//  Mark Read — сохраняем в БД и рассылаем
+// ═══════════════════════════════════════════════════════════
+
+async fn on_mark_read(state: &AppState, uid: Uuid, chat_id: Uuid, message_id: Uuid) {
+    // Upsert read receipt
+    let _ = sqlx::query(
+        "INSERT INTO read_receipts (chat_id, user_id, last_read_message_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_message_id = $3, updated_at = NOW()"
+    )
+    .bind(chat_id)
+    .bind(uid)
+    .bind(message_id)
+    .execute(&state.db)
+    .await;
+
+    // Broadcast to other members
     broadcast_to_chat(
         state,
         chat_id,
         uid,
-        WsServerMsg::CallMuteChanged {
+        WsServerMsg::MessagesRead {
             chat_id,
-            call_id,
             user_id: uid,
-            muted,
+            message_id,
         },
     )
     .await;
@@ -338,15 +339,15 @@ async fn on_send(
     let display_name = get_display_name(state, uid, uname).await;
 
     let attachment = if let Some(att_id) = attachment_id {
-        let row: Option<(String, String, i64)> =
-            sqlx::query_as("SELECT filename, mime_type, size_bytes FROM attachments WHERE id=$1")
-                .bind(att_id)
-                .fetch_optional(&state.db)
-                .await
-                .ok()
-                .flatten();
-
-        row.map(|(filename, mime_type, size_bytes)| AttachmentDto {
+        sqlx::query_as::<_, (String, String, i64)>(
+            "SELECT filename, mime_type, size_bytes FROM attachments WHERE id=$1",
+        )
+        .bind(att_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|(filename, mime_type, size_bytes)| AttachmentDto {
             id: att_id,
             filename,
             mime_type,
@@ -358,48 +359,25 @@ async fn on_send(
 
     let msg_id = Uuid::new_v4();
     let now = chrono::Utc::now();
-
     let encrypted_json = encrypted
         .as_ref()
         .and_then(|e| serde_json::to_value(e).ok());
 
     if sqlx::query(
         "INSERT INTO messages (id, chat_id, sender_id, content, attachment_id, created_at, encrypted_content, reply_to_id, forwarded_from_id, forwarded_from_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-    )
-    .bind(msg_id)
-    .bind(chat_id)
-    .bind(uid)
-    .bind(&content)
-    .bind(attachment_id)
-    .bind(now)
-    .bind(&encrypted_json)
-    .bind(reply_to_id)
-    .bind(forwarded_from_id)
-    .bind(&forwarded_from_name)
-    .execute(&state.db)
-    .await
-    .is_err()
-    {
-        state
-            .send_to_user(
-                &uid,
-                WsServerMsg::Error {
-                    message: "ошибка сохранения".into(),
-                },
-            )
-            .await;
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)"
+    ).bind(msg_id).bind(chat_id).bind(uid).bind(&content).bind(attachment_id)
+    .bind(now).bind(&encrypted_json).bind(reply_to_id).bind(forwarded_from_id).bind(&forwarded_from_name)
+    .execute(&state.db).await.is_err() {
+        state.send_to_user(&uid, WsServerMsg::Error { message: "ошибка сохранения".into() }).await;
         return;
     }
 
-    // Build reply_to info
     let reply_to = if let Some(rid) = reply_to_id {
         fetch_reply_info(state, rid).await
     } else {
         None
     };
-
-    // Build forwarded_from info
     let forwarded_from = forwarded_from_id.map(|fid| ForwardInfoDto {
         original_message_id: fid,
         original_sender_name: forwarded_from_name.clone().unwrap_or_default(),
@@ -419,6 +397,13 @@ async fn on_send(
         reply_to,
         forwarded_from,
     };
+
+    // Auto mark_read for sender
+    let _ = sqlx::query(
+        "INSERT INTO read_receipts (chat_id, user_id, last_read_message_id, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (chat_id, user_id) DO UPDATE SET last_read_message_id = $3, updated_at = NOW()"
+    ).bind(chat_id).bind(uid).bind(msg_id).execute(&state.db).await;
 
     state
         .send_to_user(
@@ -450,7 +435,6 @@ async fn on_send(
     }
 }
 
-/// Fetch reply info for a message
 async fn fetch_reply_info(state: &AppState, reply_id: Uuid) -> Option<Box<ReplyInfoDto>> {
     type ReplyRow = (
         Uuid,
@@ -467,10 +451,8 @@ async fn fetch_reply_info(state: &AppState, reply_id: Uuid) -> Option<Box<ReplyI
     let row: Option<ReplyRow> = sqlx::query_as(
         "SELECT m.id, m.sender_id, u.display_name, m.content, m.encrypted_content,
                 a.id, a.filename, a.mime_type, a.size_bytes
-         FROM messages m
-         JOIN users u ON u.id = m.sender_id
-         LEFT JOIN attachments a ON a.id = m.attachment_id
-         WHERE m.id = $1",
+         FROM messages m JOIN users u ON u.id = m.sender_id
+         LEFT JOIN attachments a ON a.id = m.attachment_id WHERE m.id = $1",
     )
     .bind(reply_id)
     .fetch_optional(&state.db)
@@ -524,7 +506,6 @@ async fn on_edit(
     let encrypted_json = encrypted
         .as_ref()
         .and_then(|e| serde_json::to_value(e).ok());
-
     let _ = sqlx::query(
         "UPDATE messages SET content=$1, edited=TRUE, encrypted_content=$3 WHERE id=$2",
     )
@@ -577,7 +558,7 @@ async fn on_delete(state: &AppState, uid: Uuid, msg_id: Uuid) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Обработчики звонков — call_id теперь String
+//  Звонки
 // ═══════════════════════════════════════════════════════════
 
 async fn on_call_offer(
@@ -670,6 +651,21 @@ async fn on_call_hangup(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: Str
         chat_id,
         uid,
         WsServerMsg::CallEnded { chat_id, call_id },
+    )
+    .await;
+}
+
+async fn on_call_mute(state: &AppState, uid: Uuid, chat_id: Uuid, call_id: String, muted: bool) {
+    broadcast_to_chat(
+        state,
+        chat_id,
+        uid,
+        WsServerMsg::CallMuteChanged {
+            chat_id,
+            call_id,
+            user_id: uid,
+            muted,
+        },
     )
     .await;
 }

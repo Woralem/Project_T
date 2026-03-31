@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { CallState, SharedMediaItem, WsServerMsg, LocalChat } from '../types';
 import { wsManager } from '../websocket';
 import { cryptoManager } from '../crypto';
-import { getFileUrl, uploadFile } from '../api';
+import { getFileUrl } from '../api';
 
 const ICE_CONFIG: RTCConfiguration = {
     iceServers: [
@@ -30,6 +30,55 @@ async function decSig(chatId: string, data: string, enc: boolean) {
     catch { return data; }
 }
 
+// ═══════════════════════════════════════════════════════════
+//  Ringtone — tries MP3 files first, falls back to Web Audio
+// ═══════════════════════════════════════════════════════════
+
+function createRingtone(type: 'incoming' | 'outgoing'): { stop: () => void } {
+    const src = type === 'incoming' ? '/sounds/ringtone.mp3' : '/sounds/ringback.mp3';
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = type === 'incoming' ? 0.6 : 0.3;
+
+    let stopped = false;
+    let ctx: AudioContext | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    audio.play().catch(() => {
+        if (stopped) return;
+        try {
+            ctx = new AudioContext();
+            const freqs = type === 'incoming' ? [440, 520] : [440, 480];
+            let idx = 0;
+            const playTone = () => {
+                if (!ctx || stopped) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freqs[idx % freqs.length];
+                idx++;
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.4);
+            };
+            playTone();
+            intervalId = setInterval(playTone, type === 'incoming' ? 1000 : 3000);
+        } catch { /* */ }
+    });
+
+    return {
+        stop() {
+            stopped = true;
+            audio.pause(); audio.currentTime = 0; audio.src = '';
+            if (intervalId) clearInterval(intervalId);
+            if (ctx && ctx.state !== 'closed') ctx.close().catch(() => { });
+        }
+    };
+}
+
 interface Internal {
     _pc: RTCPeerConnection | null;
     _localStream: MediaStream | null;
@@ -42,6 +91,7 @@ interface Internal {
     _connectedFired: boolean;
     _mediaAudios: Map<string, HTMLAudioElement>;
     _mediaTimers: Map<string, ReturnType<typeof setInterval>>;
+    _ringtone: { stop: () => void } | null;
 }
 
 interface Actions {
@@ -76,9 +126,11 @@ export const useCallStore = create<Store>((set, get) => ({
     _pendingOffer: null, _pendingCandidates: [],
     _audioCtx: null, _gainNode: null, _connectedFired: false,
     _mediaAudios: new Map(), _mediaTimers: new Map(),
+    _ringtone: null,
 
     _cleanup: () => {
         const s = get();
+        s._ringtone?.stop();
         s._pc?.close();
         s._localStream?.getTracks().forEach(t => t.stop());
         if (s._timer) clearInterval(s._timer);
@@ -91,6 +143,7 @@ export const useCallStore = create<Store>((set, get) => ({
             _audioCtx: null, _gainNode: null, _connectedFired: false,
             _pendingOffer: null, _pendingCandidates: [],
             _mediaAudios: new Map(), _mediaTimers: new Map(),
+            _ringtone: null,
         });
     },
 
@@ -107,10 +160,10 @@ export const useCallStore = create<Store>((set, get) => ({
         } catch { return raw; }
     },
 
-    // ★ Единая точка перехода в connected
     _markConnected: (chatId) => {
         if (get()._connectedFired) return;
-        set({ _connectedFired: true, status: 'connected', isEncrypted: cryptoManager.hasChatKey(chatId) });
+        get()._ringtone?.stop();
+        set({ _connectedFired: true, _ringtone: null, status: 'connected', isEncrypted: cryptoManager.hasChatKey(chatId) });
         console.log('[Call] ✓ CONNECTED');
         if (!get()._timer) {
             const timer = setInterval(() => set(s => ({ duration: s.duration + 1 })), 1000);
@@ -157,17 +210,14 @@ export const useCallStore = create<Store>((set, get) => ({
                 if (e.streams[0]) { audio.srcObject = e.streams[0]; audio.volume = get().peerVolume / 100; }
             };
 
-            // ★ Оба listener для надёжности
             pc.onconnectionstatechange = () => {
                 const st = pc.connectionState;
-                console.log('[Call] connectionState:', st);
                 if (st === 'connected') get()._markConnected(chatId);
                 if (st === 'failed') get().hangup();
             };
 
             pc.oniceconnectionstatechange = () => {
                 const st = pc.iceConnectionState;
-                console.log('[Call] iceConnectionState:', st);
                 if (st === 'connected' || st === 'completed') get()._markConnected(chatId);
                 if (st === 'failed') get().hangup();
             };
@@ -177,12 +227,14 @@ export const useCallStore = create<Store>((set, get) => ({
             const enc = await encSig(chatId, offer.sdp!);
             wsManager.send({ type: 'call_offer', payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted } });
 
+            const ringtone = createRingtone('outgoing');
+
             set({
                 status: 'calling', chatId, callId, peerId: other?.user_id || null,
                 peerName: other?.display_name || 'Неизвестный', peerAvatarUrl: other?.avatar_url,
                 isMuted: false, peerMuted: false, duration: 0,
                 sharedMedia: [], showMediaPanel: false, _connectedFired: false,
-                _pc: pc, _localStream: raw, _remoteAudio: audio,
+                _pc: pc, _localStream: raw, _remoteAudio: audio, _ringtone: ringtone,
             });
 
             setTimeout(() => {
@@ -202,6 +254,9 @@ export const useCallStore = create<Store>((set, get) => ({
     answerCall: async () => {
         const offer = get()._pendingOffer;
         if (!offer || get().status !== 'ringing') return;
+
+        get()._ringtone?.stop();
+        set({ _ringtone: null });
 
         try {
             const raw = await navigator.mediaDevices.getUserMedia({
@@ -256,7 +311,8 @@ export const useCallStore = create<Store>((set, get) => ({
     rejectCall: () => {
         const offer = get()._pendingOffer;
         if (offer) wsManager.send({ type: 'call_reject', payload: { chat_id: offer.chatId, call_id: offer.callId } });
-        set({ ...INITIAL, _pendingOffer: null, _pendingCandidates: [] });
+        get()._ringtone?.stop();
+        set({ ...INITIAL, _pendingOffer: null, _pendingCandidates: [], _ringtone: null });
     },
 
     hangup: () => {
@@ -345,12 +401,21 @@ export const useCallStore = create<Store>((set, get) => ({
                 if (s.status === 'ended') get()._cleanup();
                 const chat = chats.find(c => c.id === chat_id);
                 const caller = chat?.members.find(m => m.user_id === caller_id);
-                set({ ...INITIAL, status: 'ringing', chatId: chat_id, callId: call_id, peerId: caller_id, peerName: caller_name, peerAvatarUrl: caller?.avatar_url, isEncrypted: encrypted, _pendingOffer: { chatId: chat_id, callId: call_id, sdp, encrypted, callerId: caller_id, callerName: caller_name }, _pendingCandidates: [] });
+                const ringtone = createRingtone('incoming');
+                set({
+                    ...INITIAL, status: 'ringing', chatId: chat_id, callId: call_id,
+                    peerId: caller_id, peerName: caller_name, peerAvatarUrl: caller?.avatar_url,
+                    isEncrypted: encrypted,
+                    _pendingOffer: { chatId: chat_id, callId: call_id, sdp, encrypted, callerId: caller_id, callerName: caller_name },
+                    _pendingCandidates: [], _ringtone: ringtone,
+                });
                 break;
             }
             case 'call_accepted': {
                 const { call_id, sdp, encrypted, chat_id } = msg.payload;
                 if (s.callId !== call_id || !s._pc) return;
+                s._ringtone?.stop();
+                set({ _ringtone: null });
                 try {
                     const realSdp = await decSig(chat_id, sdp, encrypted);
                     await s._pc.setRemoteDescription({ type: 'answer', sdp: realSdp });

@@ -19,7 +19,16 @@ export function ChatListPanel({ currentUserId }: Props) {
         return f.sort((a, b) => (a.isPinned === b.isPinned ? (b.lastActivityAt || '').localeCompare(a.lastActivityAt || '') : a.isPinned ? -1 : 1));
     }, [chats, search]);
 
-    const getChatAvatar = (chat: any) => (chat.is_group || chat.isChannel) ? undefined : chat.members.find((m: any) => m.user_id !== currentUserId)?.avatar_url;
+    const getChatAvatar = (chat: any) => {
+        if (chat.is_group || chat.isChannel) return undefined;
+        return chat.members.find((m: any) => m.user_id !== currentUserId)?.avatar_url;
+    };
+
+    const getChatOnline = (chat: any): boolean | undefined => {
+        if (chat.is_group || chat.isChannel) return undefined;
+        const other = chat.members.find((m: any) => m.user_id !== currentUserId);
+        return other?.online;
+    };
 
     const handleJoinByCode = async () => {
         const code = prompt('Введите код приглашения:');
@@ -28,6 +37,18 @@ export function ChatListPanel({ currentUserId }: Props) {
             await api.joinByCode(code.trim());
             showToast('Вы вступили в чат!', 'success');
             loadChats(currentUserId);
+        } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
+    };
+
+    const handleTogglePin = async (e: React.MouseEvent, chatId: string) => {
+        e.stopPropagation();
+        try {
+            await api.togglePin(chatId);
+            // Optimistic update
+            const store = useChatStore.getState();
+            useChatStore.setState({
+                chats: store.chats.map(c => c.id === chatId ? { ...c, isPinned: !c.isPinned } : c),
+            });
         } catch (e: any) { showToast(e.message || 'Ошибка', 'error'); }
     };
 
@@ -56,16 +77,36 @@ export function ChatListPanel({ currentUserId }: Props) {
                     {loading && !chats.length && <p className="p-8 text-center text-[13px] text-gray-400">Загрузка чатов...</p>}
 
                     {sorted.map(chat => (
-                        <button key={chat.id} onClick={() => selectChat(chat.id, currentUserId)} className={`w-full flex items-center gap-3 p-2.5 rounded-2xl text-left transition-colors ${selectedId === chat.id ? 'bg-accent/10 dark:bg-accent/15' : 'hover:bg-gray-100 dark:hover:bg-[#20202c]'}`}>
-                            <Avatar name={chat.name} size={46} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar(chat)} />
+                        <button
+                            key={chat.id}
+                            onClick={() => selectChat(chat.id, currentUserId)}
+                            className={`group w-full flex items-center gap-3 p-2.5 rounded-2xl text-left transition-colors ${selectedId === chat.id ? 'bg-accent/10 dark:bg-accent/15' : 'hover:bg-gray-100 dark:hover:bg-[#20202c]'}`}
+                        >
+                            <Avatar
+                                name={chat.name}
+                                size={46}
+                                online={getChatOnline(chat)}
+                                avatarUrl={getChatAvatar(chat)}
+                            />
                             <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                 <div className="flex justify-between items-center gap-2">
                                     <span className="text-[14px] font-semibold truncate flex items-center gap-1.5">
-                                        {chat.isPinned && <Pin size={12} className="text-accent" />}
-                                        {chat.isChannel ? <Megaphone size={12} className="text-gray-400" /> : chat.is_group && <Users size={12} className="text-gray-400" />}
+                                        {chat.isPinned && <Pin size={12} className="text-accent flex-shrink-0" />}
+                                        {chat.isChannel ? <Megaphone size={12} className="text-gray-400 flex-shrink-0" /> : chat.is_group && <Users size={12} className="text-gray-400 flex-shrink-0" />}
                                         {chat.name}
                                     </span>
-                                    <span className="text-[11px] font-medium text-gray-400 whitespace-nowrap flex-shrink-0">{chat.lastMessageTime}</span>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                        {/* Pin button — visible on hover */}
+                                        <button
+                                            className={`p-0.5 rounded opacity-0 group-hover:opacity-100 transition ${chat.isPinned ? 'text-accent' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                                }`}
+                                            onClick={(e) => handleTogglePin(e, chat.id)}
+                                            title={chat.isPinned ? 'Открепить' : 'Закрепить'}
+                                        >
+                                            <Pin size={12} />
+                                        </button>
+                                        <span className="text-[11px] font-medium text-gray-400 whitespace-nowrap">{chat.lastMessageTime}</span>
+                                    </div>
                                 </div>
                                 <div className="flex justify-between items-center gap-2">
                                     <span className="text-[13px] text-gray-500 truncate">{chat.lastMessageText || 'Нет сообщений'}</span>

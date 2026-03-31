@@ -95,7 +95,6 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
     let content = msg.content;
     let decrypted_content: string | undefined;
 
-    // Only try to decrypt text when there is actual encrypted text (non-empty ciphertext)
     if (hasEncText(msg.encrypted) && cryptoManager.hasChatKey(msg.chat_id)) {
         try {
             content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
@@ -104,7 +103,6 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
     } else if (hasEncText(msg.encrypted)) {
         content = '🔒 Зашифровано';
     }
-    // If only file_nonce (no text encryption) — keep original content as-is
 
     const reply_to = await decryptReply(msg.reply_to, msg.chat_id);
 
@@ -114,8 +112,7 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
         edited: msg.edited, created_at: msg.created_at,
         own: msg.sender_id === currentUserId, status: 'delivered',
         attachment: msg.attachment, encrypted: msg.encrypted,
-        reply_to,
-        forwarded_from: msg.forwarded_from || undefined,
+        reply_to, forwarded_from: msg.forwarded_from || undefined,
     };
 }
 
@@ -130,7 +127,32 @@ async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage
     }));
 }
 
-function buildPreview(lm: MessageDto | null, isGroup: boolean, userId: string) {
+/** Build decrypted preview for chat list */
+async function buildDecryptedPreview(lm: MessageDto | null, isGroup: boolean, userId: string): Promise<{ text: string; time: string }> {
+    if (!lm) return { text: 'Нет сообщений', time: '' };
+    const own = lm.sender_id === userId;
+    const prefix = isGroup && !own ? `${lm.sender_name}: ` : own ? 'Вы: ' : '';
+
+    let text: string;
+    if (lm.attachment) {
+        text = prefix + '📎 ' + lm.attachment.filename;
+    } else if (hasEncText(lm.encrypted) && cryptoManager.hasChatKey(lm.chat_id)) {
+        try {
+            const plain = await cryptoManager.decrypt(lm.chat_id, lm.encrypted!.ciphertext, lm.encrypted!.nonce, lm.id);
+            text = prefix + plain;
+        } catch {
+            text = prefix + '🔒 Зашифровано';
+        }
+    } else if (hasEncText(lm.encrypted)) {
+        text = prefix + '🔒 Зашифровано';
+    } else {
+        text = prefix + lm.content;
+    }
+
+    return { text, time: formatTime(lm.created_at) };
+}
+
+function buildPreviewSync(lm: MessageDto | null, isGroup: boolean, userId: string) {
     if (!lm) return { text: 'Нет сообщений', time: '' };
     const own = lm.sender_id === userId;
     const prefix = isGroup && !own ? `${lm.sender_name}: ` : own ? 'Вы: ' : '';
@@ -149,9 +171,11 @@ interface ChatStore {
     search: string;
     loading: boolean;
     loadingMessages: boolean;
+    loadingOlder: boolean;
     setSearch: (q: string) => void;
     loadChats: (currentUserId: string) => Promise<void>;
     selectChat: (id: string | null, currentUserId: string) => Promise<void>;
+    loadOlderMessages: (chatId: string, currentUserId: string) => Promise<void>;
     sendMessage: (chatId: string, text: string, currentUserId: string, currentUserName: string, attachmentId?: string, fileNonce?: string, replyToId?: string) => Promise<void>;
     forwardMessage: (originalMsg: LocalMessage, targetChatId: string, currentUserId: string, currentUserName: string) => Promise<void>;
     editMessage: (messageId: string, newText: string) => void;
@@ -165,24 +189,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     search: '',
     loading: false,
     loadingMessages: false,
+    loadingOlder: false,
     setSearch: search => set({ search }),
 
     loadChats: async (currentUserId) => {
         set({ loading: true });
         try {
             const dtos = await api.getChats();
-            const chats: LocalChat[] = dtos.map(dto => {
+            const chats: LocalChat[] = [];
+            for (const dto of dtos) {
                 const others = dto.members.filter(m => m.user_id !== currentUserId);
                 const name = dto.is_group ? (dto.name || 'Группа') : (others[0]?.display_name || 'Чат');
-                const p = buildPreview(dto.last_message, dto.is_group, currentUserId);
-                return {
+                const p = await buildDecryptedPreview(dto.last_message, dto.is_group, currentUserId);
+                chats.push({
                     id: dto.id, is_group: dto.is_group, isChannel: dto.is_channel || false,
                     name, members: dto.members, messages: [], messagesLoaded: false,
                     unread_count: dto.unread_count, online: !dto.is_group && (others[0]?.online || false),
                     created_at: dto.created_at, lastMessageText: p.text, lastMessageTime: p.time,
-                    lastActivityAt: dto.last_message?.created_at || dto.created_at, isPinned: false,
-                };
-            });
+                    lastActivityAt: dto.last_message?.created_at || dto.created_at, isPinned: dto.members.find(m => m.user_id === currentUserId)?.is_pinned || false,
+                    hasMore: true,
+                });
+            }
             set({ chats, loading: false });
         } catch { set({ loading: false }); }
     },
@@ -204,6 +231,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             const msgs = await reDecryptMessages(chat.messages);
             if (get().selectedId !== id) return;
             set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs }) }));
+            // Update preview too
+            const lastRaw = msgs[msgs.length - 1];
+            if (lastRaw) {
+                const previewText = lastRaw.own ? 'Вы: ' + (lastRaw.decrypted_content || lastRaw.content) : (lastRaw.decrypted_content || lastRaw.content);
+                set(s => ({ chats: s.chats.map(c => c.id !== id ? c : { ...c, lastMessageText: previewText }) }));
+            }
             return;
         }
 
@@ -211,15 +244,42 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
         set({ loadingMessages: true });
         try {
-            const raw = await api.getMessages(id);
+            const raw = await api.getMessages(id, 50);
             if (get().selectedId !== id) { set({ loadingMessages: false }); return; }
             const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
             set(s => ({
-                chats: s.chats.map(c => c.id !== id ? c : { ...c, messages: msgs, messagesLoaded: true, unread_count: 0 }),
+                chats: s.chats.map(c => c.id !== id ? c : {
+                    ...c, messages: msgs, messagesLoaded: true, unread_count: 0,
+                    hasMore: raw.length >= 50,
+                }),
                 loadingMessages: false,
             }));
             if (raw.length) wsManager.send({ type: 'mark_read', payload: { chat_id: id, message_id: raw[raw.length - 1].id } });
         } catch { set({ loadingMessages: false }); }
+    },
+
+    loadOlderMessages: async (chatId, currentUserId) => {
+        const chat = get().chats.find(c => c.id === chatId);
+        if (!chat || !chat.hasMore || get().loadingOlder) return;
+
+        const oldest = chat.messages[0];
+        if (!oldest) return;
+
+        set({ loadingOlder: true });
+        try {
+            const raw = await api.getMessages(chatId, 50, oldest.id);
+            if (get().selectedId !== chatId) { set({ loadingOlder: false }); return; }
+            const msgs = await Promise.all(raw.map(m => processMsg(m, currentUserId)));
+
+            set(s => ({
+                chats: s.chats.map(c => c.id !== chatId ? c : {
+                    ...c,
+                    messages: [...msgs, ...c.messages],
+                    hasMore: raw.length >= 50,
+                }),
+                loadingOlder: false,
+            }));
+        } catch { set({ loadingOlder: false }); }
     },
 
     sendMessage: async (chatId, text, currentUserId, currentUserName, attachmentId, fileNonce, replyToId) => {
@@ -229,23 +289,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const clientId = uid();
         const now = new Date().toISOString();
 
-        // Encrypt text content (only if there is text)
         let enc: EncryptedPayload | undefined;
         if (trimmed && cryptoManager.hasChatKey(chatId)) {
             try { enc = await cryptoManager.encrypt(chatId, trimmed); } catch { /* fallback */ }
         }
 
-        // Attach file_nonce to encrypted payload
         if (fileNonce) {
-            if (enc) {
-                enc.file_nonce = fileNonce;
-            } else {
-                // File-only encryption (no text to encrypt)
-                enc = { ciphertext: '', nonce: '', file_nonce: fileNonce };
-            }
+            if (enc) { enc.file_nonce = fileNonce; }
+            else { enc = { ciphertext: '', nonce: '', file_nonce: fileNonce }; }
         }
 
         const encHasText = hasEncText(enc);
+        const displayContent = trimmed || '📎 Файл';
 
         set(s => ({
             chats: s.chats.map(c => c.id !== chatId ? c : {
@@ -253,12 +308,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 messages: [...c.messages, {
                     id: clientId, client_id: clientId, chat_id: chatId,
                     sender_id: currentUserId, sender_name: currentUserName,
-                    content: trimmed || '📎 Файл', edited: false, created_at: now,
+                    content: displayContent, edited: false, created_at: now,
                     own: true, status: 'pending' as const, encrypted: enc,
                 }],
-                lastMessageText: 'Вы: ' + (trimmed || '📎 Файл'),
-                lastMessageTime: formatTime(now),
-                lastActivityAt: now,
+                lastMessageText: 'Вы: ' + displayContent,
+                lastMessageTime: formatTime(now), lastActivityAt: now,
             })
         }));
 
@@ -266,11 +320,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: chatId,
-                content: encHasText ? '[Зашифрованное сообщение]' : (trimmed || '📎 Файл'),
-                client_id: clientId,
-                attachment_id: attachmentId,
-                encrypted: enc,
-                reply_to_id: replyToId,
+                content: encHasText ? '[Зашифрованное сообщение]' : displayContent,
+                client_id: clientId, attachment_id: attachmentId,
+                encrypted: enc, reply_to_id: replyToId,
             },
         });
     },
@@ -287,9 +339,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { /* fallback */ }
         }
 
-        // Only forward non-E2E attachments (encrypted files can't be read in another chat)
         const canForwardAtt = originalMsg.attachment && !originalMsg.encrypted?.file_nonce;
         const encHasText = hasEncText(enc);
+        const displayContent = content || '📎 Файл';
 
         set(s => ({
             chats: s.chats.map(c => c.id !== targetChatId ? c : {
@@ -297,16 +349,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 messages: [...c.messages, {
                     id: clientId, client_id: clientId, chat_id: targetChatId,
                     sender_id: currentUserId, sender_name: currentUserName,
-                    content: content || '📎 Файл', edited: false, created_at: now,
+                    content: displayContent, edited: false, created_at: now,
                     own: true, status: 'pending' as const, encrypted: enc,
-                    forwarded_from: {
-                        original_message_id: originalMsg.id,
-                        original_sender_name: originalMsg.sender_name,
-                    },
+                    forwarded_from: { original_message_id: originalMsg.id, original_sender_name: originalMsg.sender_name },
                 }],
-                lastMessageText: 'Вы: ' + (content || '📎 Файл'),
-                lastMessageTime: formatTime(now),
-                lastActivityAt: now,
+                lastMessageText: 'Вы: ' + displayContent,
+                lastMessageTime: formatTime(now), lastActivityAt: now,
             })
         }));
 
@@ -314,7 +362,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: targetChatId,
-                content: encHasText ? '[Зашифрованное сообщение]' : (content || '📎 Файл'),
+                content: encHasText ? '[Зашифрованное сообщение]' : displayContent,
                 client_id: clientId,
                 attachment_id: canForwardAtt ? originalMsg.attachment!.id : undefined,
                 encrypted: enc,
@@ -335,10 +383,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         wsManager.send({ type: 'delete_message', payload: { message_id: messageId } });
     },
 
-    // ═══════════════════════════════════════════════════════
-    //  WS
-    // ═══════════════════════════════════════════════════════
-
     handleWsEvent: async (msg, currentUserId) => {
         switch (msg.type) {
             case 'new_message':
@@ -354,7 +398,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     const chat = s.chats[idx];
                     if (chat.messages.some(m => m.id === raw.id)) return s;
 
-                    const p = buildPreview(raw, chat.is_group, currentUserId);
                     const pendingIdx = clientId ? chat.messages.findIndex(m => m.client_id === clientId) : -1;
 
                     let msgs = [...chat.messages];
@@ -364,12 +407,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                         msgs.push(local);
                     }
 
+                    // Decrypted preview
+                    const previewContent = local.decrypted_content || local.content;
+                    const isGroup = chat.is_group;
+                    const own = local.own;
+                    const prefix = isGroup && !own ? `${local.sender_name}: ` : own ? 'Вы: ' : '';
+                    const previewText = local.attachment
+                        ? prefix + '📎 ' + local.attachment.filename
+                        : prefix + previewContent;
+
                     const isActive = s.selectedId === raw.chat_id && document.hasFocus() && !document.hidden;
                     const newChats = [...s.chats];
                     newChats[idx] = {
                         ...chat, messages: msgs,
                         unread_count: isActive ? 0 : chat.unread_count + (local.own ? 0 : 1),
-                        lastMessageText: p.text, lastMessageTime: p.time,
+                        lastMessageText: previewText,
+                        lastMessageTime: formatTime(raw.created_at),
                         lastActivityAt: raw.created_at,
                     };
 
@@ -441,9 +494,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 break;
 
             case 'messages_read': {
-                const { chat_id, user_id } = msg.payload;
-                if (user_id === currentUserId) break;
-                set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.own && m.status !== 'read' ? { ...m, status: 'read' as const } : m) }) }));
+                const { chat_id, user_id, message_id } = msg.payload;
+                if (user_id === currentUserId) {
+                    // Mark our chat as read (reset unread)
+                    set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, unread_count: 0 }) }));
+                    break;
+                }
+                // Someone else read our messages — mark all own messages up to message_id as 'read'
+                set(s => ({
+                    chats: s.chats.map(c => {
+                        if (c.id !== chat_id) return c;
+                        let found = false;
+                        const msgs = c.messages.map(m => {
+                            if (m.id === message_id) found = true;
+                            if (m.own && m.status !== 'read') {
+                                return { ...m, status: 'read' as const };
+                            }
+                            return m;
+                        });
+                        return { ...c, messages: msgs };
+                    })
+                }));
                 break;
             }
         }

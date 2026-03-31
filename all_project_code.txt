@@ -330,6 +330,7 @@ import { Avatar } from '../ui/Avatar';
 import { DraggableSlider } from '../ui/DraggableSlider';
 import { formatDuration } from '../../utils';
 import { uploadFile } from '../../api';
+import type { SharedMediaItem } from '../../types';
 
 export function CallOverlay() {
     const call = useCallStore();
@@ -503,8 +504,8 @@ function CallBtn({ children, active, danger, onClick, title, badge }: {
     return (
         <button
             className={`relative p-2.5 rounded-xl transition-all active:scale-90 ${danger ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                    : active ? 'bg-white/15 text-white'
-                        : 'text-white/50 hover:text-white hover:bg-white/10'
+                : active ? 'bg-white/15 text-white'
+                    : 'text-white/50 hover:text-white hover:bg-white/10'
                 }`}
             onClick={onClick} title={title}
         >
@@ -574,42 +575,6 @@ function MediaCard({ item, onPlayPause, onLoop, onSeek, onRemove, onVolumeChange
 
 
 ================================================================================
-FILE PATH: ./client/src/components/calls/CallsView.tsx
-================================================================================
-import React from 'react';
-import { Icon } from '../../icons';
-
-export function CallsView() {
-    return (
-        <section className="placeholder-view">
-            <div className="placeholder-icon">{Icon.phone(56)}</div>
-            <h2>Голосовые звонки</h2>
-            <p>Откройте чат и нажмите кнопку звонка, чтобы начать зашифрованный разговор</p>
-            <div className="placeholder-pills">
-                <span className="pill">{Icon.shield(14)} End-to-end</span>
-                <span className="pill">{Icon.mic(14)} Opus HD</span>
-                <span className="pill">{Icon.lock(14)} WebRTC P2P</span>
-            </div>
-            <div className="calls-info">
-                <div className="calls-info-item">
-                    <span className="calls-info-icon">{Icon.check(16)}</span>
-                    <span>Аудио идёт напрямую между устройствами</span>
-                </div>
-                <div className="calls-info-item">
-                    <span className="calls-info-icon">{Icon.check(16)}</span>
-                    <span>Сигнализация шифруется ключом чата</span>
-                </div>
-                <div className="calls-info-item">
-                    <span className="calls-info-icon">{Icon.check(16)}</span>
-                    <span>Сервер не видит и не слышит содержимое</span>
-                </div>
-            </div>
-        </section>
-    );
-}
-
-
-================================================================================
 FILE PATH: ./client/src/components/calls/IncomingCallModal.tsx
 ================================================================================
 import React, { useEffect, useState } from 'react';
@@ -670,488 +635,6 @@ export function IncomingCallModal() {
                     </div>
                 </div>
             </div>
-        </div>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/calls/SharedMediaPanel.tsx
-================================================================================
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { SharedMediaItem } from '../../types';
-import { getFileUrl, uploadFile } from '../../api';
-import { Icon } from '../../icons';
-
-interface Props {
-    media: SharedMediaItem[];
-    currentUserId: string;
-    onShare: (fileId: string, fileName: string) => void;
-    onRemove: (mediaId: string) => void;
-    onControl: (mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => void;
-    onLocalVolumeChange: (mediaId: string, volume: number) => void;
-    onLocalMuteToggle: (mediaId: string) => void;
-    onTitleUpdate: (mediaId: string, title: string) => void;
-    onTimeUpdate: (mediaId: string, currentTime: number, duration: number) => void;
-    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
-}
-
-const AUDIO_TYPES = '.mp3,.ogg,.wav,.flac,.aac,.m4a,.webm,.opus';
-
-export function SharedMediaPanel({
-    media, currentUserId, onShare, onRemove, onControl,
-    onLocalVolumeChange, onLocalMuteToggle, onTitleUpdate, onTimeUpdate, showToast,
-}: Props) {
-    const [uploading, setUploading] = useState(false);
-    const [dragOver, setDragOver] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
-    const timerRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
-
-    // ── Cleanup при unmount ──────────────────────────────
-
-    useEffect(() => {
-        return () => {
-            audioRefs.current.forEach(a => { a.pause(); a.src = ''; });
-            audioRefs.current.clear();
-            timerRefs.current.forEach(t => clearInterval(t));
-            timerRefs.current.clear();
-        };
-    }, []);
-
-    // ── Создание / удаление audio элементов ──────────────
-
-    useEffect(() => {
-        const currentIds = new Set(media.map(m => m.id));
-
-        // Удаляем для removed
-        audioRefs.current.forEach((audio, id) => {
-            if (!currentIds.has(id)) {
-                audio.pause();
-                audio.src = '';
-                audioRefs.current.delete(id);
-                const timer = timerRefs.current.get(id);
-                if (timer) { clearInterval(timer); timerRefs.current.delete(id); }
-            }
-        });
-
-        // Создаём новые
-        media.forEach(item => {
-            if (audioRefs.current.has(item.id)) return;
-
-            const audio = new Audio();
-            audio.crossOrigin = 'anonymous';
-            audio.preload = 'auto';
-            audio.src = getFileUrl(item.fileId);
-            audio.volume = item.localMuted ? 0 : item.localVolume / 100;
-
-            audio.onloadedmetadata = () => {
-                onTimeUpdate(item.id, 0, audio.duration || 0);
-                const name = item.fileName.replace(/\.[^.]+$/, '') || 'Аудио';
-                onTitleUpdate(item.id, name);
-            };
-
-            audio.onended = () => {
-                onControl(item.id, 'pause');
-                onTimeUpdate(item.id, 0, audio.duration || 0);
-            };
-
-            audio.onerror = () => {
-                console.error('[Media] Audio load error:', item.fileId);
-                showToast('Ошибка загрузки аудио', 'error');
-            };
-
-            if (item.isPlaying) {
-                audio.play().catch(() => { });
-            }
-
-            audioRefs.current.set(item.id, audio);
-
-            // Таймер обновления прогресса
-            const timer = setInterval(() => {
-                const a = audioRefs.current.get(item.id);
-                if (!a) return;
-                onTimeUpdate(item.id, a.currentTime, a.duration || 0);
-            }, 500);
-            timerRefs.current.set(item.id, timer);
-        });
-    }, [media.map(m => m.id).join(',')]);
-
-    // ── Синхронизация play/pause и loop ──────────────────
-
-    useEffect(() => {
-        media.forEach(item => {
-            const audio = audioRefs.current.get(item.id);
-            if (!audio) return;
-
-            audio.loop = item.isLooping;
-
-            if (item.isPlaying && audio.paused) {
-                audio.play().catch(() => { });
-            } else if (!item.isPlaying && !audio.paused) {
-                audio.pause();
-            }
-        });
-    }, [media.map(m => `${m.id}:${m.isPlaying}:${m.isLooping}`).join(',')]);
-
-    // ── Синхронизация громкости ──────────────────────────
-
-    useEffect(() => {
-        media.forEach(item => {
-            const audio = audioRefs.current.get(item.id);
-            if (!audio) return;
-            audio.volume = item.localMuted ? 0 : item.localVolume / 100;
-        });
-    }, [media.map(m => `${m.id}:${m.localVolume}:${m.localMuted}`).join(',')]);
-
-    // ── Загрузка файла ──────────────────────────────────
-
-    const handleUpload = useCallback(async (file: File) => {
-        if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|ogg|wav|flac|aac|m4a|webm|opus)$/i)) {
-            showToast('Выберите аудиофайл', 'error');
-            return;
-        }
-        if (file.size > 25 * 1024 * 1024) {
-            showToast('Файл слишком большой (макс 25MB)', 'error');
-            return;
-        }
-
-        setUploading(true);
-        try {
-            const att = await uploadFile(file, file.name);
-            onShare(att.id, file.name);
-            showToast('Музыка добавлена!', 'success');
-        } catch (e: any) {
-            showToast(e.message || 'Ошибка загрузки', 'error');
-        } finally {
-            setUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    }, [onShare, showToast]);
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) handleUpload(file);
-    };
-
-    // ── Drag & Drop ─────────────────────────────────────
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOver(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault();
-        setDragOver(false);
-    };
-
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOver(false);
-        const file = e.dataTransfer.files[0];
-        if (file) handleUpload(file);
-    };
-
-    // ── Seek по клику (только локально) ─────────────────
-
-    const handleSeek = (item: SharedMediaItem, e: React.MouseEvent<HTMLDivElement>) => {
-        if (!item.duration) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        const time = pct * item.duration;
-        const audio = audioRefs.current.get(item.id);
-        if (audio) audio.currentTime = time;
-        onControl(item.id, 'seek', time);
-    };
-
-    const fmt = (s: number) => {
-        if (!s || !isFinite(s)) return '0:00';
-        const m = Math.floor(s / 60);
-        return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-    };
-
-    return (
-        <div
-            className={`media-panel ${dragOver ? 'media-drag-over' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-        >
-            {/* Кнопка загрузки */}
-            <div className="media-upload-row">
-                <button
-                    className="media-upload-btn"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                >
-                    {uploading ? '⏳ Загрузка...' : '🎵 Добавить музыку'}
-                </button>
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={AUDIO_TYPES}
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
-                />
-            </div>
-
-            {/* Drag hint */}
-            {dragOver && (
-                <div className="media-drop-hint">
-                    Отпустите файл чтобы добавить
-                </div>
-            )}
-
-            {/* Пустое состояние */}
-            {media.length === 0 && !dragOver && (
-                <div className="media-empty">
-                    Перетащите аудиофайл или нажмите кнопку выше
-                </div>
-            )}
-
-            {/* Список треков */}
-            {media.map(item => {
-                const pct = item.duration > 0 ? (item.currentTime / item.duration) * 100 : 0;
-                const isOwner = item.userId === currentUserId;
-
-                return (
-                    <div key={item.id} className="media-card">
-                        <div className="media-card-header">
-                            <div className="media-card-info">
-                                <span className="media-card-title">
-                                    🎵 {item.title || item.fileName || 'Загрузка...'}
-                                </span>
-                                <span className="media-card-owner">
-                                    {isOwner ? 'Вы' : item.userName}
-                                </span>
-                            </div>
-                            {isOwner && (
-                                <button
-                                    className="media-remove-btn"
-                                    onClick={() => onRemove(item.id)}
-                                    title="Убрать"
-                                >
-                                    {Icon.x(14)}
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Прогресс */}
-                        <div className="media-progress" onClick={e => handleSeek(item, e)}>
-                            <div className="media-progress-fill" style={{ width: `${pct}%` }} />
-                        </div>
-
-                        <div className="media-controls">
-                            <button
-                                className="media-ctrl-btn"
-                                onClick={() => onControl(item.id, item.isPlaying ? 'pause' : 'play')}
-                                title={item.isPlaying ? 'Пауза' : 'Плей'}
-                            >
-                                {item.isPlaying ? (
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                        <rect x="6" y="4" width="4" height="16" rx="1" />
-                                        <rect x="14" y="4" width="4" height="16" rx="1" />
-                                    </svg>
-                                ) : (
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                        <polygon points="5,3 19,12 5,21" />
-                                    </svg>
-                                )}
-                            </button>
-
-                            <button
-                                className="media-ctrl-btn"
-                                style={{ color: item.isLooping ? 'var(--accent)' : 'inherit' }}
-                                onClick={() => onControl(item.id, 'loop')}
-                                title={item.isLooping ? 'Выключить повтор' : 'Включить повтор'}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="17 1 21 5 17 9"></polyline>
-                                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-                                    <polyline points="7 23 3 19 7 15"></polyline>
-                                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-                                </svg>
-                            </button>
-
-                            <span className="media-time">
-                                {fmt(item.currentTime)} / {fmt(item.duration)}
-                            </span>
-
-                            <button
-                                className={`media-ctrl-btn ${item.localMuted ? 'muted' : ''}`}
-                                onClick={() => onLocalMuteToggle(item.id)}
-                                title={item.localMuted ? 'Включить звук' : 'Выключить звук'}
-                            >
-                                {item.localMuted ? Icon.volumeOff(14) : Icon.volumeHigh(14)}
-                            </button>
-
-                            <input
-                                type="range" min={0} max={100}
-                                value={item.localMuted ? 0 : item.localVolume}
-                                onChange={e => onLocalVolumeChange(item.id, Number(e.target.value))}
-                                className="media-volume-slider"
-                            />
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/chat/AudioPlayer.tsx
-================================================================================
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { cryptoManager } from '../../crypto';
-import { Icon } from '../../icons';
-import type { ActiveVoice } from '../../types';
-
-interface Props {
-    src: string;
-    encryptedNonce?: string;
-    chatId?: string;
-    attachmentId?: string;
-    senderName?: string;
-    messageId?: string;
-    onActivate?: (v: ActiveVoice) => void;
-    onDeactivate?: () => void;
-}
-
-const SPEEDS = [1, 1.5, 2, 0.5];
-
-export function AudioPlayer({ src, encryptedNonce, chatId, attachmentId, senderName, messageId, onActivate, onDeactivate }: Props) {
-    const audioRef = useRef<HTMLAudioElement>(null);
-    const trackRef = useRef<HTMLDivElement>(null);
-    const [playing, setPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null);
-    const [decrypting, setDecrypting] = useState(false);
-    const [decryptError, setDecryptError] = useState(false);
-    const [speedIdx, setSpeedIdx] = useState(0);
-    const [volume, setVolume] = useState(100);
-    const [showVolume, setShowVolume] = useState(false);
-    const [dragging, setDragging] = useState(false);
-    const urlRef = useRef<string | null>(null);
-    const isEncrypted = !!encryptedNonce && !!chatId;
-
-    useEffect(() => {
-        if (!isEncrypted) return;
-        let cancelled = false;
-        setDecrypting(true); setDecryptError(false);
-        (async () => {
-            try {
-                const resp = await fetch(src); if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const encData = await resp.arrayBuffer(); if (cancelled) return;
-                const decData = await cryptoManager.decryptBuffer(chatId!, encData, encryptedNonce!, attachmentId); if (cancelled) return;
-                const url = URL.createObjectURL(new Blob([decData], { type: 'audio/webm' }));
-                urlRef.current = url; setDecryptedUrl(url);
-            } catch (e) { console.error('[E2E] Voice decrypt failed:', e); if (!cancelled) setDecryptError(true); }
-            finally { if (!cancelled) setDecrypting(false); }
-        })();
-        return () => { cancelled = true; if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; } };
-    }, [src, encryptedNonce, chatId, isEncrypted, attachmentId]);
-
-    const audioSrc = isEncrypted ? decryptedUrl : src;
-
-    useEffect(() => {
-        const a = audioRef.current; if (!a || !audioSrc) return;
-        const onL = () => setDuration(a.duration || 0);
-        const onT = () => { if (!dragging) setCurrentTime(a.currentTime); };
-        const onE = () => { setPlaying(false); setCurrentTime(0); onDeactivate?.(); };
-        const onPause = () => setPlaying(false);
-        const onPlay = () => setPlaying(true);
-        a.addEventListener('loadedmetadata', onL);
-        a.addEventListener('timeupdate', onT);
-        a.addEventListener('ended', onE);
-        a.addEventListener('pause', onPause);
-        a.addEventListener('play', onPlay);
-        return () => {
-            a.removeEventListener('loadedmetadata', onL);
-            a.removeEventListener('timeupdate', onT);
-            a.removeEventListener('ended', onE);
-            a.removeEventListener('pause', onPause);
-            a.removeEventListener('play', onPlay);
-        };
-    }, [audioSrc, dragging, onDeactivate]);
-
-    // Sync volume
-    useEffect(() => {
-        if (audioRef.current) audioRef.current.volume = volume / 100;
-    }, [volume]);
-
-    const toggle = useCallback(() => {
-        const a = audioRef.current; if (!a) return;
-        if (playing) { a.pause(); onDeactivate?.(); }
-        else { a.play().catch(() => { }); if (onActivate && messageId) onActivate({ audio: a, messageId, senderName: senderName || '' }); }
-    }, [playing, onActivate, onDeactivate, messageId, senderName]);
-
-    const cycleSpeed = useCallback(() => {
-        const next = (speedIdx + 1) % SPEEDS.length;
-        setSpeedIdx(next);
-        if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next];
-    }, [speedIdx]);
-
-    // Draggable seek
-    const seekFromEvent = useCallback((e: MouseEvent | React.MouseEvent) => {
-        const a = audioRef.current; const t = trackRef.current;
-        if (!a || !t || !duration) return;
-        const r = t.getBoundingClientRect();
-        const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        a.currentTime = pct * duration;
-        setCurrentTime(pct * duration);
-    }, [duration]);
-
-    const onTrackMouseDown = useCallback((e: React.MouseEvent) => {
-        setDragging(true); seekFromEvent(e);
-        const onMove = (ev: MouseEvent) => seekFromEvent(ev);
-        const onUp = () => { setDragging(false); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-    }, [seekFromEvent]);
-
-    const fmt = (s: number) => !s || !isFinite(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-    if (decrypting) return (<div className="audio-player"><div className="audio-play-btn" style={{ opacity: .5 }}>{Icon.lock(16)}</div><span style={{ fontSize: 12, opacity: .6, flex: 1 }}>Расшифровка…</span></div>);
-    if (decryptError) return (<div className="audio-player"><div className="audio-play-btn" style={{ opacity: .5, background: 'var(--red)' }}>{Icon.lock(16)}</div><span style={{ fontSize: 12, opacity: .6, flex: 1 }}>🔒 Не удалось расшифровать</span></div>);
-    if (isEncrypted && !audioSrc) return (<div className="audio-player"><span style={{ fontSize: 12, opacity: .5 }}>Загрузка…</span></div>);
-
-    const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
-    const speed = SPEEDS[speedIdx];
-
-    return (
-        <div className="audio-player-wrap">
-            {audioSrc && <audio ref={audioRef} src={audioSrc} preload="metadata" />}
-            <div className="audio-player">
-                <button className="audio-play-btn" onClick={toggle} disabled={!audioSrc}>
-                    {playing
-                        ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                        : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
-                </button>
-                <div className="audio-track" ref={trackRef} onMouseDown={onTrackMouseDown}>
-                    <div className="audio-track-fill" style={{ width: `${pct}%` }} />
-                    <div className="audio-track-thumb" style={{ left: `${pct}%` }} />
-                </div>
-                <button className="audio-speed-btn" onClick={cycleSpeed} title="Скорость">{speed}×</button>
-                <button className="audio-vol-btn" onClick={() => setShowVolume(v => !v)} title="Громкость">
-                    {volume === 0 ? Icon.volumeOff(15) : Icon.volumeHigh(15)}
-                </button>
-                <span className="audio-time">{playing ? fmt(currentTime) : fmt(duration)}</span>
-            </div>
-            {showVolume && (
-                <div className="audio-volume-row">
-                    <span className="audio-volume-icon">{volume === 0 ? Icon.volumeOff(14) : Icon.volumeHigh(14)}</span>
-                    <input type="range" min={0} max={100} value={volume}
-                        className="audio-volume-slider"
-                        onChange={e => setVolume(Number(e.target.value))} />
-                    <span className="audio-volume-value">{volume}%</span>
-                </div>
-            )}
         </div>
     );
 }
@@ -1331,170 +814,10 @@ export function ChatListPanel({ currentUserId }: Props) {
 
 
 ================================================================================
-FILE PATH: ./client/src/components/chat/ChatSecurityBanner.tsx
-================================================================================
-import React, { useMemo, useState } from 'react';
-import type { LocalChat, EncryptedChatKey } from '../../types';
-import { cryptoManager } from '../../crypto';
-import * as api from '../../api';
-import { Icon } from '../../icons';
-
-type SecurityStatus =
-    | 'no_local_keys'
-    | 'can_initialize'
-    | 'can_update'
-    | 'waiting'
-    | 'peer_no_e2e'
-    | 'secure';
-
-interface Props {
-    chat: LocalChat;
-    currentUserId: string;
-    onRefresh: () => void;
-    showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
-}
-
-export function ChatSecurityBanner({ chat, currentUserId, onRefresh, showToast }: Props) {
-    const [updating, setUpdating] = useState(false);
-
-    const status: SecurityStatus = useMemo(() => {
-        if (!cryptoManager.hasKeys()) return 'no_local_keys';
-
-        const hasChatKey = cryptoManager.hasChatKey(chat.id);
-        const anyMemberHasKey = chat.members.some(m => m.encrypted_chat_key);
-
-        // Никто ещё не настроил ключи для этого чата
-        if (!anyMemberHasKey) {
-            const membersWithE2E = chat.members.filter(m => m.public_keys?.identity_key);
-            if (membersWithE2E.length >= 2) return 'can_initialize';
-            const peersWithoutE2E = chat.members.filter(m => m.user_id !== currentUserId && !m.public_keys?.identity_key);
-            if (peersWithoutE2E.length > 0) return 'peer_no_e2e';
-            return 'peer_no_e2e';
-        }
-
-        // Ключи есть на сервере, но у нас нет в памяти — возможно нужно загрузить
-        if (!hasChatKey) {
-            const myMember = chat.members.find(m => m.user_id === currentUserId);
-            // Если наш ключ обёрнут для устаревшей личности — ждём
-            if (myMember?.encrypted_chat_key && myMember.member_key_id !== cryptoManager.getKeyId()) {
-                return 'waiting';
-            }
-            // Если у нас вообще нет обёрнутого ключа
-            if (!myMember?.encrypted_chat_key) {
-                return 'waiting';
-            }
-            // Ключ есть и совпадает — скорее всего просто не загрузили ещё
-            // (загрузка произойдёт при selectChat)
-            return 'secure';
-        }
-
-        // У нас есть ключ чата — проверяем остальных участников
-        for (const member of chat.members) {
-            if (member.user_id === currentUserId) continue;
-            if (!member.public_keys?.identity_key) continue;
-
-            // У участника нет обёрнутого ключа — нужно обернуть
-            if (!member.encrypted_chat_key) return 'can_update';
-
-            // Ключ участника устарел — нужно перeобернуть
-            if (member.member_key_id && member.member_key_id !== member.public_keys.key_id) {
-                return 'can_update';
-            }
-        }
-
-        return 'secure';
-    }, [chat, currentUserId]);
-
-    const handleAction = async () => {
-        setUpdating(true);
-        try {
-            // ВСЕГДА запрашиваем свежие данные чтобы не затереть чужой ключ
-            const freshDto = await api.getChat(chat.id);
-
-            let chatKey = cryptoManager.getChatKey(chat.id);
-
-            // Если у нас нет ключа — пробуем развернуть с сервера
-            if (!chatKey) {
-                const myMember = freshDto.members.find(m => m.user_id === currentUserId);
-                if (myMember?.encrypted_chat_key) {
-                    try {
-                        await cryptoManager.unwrapChatKey(chat.id, myMember.encrypted_chat_key);
-                        chatKey = cryptoManager.getChatKey(chat.id);
-                        console.log('[E2E] Unwrapped existing chat key');
-                    } catch (e) {
-                        console.warn('[E2E] Failed to unwrap existing key:', e);
-                    }
-                }
-            }
-
-            // Если всё ещё нет — генерируем новый
-            if (!chatKey) {
-                chatKey = await cryptoManager.generateChatKey();
-                console.log('[E2E] Generated new chat key');
-            }
-
-            // Оборачиваем для ВСЕХ участников (с актуальными ключами)
-            const encryptedKeys: Record<string, EncryptedChatKey> = {};
-            for (const member of freshDto.members) {
-                if (!member.public_keys?.identity_key) continue;
-                encryptedKeys[member.user_id] = await cryptoManager.wrapChatKey(
-                    chatKey,
-                    member.public_keys.identity_key,
-                );
-            }
-
-            await api.updateChatKeys(chat.id, encryptedKeys);
-
-            cryptoManager.setChatKey(chat.id, chatKey);
-            await cryptoManager.saveChatKeyToCache(chat.id, chatKey);
-
-            showToast('Шифрование настроено!', 'success');
-            onRefresh();
-        } catch (e: any) {
-            console.error('[E2E] Update keys failed:', e);
-            showToast(e.message || 'Ошибка обновления ключей', 'error');
-        } finally {
-            setUpdating(false);
-        }
-    };
-
-    if (status === 'secure') return null;
-
-    const isWarning = status === 'can_update' || status === 'can_initialize';
-    const isError = status === 'waiting' || status === 'peer_no_e2e' || status === 'no_local_keys';
-
-    return (
-        <div className={`security-banner ${isWarning ? 'warning' : ''} ${isError ? 'error' : ''}`}>
-            <div className="security-banner-content">
-                {Icon.shield(16)}
-                <span>
-                    {status === 'no_local_keys' && 'Настройте E2E шифрование в настройках.'}
-                    {status === 'can_initialize' && 'Включите шифрование для этого чата.'}
-                    {status === 'can_update' && 'У собеседника обновились ключи. Обновите шифрование.'}
-                    {status === 'waiting' && 'Ожидайте — собеседник обновит доступ к шифрованию.'}
-                    {status === 'peer_no_e2e' && 'У собеседника не настроено шифрование.'}
-                </span>
-            </div>
-
-            {(status === 'can_initialize' || status === 'can_update') && (
-                <button
-                    className="security-banner-btn"
-                    onClick={handleAction}
-                    disabled={updating}
-                >
-                    {updating ? 'Обновление...' : status === 'can_initialize' ? 'Включить' : 'Обновить'}
-                </button>
-            )}
-        </div>
-    );
-}
-
-
-================================================================================
 FILE PATH: ./client/src/components/chat/ChatView.tsx
 ================================================================================
 import React, { useEffect, useRef, useState } from 'react';
-import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle } from 'lucide-react';
+import { Phone, Info, Lock, Shield, Clock, Edit2, Reply, Copy, Trash2, AlertTriangle, Share2 } from 'lucide-react';
 import { useChatStore } from '../../store/useChatStore';
 import { useUiStore } from '../../store/useUiStore';
 import { Avatar } from '../ui/Avatar';
@@ -1503,6 +826,7 @@ import { InputBar } from './InputBar';
 import { ContextMenu } from '../ui/ContextMenu';
 import { ChatInfoPanel } from './ChatInfoPanel';
 import { UserProfilePanel } from './UserProfilePanel';
+import { ForwardModal } from './ForwardModal';
 import type { LocalMessage, E2EStatus } from '../../types';
 import type { ContextMenuItem } from '../ui/ContextMenu';
 import { useCallStore } from '../../store/useCallStore';
@@ -1523,18 +847,20 @@ function E2EBanner({ status }: { status?: E2EStatus }) {
 }
 
 export function ChatView({ currentUserId, currentUserName }: Props) {
-    const { chats, selectedId, loadingMessages, sendMessage, deleteMessage, editMessage } = useChatStore();
+    const { chats, selectedId, loadingMessages, sendMessage, deleteMessage, editMessage, forwardMessage } = useChatStore();
     const showToast = useUiStore(s => s.showToast);
     const [panelOpen, setPanelOpen] = useState(false);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: LocalMessage } | null>(null);
     const [editingMsg, setEditingMsg] = useState<LocalMessage | null>(null);
+    const [replyTo, setReplyTo] = useState<LocalMessage | null>(null);
+    const [forwardMsg, setForwardMsg] = useState<LocalMessage | null>(null);
     const chat = chats.find(c => c.id === selectedId);
     const bottomRef = useRef<HTMLDivElement>(null);
     const startCall = useCallStore(s => s.startCall);
     const allChats = useChatStore(s => s.chats);
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chat?.messages.length, chat?.id]);
-    useEffect(() => { setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); }, [selectedId]);
+    useEffect(() => { setPanelOpen(false); setEditingMsg(null); setCtxMenu(null); setReplyTo(null); setForwardMsg(null); }, [selectedId]);
 
     if (!chat) return null;
 
@@ -1543,20 +869,36 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
 
     const getCtxItems = (msg: LocalMessage): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [
-            { label: 'Ответить', icon: <Reply size={16} />, onClick: () => { } },
-            { label: 'Копировать', icon: <Copy size={16} />, onClick: () => { navigator.clipboard.writeText(msg.content); showToast('Скопировано'); } },
+            { label: 'Ответить', icon: <Reply size={16} />, onClick: () => setReplyTo(msg) },
+            { label: 'Переслать', icon: <Share2 size={16} />, onClick: () => setForwardMsg(msg) },
+            { label: 'Копировать', icon: <Copy size={16} />, onClick: () => { navigator.clipboard.writeText(msg.decrypted_content || msg.content); showToast('Скопировано'); } },
         ];
         if (msg.own && msg.status !== 'pending') {
-            items.push({ label: 'Редактировать', icon: <Edit2 size={16} />, onClick: () => setEditingMsg(msg) });
+            items.push({ label: 'Редактировать', icon: <Edit2 size={16} />, onClick: () => { setEditingMsg(msg); setReplyTo(null); } });
             items.push({ label: 'Удалить', icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMessage(msg.id) });
         }
         return items;
     };
 
-    // ★ Обновлённый handleSend с поддержкой attachmentId и fileNonce
     const handleSend = (text: string, attachmentId?: string, fileNonce?: string) => {
         if (editingMsg) { editMessage(editingMsg.id, text); setEditingMsg(null); return; }
-        sendMessage(chat.id, text, currentUserId, currentUserName, attachmentId, fileNonce);
+        sendMessage(chat.id, text, currentUserId, currentUserName, attachmentId, fileNonce, replyTo?.id);
+        setReplyTo(null);
+    };
+
+    const handleForward = (msg: LocalMessage, targetChatId: string) => {
+        forwardMessage(msg, targetChatId, currentUserId, currentUserName);
+        showToast('Сообщение переслано', 'success');
+    };
+
+    // Prevent left-click from stealing input focus (Telegram-like behavior)
+    const handleMessageAreaMouseDown = (e: React.MouseEvent) => {
+        if (e.button === 0) {
+            const target = e.target as HTMLElement;
+            if (!target.closest('button, a, input, textarea, video, audio, [role="button"], img')) {
+                e.preventDefault();
+            }
+        }
     };
 
     const subtitle = chat.isChannel ? `${chat.members.length} подписчиков` : chat.is_group ? `${chat.members.length} участников` : other?.online ? 'в сети' : 'был(а) недавно';
@@ -1577,11 +919,7 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                         {isDM && (
-                            <button
-                                className="p-2 text-gray-500 hover:text-accent hover:bg-accent/10 rounded-xl transition active:scale-95"
-                                title="Позвонить"
-                                onClick={() => startCall(chat.id, allChats, currentUserId)}
-                            >
+                            <button className="p-2 text-gray-500 hover:text-accent hover:bg-accent/10 rounded-xl transition active:scale-95" title="Позвонить" onClick={() => startCall(chat.id, allChats, currentUserId)}>
                                 <Phone size={20} />
                             </button>
                         )}
@@ -1589,7 +927,11 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar" onClick={() => setCtxMenu(null)}>
+                <div
+                    className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar"
+                    onMouseDown={handleMessageAreaMouseDown}
+                    onClick={() => setCtxMenu(null)}
+                >
                     <div className="flex flex-col justify-end min-h-full w-full">
                         <E2EBanner status={chat.e2eStatus} />
                         {loadingMessages && !chat.messages.length && (
@@ -1605,7 +947,7 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                             const isFirst = !prev || prev.own !== msg.own || prev.sender_id !== msg.sender_id;
                             return (
                                 <div key={msg.id} className={`w-full flex ${msg.own ? 'justify-end' : 'justify-start'} ${isFirst ? 'mt-2.5' : 'mt-0.5'}`} onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, message: msg }); }}>
-                                    <MessageBubble message={msg} isFirst={isFirst} isGroup={chat.is_group || chat.isChannel} />
+                                    <MessageBubble message={msg} isFirst={isFirst} isGroup={chat.is_group || chat.isChannel} onReply={setReplyTo} />
                                 </div>
                             );
                         })}
@@ -1615,12 +957,13 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
 
                 <div className="px-4 pb-3 flex-shrink-0">
                     <div className="rounded-2xl overflow-hidden shadow-[0_2px_15px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-200 dark:border-gray-800">
-                        {/* ★ Передаём chatId */}
                         <InputBar
                             chatId={chat.id}
                             onSend={handleSend}
                             editingText={editingMsg?.content}
                             onCancelEdit={() => setEditingMsg(null)}
+                            replyTo={replyTo ? { sender_name: replyTo.sender_name, content: replyTo.decrypted_content || replyTo.content, attachment: replyTo.attachment } : null}
+                            onCancelReply={() => setReplyTo(null)}
                         />
                     </div>
                 </div>
@@ -1634,24 +977,17 @@ export function ChatView({ currentUserId, currentUserName }: Props) {
                     </div>
                 </>
             )}
+
             {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={getCtxItems(ctxMenu.message)} onClose={() => setCtxMenu(null)} />}
-        </section>
-    );
-}
 
-
-================================================================================
-FILE PATH: ./client/src/components/chat/EmptyState.tsx
-================================================================================
-import React from 'react';
-import { Icon } from '../../icons';
-
-export function EmptyState() {
-    return (
-        <section className="empty-state">
-            <div className="empty-icon">{Icon.chat(56)}</div>
-            <h2>Выберите чат</h2>
-            <p>Нажмите на диалог слева, чтобы начать переписку</p>
+            <ForwardModal
+                open={!!forwardMsg}
+                message={forwardMsg}
+                chats={chats}
+                currentUserId={currentUserId}
+                onForward={handleForward}
+                onClose={() => setForwardMsg(null)}
+            />
         </section>
     );
 }
@@ -1661,8 +997,8 @@ export function EmptyState() {
 FILE PATH: ./client/src/components/chat/ForwardModal.tsx
 ================================================================================
 import React, { useState } from 'react';
+import { X, Search, Users, Share2 } from 'lucide-react';
 import type { LocalChat, LocalMessage } from '../../types';
-import { Icon } from '../../icons';
 import { Avatar } from '../ui/Avatar';
 
 interface Props {
@@ -1695,48 +1031,67 @@ export function ForwardModal({ open, message, chats, currentUserId, onForward, o
 
     const previewText = message.attachment
         ? `📎 ${message.attachment.filename}`
-        : message.content.length > 60
-            ? message.content.slice(0, 60) + '…'
-            : message.content;
+        : (message.decrypted_content || message.content).length > 60
+            ? (message.decrypted_content || message.content).slice(0, 60) + '…'
+            : (message.decrypted_content || message.content);
 
     return (
-        <div className="modal-overlay" onMouseDown={onClose}>
-            <div className="modal-card modal-wide" onMouseDown={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3>Переслать сообщение</h3>
-                    <button className="icon-btn" onClick={onClose}>{Icon.x(18)}</button>
-                </div>
+        <>
+            <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm" onMouseDown={onClose} />
+            <div className="fixed inset-0 z-[1010] flex items-center justify-center p-4 pointer-events-none">
+                <div className="w-full max-w-[460px] bg-white dark:bg-[#18181f] border border-gray-200 dark:border-white/5 rounded-3xl shadow-2xl pointer-events-auto flex flex-col max-h-[85vh]" onMouseDown={e => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+                        <h3 className="text-lg font-bold flex items-center gap-2"><Share2 size={20} /> Переслать</h3>
+                        <button className="text-gray-400 hover:text-gray-900 dark:hover:text-white transition" onClick={onClose}><X size={24} /></button>
+                    </div>
 
-                <div className="forward-preview">
-                    <div className="forward-preview-line" />
-                    <div className="forward-preview-body">
-                        <span className="forward-preview-author">{message.sender_name}</span>
-                        <span className="forward-preview-text">{previewText}</span>
+                    <div className="p-4 flex flex-col flex-1 overflow-hidden">
+                        {/* Preview */}
+                        <div className="flex gap-2 mb-4 p-3 bg-gray-50 dark:bg-[#1a1a24] rounded-xl border border-gray-200 dark:border-white/5">
+                            <div className="w-0.5 bg-accent rounded-full flex-shrink-0" />
+                            <div className="min-w-0 flex-1">
+                                <div className="text-[12px] font-bold text-accent">{message.sender_name}</div>
+                                <div className="text-[13px] text-gray-500 truncate">{previewText}</div>
+                            </div>
+                        </div>
+
+                        {/* Search */}
+                        <div className="relative mb-3 flex-shrink-0">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Поиск чата..."
+                                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-[#16161e] border border-transparent focus:border-accent rounded-xl text-[13px] outline-none transition"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+
+                        {/* Chat list */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar -mx-1 px-1">
+                            {filtered.map(chat => (
+                                <button
+                                    key={chat.id}
+                                    className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-gray-100 dark:hover:bg-[#20202c] transition text-left"
+                                    onClick={() => handleSelect(chat.id)}
+                                >
+                                    <Avatar name={chat.name} size={42} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar(chat)} />
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[14px] font-semibold truncate flex items-center gap-1.5">
+                                            {chat.is_group && <Users size={13} className="text-gray-400" />}
+                                            {chat.name}
+                                        </span>
+                                    </div>
+                                </button>
+                            ))}
+                            {filtered.length === 0 && <p className="text-center text-gray-400 text-[13px] py-4">Чаты не найдены</p>}
+                        </div>
                     </div>
                 </div>
-
-                <div className="search-wrap" style={{ padding: '12px 0' }}>
-                    <span className="search-ico">{Icon.search(16)}</span>
-                    <input type="text" placeholder="Поиск чата..." value={search}
-                        onChange={e => setSearch(e.target.value)} autoFocus />
-                </div>
-
-                <div className="user-list">
-                    {filtered.map(chat => (
-                        <button key={chat.id} className="chat-item" onClick={() => handleSelect(chat.id)}>
-                            <Avatar name={chat.name} size={40} online={chat.is_group ? undefined : chat.online} avatarUrl={getChatAvatar(chat)} />
-                            <div className="chat-item-body">
-                                <span className="chat-item-name">
-                                    {chat.is_group && <span className="group-badge">{Icon.users(13)}</span>}
-                                    {chat.name}
-                                </span>
-                            </div>
-                        </button>
-                    ))}
-                    {filtered.length === 0 && <div className="chat-list-empty">Чаты не найдены</div>}
-                </div>
             </div>
-        </div>
+        </>
     );
 }
 
@@ -1745,20 +1100,23 @@ export function ForwardModal({ open, message, chats, currentUserId, onForward, o
 FILE PATH: ./client/src/components/chat/InputBar.tsx
 ================================================================================
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Paperclip, Send, Mic, X, Edit2, Check, Square, Loader2, Image, Lock } from 'lucide-react';
+import { Paperclip, Send, Mic, X, Edit2, Check, Square, Loader2, Image, Lock, Reply } from 'lucide-react';
 import { useUiStore } from '../../store/useUiStore';
 import { cryptoManager } from '../../crypto';
 import * as api from '../../api';
 import { formatDuration } from '../../utils';
+import type { AttachmentDto } from '../../types';
 
 interface Props {
     chatId: string;
     onSend: (text: string, attachmentId?: string, fileNonce?: string) => void;
     editingText?: string;
     onCancelEdit?: () => void;
+    replyTo?: { sender_name: string; content: string; attachment?: AttachmentDto } | null;
+    onCancelReply?: () => void;
 }
 
-export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
+export function InputBar({ chatId, onSend, editingText, onCancelEdit, replyTo, onCancelReply }: Props) {
     const [text, setText] = useState('');
     const [uploading, setUploading] = useState(false);
     const [recording, setRecording] = useState(false);
@@ -1773,6 +1131,11 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
     const isEditing = editingText !== undefined;
 
     useEffect(() => { setText(isEditing ? editingText! : ''); }, [editingText]);
+
+    // Re-focus textarea when switching chats
+    useEffect(() => {
+        textareaRef.current?.focus();
+    }, [chatId]);
 
     // Ctrl+V
     useEffect(() => {
@@ -1802,21 +1165,17 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
         return () => { if (pastedFile?.preview) URL.revokeObjectURL(pastedFile.preview); };
     }, [pastedFile]);
 
-    // ★ Загрузка файла с E2E шифрованием
     const uploadAndSend = async (file: File) => {
         setUploading(true);
         try {
             let blob: Blob = file;
             let fileNonce: string | undefined;
-
-            // Шифруем файл если есть ключ чата
             if (cryptoManager.hasChatKey(chatId)) {
                 const arrayBuf = await file.arrayBuffer();
                 const { encryptedData, nonce } = await cryptoManager.encryptBuffer(chatId, arrayBuf);
                 blob = new Blob([encryptedData], { type: 'application/octet-stream' });
                 fileNonce = nonce;
             }
-
             const att = await api.uploadFile(blob, file.name);
             onSend(text.trim() || '', att.id, fileNonce);
             setText('');
@@ -1840,6 +1199,7 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
         if (e.key === 'Escape') {
             if (pastedFile) { cancelPaste(); return; }
+            if (replyTo && onCancelReply) { onCancelReply(); return; }
             if (onCancelEdit) { onCancelEdit(); setText(''); }
         }
     };
@@ -1857,7 +1217,7 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
         setPastedFile(null);
     };
 
-    // Голосовое
+    // Voice recording
     const startRecording = useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1912,6 +1272,10 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
     const hasE2E = cryptoManager.hasChatKey(chatId);
     const hasContent = text.trim() || pastedFile;
 
+    const replyPreviewText = replyTo
+        ? (replyTo.attachment ? `📎 ${replyTo.attachment.filename}` : replyTo.content)
+        : '';
+
     if (recording) {
         return (
             <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#15151c]">
@@ -1933,6 +1297,19 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
 
     return (
         <div className="flex flex-col bg-white dark:bg-[#15151c]">
+            {/* Reply preview */}
+            {replyTo && (
+                <div className="flex items-center gap-3 px-4 py-2 bg-accent/5 border-b border-gray-200 dark:border-white/5 animate-in fade-in duration-150">
+                    <Reply size={16} className="text-accent flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-bold text-accent">{replyTo.sender_name}</div>
+                        <div className="text-[13px] text-gray-500 truncate">{replyPreviewText}</div>
+                    </div>
+                    <button className="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white transition flex-shrink-0" onClick={onCancelReply}><X size={16} /></button>
+                </div>
+            )}
+
+            {/* Pasted image preview */}
             {pastedFile && (
                 <div className="px-4 pt-3 pb-1 animate-in fade-in duration-200">
                     <div className="relative inline-block">
@@ -1947,6 +1324,7 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
                 </div>
             )}
 
+            {/* Editing bar */}
             {isEditing && (
                 <div className="flex items-center gap-3 px-4 py-2 bg-accent/5 border-b border-gray-200 dark:border-white/5">
                     <Edit2 size={16} className="text-accent" />
@@ -1961,7 +1339,16 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
                     {uploading ? <Loader2 size={22} className="animate-spin" /> : <Paperclip size={22} />}
                 </button>
 
-                <textarea ref={textareaRef} className="flex-1 max-h-[150px] min-h-[40px] px-3.5 py-2.5 rounded-xl bg-gray-100 dark:bg-[#1a1a24] text-[14px] leading-[1.4] border border-transparent focus:border-accent outline-none resize-none custom-scrollbar transition" placeholder="Написать сообщение..." rows={1} value={text} onChange={e => setText(e.target.value)} onKeyDown={handleKey} autoFocus={isEditing} />
+                <textarea
+                    ref={textareaRef}
+                    className="flex-1 max-h-[150px] min-h-[40px] px-3.5 py-2.5 rounded-xl bg-gray-100 dark:bg-[#1a1a24] text-[14px] leading-[1.4] border border-transparent focus:border-accent outline-none resize-none custom-scrollbar transition"
+                    placeholder="Написать сообщение..."
+                    rows={1}
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onKeyDown={handleKey}
+                    autoFocus
+                />
 
                 {hasContent ? (
                     <button className="w-10 h-10 flex items-center justify-center bg-accent hover:bg-accent-hover text-white rounded-full transition hover:scale-105 active:scale-95 shadow-md disabled:opacity-50" onClick={handleSend} disabled={uploading}>
@@ -1979,25 +1366,29 @@ export function InputBar({ chatId, onSend, editingText, onCancelEdit }: Props) {
 ================================================================================
 FILE PATH: ./client/src/components/chat/MessageBubble.tsx
 ================================================================================
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Lock, Check, CheckCheck, Download, Play, Pause, Loader2, Eye } from 'lucide-react';
-import type { LocalMessage, AttachmentDto } from '../../types';
-import { formatTime, formatDuration, formatFileSize, getMediaType, getFileIcon, getAvatarColor } from '../../utils';
+import React, { useState, useRef, useEffect } from 'react';
+import { Lock, Check, CheckCheck, Download, Play, Pause, Loader2, Eye, CornerUpRight, Reply } from 'lucide-react';
+import type { LocalMessage, AttachmentDto, ReplyInfoDto, ForwardInfoDto } from '../../types';
+import { formatTime, formatFileSize, getMediaType, getFileIcon, getAvatarColor } from '../../utils';
 import { getFileUrl } from '../../api';
 import { useAudioStore } from '../../store/useAudioStore';
 import { MediaViewer } from '../ui/MediaViewer';
 import { cryptoManager } from '../../crypto';
 
-interface Props { message: LocalMessage; isFirst: boolean; isGroup: boolean }
+interface Props {
+    message: LocalMessage;
+    isFirst: boolean;
+    isGroup: boolean;
+    onReply?: (msg: LocalMessage) => void;
+}
 
-export function MessageBubble({ message: msg, isFirst, isGroup }: Props) {
+export function MessageBubble({ message: msg, isFirst, isGroup, onReply }: Props) {
     const time = formatTime(msg.created_at);
     const att = msg.attachment;
     const mediaType = att ? getMediaType(att.mime_type) : null;
 
-    // Есть ли file_nonce в encrypted payload (E2E файл)
-    const fileNonce = (msg.encrypted as any)?.file_nonce as string | undefined;
-    const isE2EFile = !!fileNonce && !!msg.chat_id;
+    const fileNonce = msg.encrypted?.file_nonce;
+    const isTextEncrypted = !!(msg.encrypted?.ciphertext && msg.encrypted.ciphertext.length > 0);
 
     return (
         <div className={`flex flex-col max-w-[75%] sm:max-w-[65%] ${msg.own ? 'items-end' : 'items-start'}`}>
@@ -2008,6 +1399,16 @@ export function MessageBubble({ message: msg, isFirst, isGroup }: Props) {
             )}
             <div className={`relative flex flex-col shadow-sm overflow-hidden ${msg.own ? 'bg-accent text-white rounded-2xl rounded-br-[4px]' : 'bg-white dark:bg-[#1e1e2a] text-gray-900 dark:text-[#e4e4ec] rounded-2xl rounded-bl-[4px]'
                 } ${msg.status === 'pending' ? 'opacity-60' : ''} ${att && (mediaType === 'image' || mediaType === 'video') ? '' : 'px-3 py-2'}`}>
+
+                {/* Forwarded from */}
+                {msg.forwarded_from && (
+                    <ForwardedHeader info={msg.forwarded_from} own={msg.own} />
+                )}
+
+                {/* Reply */}
+                {msg.reply_to && (
+                    <ReplyPreview reply={msg.reply_to} own={msg.own} />
+                )}
 
                 {att && mediaType === 'image' && (
                     <ImagePreview att={att} own={msg.own} chatId={msg.chat_id} fileNonce={fileNonce} />
@@ -2022,7 +1423,7 @@ export function MessageBubble({ message: msg, isFirst, isGroup }: Props) {
                     <FileAttachment att={att} own={msg.own} chatId={msg.chat_id} fileNonce={fileNonce} />
                 )}
 
-                {msg.content && msg.content !== '📎 Файл' && msg.content !== '' && (
+                {msg.content && msg.content !== '📎 Файл' && msg.content !== '' && msg.content !== '[Зашифрованное сообщение]' && (
                     <span className={`text-[14px] leading-[1.45] break-words whitespace-pre-wrap ${att && (mediaType === 'image' || mediaType === 'video') ? 'px-3 pt-1' : ''
                         }`}>
                         {msg.content}
@@ -2031,7 +1432,8 @@ export function MessageBubble({ message: msg, isFirst, isGroup }: Props) {
 
                 <div className={`flex items-center justify-end gap-1 mt-1 text-[11px] ${att && (mediaType === 'image' || mediaType === 'video') ? 'px-3 pb-2' : ''
                     } ${msg.own ? 'text-white/70' : 'text-gray-400 dark:text-gray-500'}`}>
-                    {msg.encrypted && <Lock size={10} className="opacity-70" />}
+                    {isTextEncrypted && <Lock size={10} className="opacity-70" />}
+                    {fileNonce && !isTextEncrypted && <Lock size={10} className="opacity-50" />}
                     {msg.edited && <span className="italic opacity-80">ред.</span>}
                     <span className="opacity-80">{time}</span>
                     {msg.own && (
@@ -2046,7 +1448,48 @@ export function MessageBubble({ message: msg, isFirst, isGroup }: Props) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Превью картинки с MediaViewer
+//  Forwarded Header
+// ═══════════════════════════════════════════════════════════
+
+function ForwardedHeader({ info, own }: { info: ForwardInfoDto; own: boolean }) {
+    return (
+        <div className={`flex items-center gap-1.5 text-[11px] font-medium mb-1 ${own ? 'text-white/60' : 'text-gray-400'}`}>
+            <CornerUpRight size={12} />
+            <span>Переслано от <strong className={own ? 'text-white/80' : 'text-gray-600 dark:text-gray-300'}>{info.original_sender_name}</strong></span>
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Reply Preview inside bubble
+// ═══════════════════════════════════════════════════════════
+
+function ReplyPreview({ reply, own }: { reply: ReplyInfoDto; own: boolean }) {
+    const isEnc = reply.content === '🔒 Зашифровано';
+    const preview = reply.attachment
+        ? `📎 ${reply.attachment.filename}`
+        : reply.content.length > 80
+            ? reply.content.slice(0, 80) + '…'
+            : reply.content;
+
+    return (
+        <div className={`flex gap-2 mb-1.5 ${own ? '' : ''}`}>
+            <div className={`w-0.5 rounded-full flex-shrink-0 ${own ? 'bg-white/40' : 'bg-accent'}`} />
+            <div className="min-w-0 flex-1">
+                <div className={`text-[11px] font-bold ${own ? 'text-white/80' : 'text-accent'}`}>
+                    {reply.sender_name}
+                </div>
+                <div className={`text-[12px] truncate ${own ? 'text-white/60' : 'text-gray-500'} ${isEnc ? 'italic' : ''}`}>
+                    {isEnc && <Lock size={9} className="inline mr-1" />}
+                    {preview}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Image Preview with MediaViewer
 // ═══════════════════════════════════════════════════════════
 
 function ImagePreview({ att, own, chatId, fileNonce }: {
@@ -2059,7 +1502,6 @@ function ImagePreview({ att, own, chatId, fileNonce }: {
     const url = getFileUrl(att.id);
     const isE2E = !!fileNonce;
 
-    // Для E2E — расшифровываем для превью
     useEffect(() => {
         if (!isE2E) return;
         let cancelled = false;
@@ -2087,10 +1529,7 @@ function ImagePreview({ att, own, chatId, fileNonce }: {
 
     return (
         <>
-            <div
-                className="relative min-w-[200px] max-w-[400px] cursor-pointer group"
-                onClick={() => setViewerOpen(true)}
-            >
+            <div className="relative min-w-[200px] max-w-[400px] cursor-pointer group" onClick={() => setViewerOpen(true)}>
                 {!loaded && !error && !displayUrl && (
                     <div className="w-full h-[200px] flex items-center justify-center bg-black/5 dark:bg-white/5">
                         <Loader2 size={24} className="animate-spin text-gray-400" />
@@ -2115,7 +1554,6 @@ function ImagePreview({ att, own, chatId, fileNonce }: {
                             onLoad={() => setLoaded(true)}
                             onError={() => setError(true)}
                         />
-                        {/* Hover overlay */}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition flex items-center justify-center">
                             <Eye size={28} className="text-white opacity-0 group-hover:opacity-80 transition drop-shadow" />
                         </div>
@@ -2143,7 +1581,7 @@ function ImagePreview({ att, own, chatId, fileNonce }: {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Превью видео
+//  Video Preview
 // ═══════════════════════════════════════════════════════════
 
 function VideoPreview({ att, own, chatId, fileNonce }: {
@@ -2201,7 +1639,7 @@ function VideoPreview({ att, own, chatId, fileNonce }: {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Аудио — открывает в глобальном плеере
+//  Audio — opens in global player
 // ═══════════════════════════════════════════════════════════
 
 function AudioAttachment({ att, own, senderName, messageId, chatId }: {
@@ -2230,7 +1668,7 @@ function AudioAttachment({ att, own, senderName, messageId, chatId }: {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  Файл с E2E расшифровкой при скачивании
+//  File with E2E decryption on download
 // ═══════════════════════════════════════════════════════════
 
 function FileAttachment({ att, own, chatId, fileNonce }: {
@@ -2543,109 +1981,6 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 
 
 ================================================================================
-FILE PATH: ./client/src/components/chat/VoicePlayerBar.tsx
-================================================================================
-import React, { useState, useEffect, useCallback } from 'react';
-import type { ActiveVoice } from '../../types';
-import { Icon } from '../../icons';
-
-interface Props {
-    voice: ActiveVoice;
-    onClose: () => void;
-}
-
-const SPEEDS = [1, 1.5, 2, 0.5];
-
-export function VoicePlayerBar({ voice, onClose }: Props) {
-    const { audio, senderName } = voice;
-    const [playing, setPlaying] = useState(!audio.paused);
-    const [currentTime, setCurrent] = useState(audio.currentTime);
-    const [duration, setDuration] = useState(audio.duration || 0);
-    const [speedIdx, setSpeedIdx] = useState(0);
-    const [volume, setVolume] = useState(Math.round(audio.volume * 100));
-    const [showVolume, setShowVolume] = useState(false);
-
-    useEffect(() => {
-        const onP = () => setPlaying(true);
-        const onPa = () => setPlaying(false);
-        const onT = () => setCurrent(audio.currentTime);
-        const onL = () => setDuration(audio.duration || 0);
-        const onE = () => { setPlaying(false); onClose(); };
-        audio.addEventListener('play', onP);
-        audio.addEventListener('pause', onPa);
-        audio.addEventListener('timeupdate', onT);
-        audio.addEventListener('loadedmetadata', onL);
-        audio.addEventListener('ended', onE);
-        return () => {
-            audio.removeEventListener('play', onP);
-            audio.removeEventListener('pause', onPa);
-            audio.removeEventListener('timeupdate', onT);
-            audio.removeEventListener('loadedmetadata', onL);
-            audio.removeEventListener('ended', onE);
-        };
-    }, [audio, onClose]);
-
-    const toggle = useCallback(() => { if (playing) audio.pause(); else audio.play().catch(() => { }); }, [audio, playing]);
-
-    const stop = useCallback(() => { audio.pause(); audio.currentTime = 0; onClose(); }, [audio, onClose]);
-
-    const cycleSpeed = useCallback(() => {
-        const next = (speedIdx + 1) % SPEEDS.length;
-        setSpeedIdx(next);
-        audio.playbackRate = SPEEDS[next];
-    }, [speedIdx, audio]);
-
-    const handleVolume = useCallback((val: number) => {
-        setVolume(val);
-        audio.volume = val / 100;
-    }, [audio]);
-
-    const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-        if (!duration) return;
-        const r = e.currentTarget.getBoundingClientRect();
-        const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        audio.currentTime = pct * duration;
-    }, [audio, duration]);
-
-    const fmt = (s: number) => !s || !isFinite(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-    const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-    return (
-        <div className="voice-player-bar-wrap">
-            <div className="voice-player-bar">
-                <button className="voice-bar-play" onClick={toggle}>
-                    {playing
-                        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                        : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>}
-                </button>
-                <div className="voice-bar-info">
-                    <span className="voice-bar-name">🎤 {senderName}</span>
-                    <div className="voice-bar-progress" onClick={handleSeek}>
-                        <div className="voice-bar-fill" style={{ width: `${pct}%` }} />
-                    </div>
-                </div>
-                <span className="voice-bar-time">{fmt(currentTime)} / {fmt(duration)}</span>
-                <button className="voice-bar-speed" onClick={cycleSpeed}>{SPEEDS[speedIdx]}×</button>
-                <button className="voice-bar-vol-btn" onClick={() => setShowVolume(v => !v)} title="Громкость">
-                    {volume === 0 ? Icon.volumeOff(16) : Icon.volumeHigh(16)}
-                </button>
-                <button className="voice-bar-close" onClick={stop}>{Icon.x(16)}</button>
-            </div>
-            {showVolume && (
-                <div className="voice-bar-volume-row">
-                    <span className="voice-bar-volume-icon">{volume === 0 ? Icon.volumeOff(14) : Icon.volumeHigh(14)}</span>
-                    <input type="range" min={0} max={100} value={volume}
-                        className="voice-bar-volume-slider"
-                        onChange={e => handleVolume(Number(e.target.value))} />
-                    <span className="voice-bar-volume-value">{volume}%</span>
-                </div>
-            )}
-        </div>
-    );
-}
-
-
-================================================================================
 FILE PATH: ./client/src/components/nav/NavRail.tsx
 ================================================================================
 import React from 'react';
@@ -2903,105 +2238,6 @@ export function Avatar({ name, size = 40, online, avatarUrl }: Props) {
                 <img src={fullUrl} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={() => setErr(true)} />
             ) : getInitials(name)}
             {online !== undefined && <span className={`status-dot ${online ? 'online' : ''}`} style={{ width: size * 0.3, height: size * 0.3, borderWidth: size * 0.06 }} />}
-        </div>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/ui/AvatarGallery.tsx
-================================================================================
-import React, { useState, useEffect, useCallback } from 'react';
-import { formatDateFull } from '../../utils';
-import { Icon } from '../../icons';
-
-interface Props {
-    urls: string[];
-    dates?: string[];
-    startIndex?: number;
-    onClose: () => void;
-}
-
-export function AvatarGallery({ urls, dates, startIndex = 0, onClose }: Props) {
-    const [index, setIndex] = useState(startIndex);
-    const [imgError, setImgError] = useState(false);
-
-    const total = urls.length;
-    const hasPrev = index > 0;
-    const hasNext = index < total - 1;
-
-    useEffect(() => { setImgError(false); }, [index]);
-
-    const goNext = useCallback(() => {
-        if (hasNext) setIndex(i => i + 1);
-    }, [hasNext]);
-
-    const goPrev = useCallback(() => {
-        if (hasPrev) setIndex(i => i - 1);
-    }, [hasPrev]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-            if (e.key === 'ArrowRight') goNext();
-            if (e.key === 'ArrowLeft') goPrev();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [onClose, goNext, goPrev]);
-
-    return (
-        <div className="avatar-gallery-overlay" onMouseDown={onClose}>
-            <div className="avatar-gallery-inner" onMouseDown={e => e.stopPropagation()}>
-                {/* Закрыть */}
-                <button className="avatar-gallery-close" onClick={onClose}>
-                    {Icon.x(24)}
-                </button>
-
-                {/* Счётчик */}
-                {total > 1 && (
-                    <div className="avatar-gallery-counter">
-                        {index + 1} / {total}
-                    </div>
-                )}
-
-                {/* Стрелки */}
-                {hasPrev && (
-                    <button className="avatar-gallery-nav prev" onClick={goPrev}>
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                    </button>
-                )}
-                {hasNext && (
-                    <button className="avatar-gallery-nav next" onClick={goNext}>
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="9 6 15 12 9 18" />
-                        </svg>
-                    </button>
-                )}
-
-                {/* Изображение */}
-                <div className="avatar-gallery-image-wrap">
-                    {imgError ? (
-                        <div className="avatar-gallery-error">Не удалось загрузить</div>
-                    ) : (
-                        <img
-                            src={urls[index]}
-                            alt=""
-                            className="avatar-gallery-image"
-                            onError={() => setImgError(true)}
-                        />
-                    )}
-                </div>
-
-                {/* Дата */}
-                {dates && dates[index] && (
-                    <div className="avatar-gallery-date">
-                        {formatDateFull(dates[index])}
-                    </div>
-                )}
-            </div>
         </div>
     );
 }
@@ -3424,301 +2660,6 @@ function ToolBtn({ children, onClick, title }: { children: React.ReactNode; onCl
         >
             {children}
         </button>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/ui/MsgStatus.tsx
-================================================================================
-import React from 'react';
-import { Icon } from '../../icons';
-
-export function MsgStatus({ status }: { status?: string }) {
-    if (!status) return null;
-    return (
-        <span className={`msg-status ${status === 'read' ? 'read' : ''}`}>
-            {status === 'sent' ? Icon.check(12) : Icon.checkDouble(12)}
-        </span>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/ui/Notification.tsx
-================================================================================
-import React from 'react';
-import type { NotificationData } from '../../types';
-import { Avatar } from './Avatar';
-import { Icon } from '../../icons';
-
-interface Props {
-    notifications: NotificationData[];
-    onClickNotification: (chatId: string) => void;
-    onDismiss: (id: string) => void;
-}
-
-export function NotificationContainer({ notifications, onClickNotification, onDismiss }: Props) {
-    if (!notifications.length) return null;
-
-    return (
-        <div className="notification-container">
-            {notifications.map(n => (
-                <NotificationItem
-                    key={n.id}
-                    notification={n}
-                    onClick={() => { onClickNotification(n.chatId); onDismiss(n.id); }}
-                    onDismiss={() => onDismiss(n.id)}
-                />
-            ))}
-        </div>
-    );
-}
-
-function NotificationItem({
-    notification, onClick, onDismiss,
-}: {
-    notification: NotificationData;
-    onClick: () => void;
-    onDismiss: () => void;
-}) {
-    const { chatName, senderName, senderAvatarUrl, text, isGroup } = notification;
-    const displayName = isGroup ? chatName : senderName;
-    const previewText = isGroup ? `${senderName}: ${text}` : text;
-    const truncated = previewText.length > 60 ? previewText.slice(0, 60) + '…' : previewText;
-
-    return (
-        <div className="notification-item" onClick={onClick}>
-            <Avatar name={displayName} size={42} avatarUrl={senderAvatarUrl} />
-            <div className="notification-body">
-                <div className="notification-header">
-                    <span className="notification-name">
-                        {isGroup && <span className="notification-group-icon">{Icon.users(11)}</span>}
-                        {displayName}
-                    </span>
-                    <span className="notification-label">Сейчас</span>
-                </div>
-                <span className="notification-text">{truncated}</span>
-            </div>
-            <button
-                className="notification-close"
-                onClick={(e) => { e.stopPropagation(); onDismiss(); }}
-            >
-                {Icon.x(14)}
-            </button>
-        </div>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/ui/ProfileModal.tsx
-================================================================================
-import React, { useState, useEffect, useCallback } from 'react';
-import type { UserProfileDto } from '../../types';
-import * as api from '../../api';
-import { SERVER_URL } from '../../api';
-import { formatDate } from '../../utils';
-import { Avatar } from './Avatar';
-import { AvatarGallery } from './AvatarGallery';
-import { Icon } from '../../icons';
-
-interface Props {
-    userId: string;
-    currentUserId: string;
-    onClose: () => void;
-    onMessage: (userId: string) => void;
-    onCall: (userId: string) => void;
-    onEdit: () => void;
-}
-
-function fullUrl(url: string): string {
-    if (url.startsWith('http')) return url;
-    return `${SERVER_URL}${url}`;
-}
-
-export function ProfileModal({ userId, currentUserId, onClose, onMessage, onCall, onEdit }: Props) {
-    const [profile, setProfile] = useState<UserProfileDto | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [galleryOpen, setGalleryOpen] = useState(false);
-    const [galleryIndex, setGalleryIndex] = useState(0);
-
-    const isMe = userId === currentUserId;
-
-    useEffect(() => {
-        setLoading(true);
-        setError('');
-        api.getUserProfile(userId)
-            .then(p => setProfile(p))
-            .catch(e => setError(e.message || 'Ошибка загрузки'))
-            .finally(() => setLoading(false));
-    }, [userId]);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && !galleryOpen) onClose();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [onClose, galleryOpen]);
-
-    const openGallery = useCallback((index: number) => {
-        setGalleryIndex(index);
-        setGalleryOpen(true);
-    }, []);
-
-    const avatars = profile?.avatars || [];
-    const galleryUrls = avatars.map(a => fullUrl(a.url));
-    const galleryDates = avatars.map(a => a.set_at);
-
-    return (
-        <>
-            <div className="modal-overlay" onMouseDown={onClose}>
-                <div className="profile-modal" onMouseDown={e => e.stopPropagation()}>
-                    <button className="profile-modal-close" onClick={onClose}>
-                        {Icon.x(20)}
-                    </button>
-
-                    {loading && (
-                        <div className="profile-modal-loading">Загрузка…</div>
-                    )}
-
-                    {error && (
-                        <div className="profile-modal-error">{error}</div>
-                    )}
-
-                    {profile && !loading && (
-                        <>
-                            {/* Аватарка */}
-                            <div className="profile-avatar-section">
-                                <div
-                                    className={`profile-avatar-wrap ${avatars.length > 0 ? 'clickable' : ''}`}
-                                    onClick={() => avatars.length > 0 && openGallery(0)}
-                                >
-                                    <Avatar
-                                        name={profile.display_name}
-                                        size={120}
-                                        online={profile.online}
-                                        avatarUrl={profile.avatar_url}
-                                    />
-                                    {avatars.length > 1 && (
-                                        <span className="profile-avatar-count">
-                                            {avatars.length} фото
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Имя и юзернейм */}
-                            <div className="profile-name-section">
-                                <h2 className="profile-display-name">{profile.display_name}</h2>
-                                <span className="profile-username">@{profile.username}</span>
-                                <span className={`profile-online-status ${profile.online ? 'online' : ''}`}>
-                                    {profile.online ? 'в сети' : 'был(а) недавно'}
-                                </span>
-                            </div>
-
-                            {/* Био */}
-                            {profile.bio && (
-                                <div className="profile-info-section">
-                                    <div className="profile-info-label">О себе</div>
-                                    <div className="profile-info-value">{profile.bio}</div>
-                                </div>
-                            )}
-
-                            {/* Дата регистрации */}
-                            <div className="profile-info-section">
-                                <div className="profile-info-label">В мессенджере с</div>
-                                <div className="profile-info-value">{formatDate(profile.created_at)}</div>
-                            </div>
-
-                            {/* E2E */}
-                            {profile.public_keys && (
-                                <div className="profile-info-section">
-                                    <div className="profile-info-label">Шифрование</div>
-                                    <div className="profile-info-value profile-e2e-row">
-                                        {Icon.shield(14)}
-                                        <span>E2E включено</span>
-                                        <code className="profile-key-id">{profile.public_keys.key_id.slice(0, 16)}…</code>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Миниатюры аватарок */}
-                            {avatars.length > 1 && (
-                                <div className="profile-avatars-section">
-                                    <div className="profile-info-label">Фотографии ({avatars.length})</div>
-                                    <div className="profile-avatar-thumbs">
-                                        {avatars.map((a, i) => (
-                                            <div
-                                                key={a.id}
-                                                className={`profile-thumb ${a.is_current ? 'current' : ''}`}
-                                                onClick={() => openGallery(i)}
-                                            >
-                                                <img
-                                                    src={fullUrl(a.url)}
-                                                    alt=""
-                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Действия */}
-                            <div className="profile-actions">
-                                {isMe ? (
-                                    <button className="profile-action-btn" onClick={onEdit}>
-                                        {Icon.edit(16)} Редактировать
-                                    </button>
-                                ) : (
-                                    <>
-                                        <button className="profile-action-btn primary" onClick={() => onMessage(userId)}>
-                                            {Icon.chat(16)} Сообщение
-                                        </button>
-                                        <button className="profile-action-btn" onClick={() => onCall(userId)}>
-                                            {Icon.phone(16)} Позвонить
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {galleryOpen && galleryUrls.length > 0 && (
-                <AvatarGallery
-                    urls={galleryUrls}
-                    dates={galleryDates}
-                    startIndex={galleryIndex}
-                    onClose={() => setGalleryOpen(false)}
-                />
-            )}
-        </>
-    );
-}
-
-
-================================================================================
-FILE PATH: ./client/src/components/ui/Toast.tsx
-================================================================================
-import React from 'react';
-import type { ToastData } from '../../types';
-
-export function ToastContainer({ toasts }: { toasts: ToastData[] }) {
-    if (!toasts.length) return null;
-
-    return (
-        <div className="toast-container">
-            {toasts.map(t => (
-                <div key={t.id} className={`toast toast-${t.type || 'info'}`}>
-                    {t.text}
-                </div>
-            ))}
-        </div>
     );
 }
 
@@ -4216,1082 +3157,6 @@ export const keystore = {
         } catch (e) { console.warn('[KS] clearAll failed:', e); }
     },
 };
-
-
-================================================================================
-FILE PATH: ./client/src/data.ts
-================================================================================
-import type { Chat } from './types';
-
-export const MOCK_CHATS: Chat[] = [
-    {
-        id: '1', name: 'Миша', group: false, online: true, unread: 2,
-        messages: [
-            { id: 'm1', author: 'Миша', text: 'Привет! Как мессенджер продвигается?', time: '14:32', own: false },
-            { id: 'm2', author: 'Ты', text: 'Потихоньку, UI рисую сейчас', time: '14:33', own: true, status: 'read' },
-            { id: 'm3', author: 'Миша', text: 'Красиво получается?', time: '14:33', own: false },
-            { id: 'm4', author: 'Ты', text: 'Сейчас переделываю, старый был страшный 😅', time: '14:35', own: true, status: 'delivered' },
-            { id: 'm5', author: 'Миша', text: 'Хахах, покажешь когда будет готово', time: '15:01', own: false },
-            { id: 'm6', author: 'Миша', text: 'Кстати, когда звонки будут?', time: '15:02', own: false },
-        ],
-    },
-    {
-        id: '2', name: 'Лёша', group: false, online: false, unread: 0,
-        messages: [
-            { id: 'l1', author: 'Лёша', text: 'Сделай тестовый билд когда будет готово', time: '12:15', own: false },
-            { id: 'l2', author: 'Ты', text: 'Окей, скину ссылку на скачивание', time: '12:20', own: true, status: 'read' },
-            { id: 'l3', author: 'Лёша', text: 'Супер, жду!', time: '12:21', own: false },
-        ],
-    },
-    {
-        id: '3', name: 'Группа курса', group: true, online: false, unread: 5,
-        messages: [
-            { id: 'g1', author: 'Аня', text: 'Кто идёт на пару завтра?', time: '09:45', own: false },
-            { id: 'g2', author: 'Дима', text: 'Я буду', time: '09:50', own: false },
-            { id: 'g3', author: 'Ты', text: 'Тоже приду наверное', time: '10:00', own: true, status: 'sent' },
-            { id: 'g4', author: 'Аня', text: 'Отлично! Захватите конспекты пожалуйста', time: '10:05', own: false },
-            { id: 'g5', author: 'Петя', text: 'Кто-нибудь делал домашку по матану?', time: '11:30', own: false },
-        ],
-    },
-    {
-        id: '4', name: 'Дима', group: false, online: true, unread: 0,
-        messages: [
-            { id: 'd1', author: 'Дима', text: 'Йо, приветствую в мессенджере!', time: 'Вчера', own: false },
-        ],
-    },
-];
-
-
-================================================================================
-FILE PATH: ./client/src/hooks/useAuth.ts
-================================================================================
-// client/src/hooks/useAuth.ts
-
-import { useState, useCallback, useEffect } from 'react';
-import type { UserDto, PublicKeyBundle } from '../types';
-import * as api from '../api';
-import { wsManager } from '../websocket';
-
-export function useAuth() {
-    const [user, setUser] = useState<UserDto | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // При старте — проверяем есть ли сохранённый токен
-    useEffect(() => {
-        const token = api.getToken();
-        if (token) {
-            api.getMe()
-                .then(u => {
-                    setUser(u);
-                    wsManager.connect();
-                })
-                .catch(() => {
-                    api.setToken(null);
-                })
-                .finally(() => setLoading(false));
-        } else {
-            setLoading(false);
-        }
-    }, []);
-
-    const login = useCallback(async (username: string, password: string) => {
-        setError(null);
-        try {
-            const res = await api.login(username, password);
-            setUser(res.user);
-            wsManager.connect();
-        } catch (e: any) {
-            setError(e.message || 'Ошибка входа');
-            throw e;
-        }
-    }, []);
-
-    const register = useCallback(async (
-        username: string,
-        password: string,
-        display_name: string,
-        invite_code?: string,
-        public_keys?: PublicKeyBundle,
-    ) => {
-        setError(null);
-        try {
-            const res = await api.register(username, password, display_name, invite_code, public_keys);
-            setUser(res.user);
-            wsManager.connect();
-        } catch (e: any) {
-            setError(e.message || 'Ошибка регистрации');
-            throw e;
-        }
-    }, []);
-
-    const logout = useCallback(() => {
-        api.logout();
-        wsManager.disconnect();
-        setUser(null);
-    }, []);
-
-    return { user, setUser, loading, error, login, register, logout };
-}
-
-
-================================================================================
-FILE PATH: ./client/src/hooks/useCall.ts
-================================================================================
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { CallState, LocalChat, WsServerMsg, SharedMediaItem } from '../types';
-import { wsManager } from '../websocket';
-import { cryptoManager } from '../crypto';
-
-// ══════════════════════════════════════════════════════════
-//  Конфигурация
-// ══════════════════════════════════════════════════════════
-
-const ICE_CONFIG: RTCConfiguration = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        {
-            urls: [
-                'turn:163.5.180.138:3478',
-                'turn:163.5.180.138:3478?transport=tcp',
-            ],
-            username: 'messenger',
-            credential: 'YourSecretTurnPassword2024',
-        },
-    ],
-    iceCandidatePoolSize: 4,
-    iceTransportPolicy: 'all',
-};
-
-const CALL_TIMEOUT_MS = 35_000;
-const CONNECTING_TIMEOUT_MS = 15_000;
-const ICE_DISCONNECTED_TIMEOUT_MS = 7_000;
-const ICE_RESTART_MAX = 2;
-
-const INITIAL: CallState = {
-    status: 'idle',
-    chatId: null,
-    callId: null,
-    peerId: null,
-    peerName: null,
-    isMuted: false,
-    peerMuted: false,
-    duration: 0,
-    isEncrypted: false,
-    peerVolume: 100,
-    micGain: 100,
-    sharedMedia: [],
-    showMediaPanel: false,
-};
-
-interface PendingOffer {
-    chatId: string;
-    callId: string;
-    sdp: string;
-    encrypted: boolean;
-    callerId: string;
-    callerName: string;
-}
-
-// ── Шифрование сигнализации ──────────────────────────────
-
-async function encryptSignaling(
-    chatId: string, data: string,
-): Promise<{ data: string; encrypted: boolean }> {
-    if (!cryptoManager.hasChatKey(chatId)) return { data, encrypted: false };
-    try {
-        const payload = await cryptoManager.encrypt(chatId, data);
-        return { data: JSON.stringify(payload), encrypted: true };
-    } catch {
-        return { data, encrypted: false };
-    }
-}
-
-async function decryptSignaling(
-    chatId: string, data: string, isEncrypted: boolean,
-): Promise<string> {
-    if (!isEncrypted) return data;
-    try {
-        const payload = JSON.parse(data);
-        return await cryptoManager.decrypt(chatId, payload.ciphertext, payload.nonce);
-    } catch (e) {
-        console.warn('[Call] Decrypt signaling failed:', e);
-        return data;
-    }
-}
-
-// ── Рингтон ──────────────────────────────────────────────
-
-function createRingtonePlayer() {
-    let audio: HTMLAudioElement | null = null;
-    return {
-        start(type: 'incoming' | 'outgoing') {
-            this.stop();
-            audio = new Audio(type === 'incoming' ? '/sounds/ringtone.mp3' : '/sounds/ringback.mp3');
-            audio.loop = true;
-            audio.volume = type === 'incoming' ? 0.7 : 0.4;
-            audio.play().catch(() => { });
-        },
-        stop() {
-            if (audio) { audio.pause(); audio.currentTime = 0; audio.src = ''; audio = null; }
-        },
-    };
-}
-
-// ══════════════════════════════════════════════════════════
-
-export function useCall(currentUserId: string, chats: LocalChat[]) {
-    const [callState, setCallState] = useState<CallState>(INITIAL);
-
-    // ── Refs ─────────────────────────────────────────────
-
-    const pcRef = useRef<RTCPeerConnection | null>(null);
-    const localStreamRef = useRef<MediaStream | null>(null);
-    const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const connectingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const iceDisconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingOfferRef = useRef<PendingOffer | null>(null);
-    const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
-    const ringtoneRef = useRef(createRingtonePlayer());
-    const connectedFiredRef = useRef(false);
-    const iceRestartCountRef = useRef(0);
-
-    // Audio processing
-    const audioCtxRef = useRef<AudioContext | null>(null);
-    const gainNodeRef = useRef<GainNode | null>(null);
-
-    // Стабильные refs для данных
-    const stateRef = useRef(callState);
-    stateRef.current = callState;
-    const chatsRef = useRef(chats);
-    chatsRef.current = chats;
-    const currentUserIdRef = useRef(currentUserId);
-    currentUserIdRef.current = currentUserId;
-
-    // ── Remote audio element ─────────────────────────────
-
-    useEffect(() => {
-        const audio = new Audio();
-        audio.autoplay = true;
-        remoteAudioRef.current = audio;
-        return () => { audio.srcObject = null; };
-    }, []);
-
-    // ── clearAllTimeouts ─────────────────────────────────
-
-    const clearAllTimeouts = useCallback(() => {
-        if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
-        if (connectingTimeoutRef.current) { clearTimeout(connectingTimeoutRef.current); connectingTimeoutRef.current = null; }
-        if (iceDisconnectTimeoutRef.current) { clearTimeout(iceDisconnectTimeoutRef.current); iceDisconnectTimeoutRef.current = null; }
-    }, []);
-
-    // ── cleanup ──────────────────────────────────────────
-
-    const cleanup = useCallback(() => {
-        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-        clearAllTimeouts();
-        ringtoneRef.current.stop();
-        connectedFiredRef.current = false;
-        iceRestartCountRef.current = 0;
-
-        if (pcRef.current) {
-            pcRef.current.onicecandidate = null;
-            pcRef.current.ontrack = null;
-            pcRef.current.onconnectionstatechange = null;
-            pcRef.current.oniceconnectionstatechange = null;
-            pcRef.current.onicegatheringstatechange = null;
-            pcRef.current.close();
-            pcRef.current = null;
-        }
-
-        localStreamRef.current?.getTracks().forEach(t => t.stop());
-        localStreamRef.current = null;
-
-        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-            audioCtxRef.current.close().catch(() => { });
-        }
-        audioCtxRef.current = null;
-        gainNodeRef.current = null;
-
-        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
-        pendingOfferRef.current = null;
-        pendingCandidatesRef.current = [];
-    }, [clearAllTimeouts]);
-
-    // ── Refs для callback'ов (для стабильного subscriber) ──
-
-    const cleanupRef = useRef(cleanup);
-    cleanupRef.current = cleanup;
-    const clearAllTimeoutsRef = useRef(clearAllTimeouts);
-    clearAllTimeoutsRef.current = clearAllTimeouts;
-
-    // ── Helpers ──────────────────────────────────────────
-
-    const getPeerInfo = useCallback((chatId: string): { name: string; avatarUrl?: string } => {
-        const chat = chatsRef.current.find(c => c.id === chatId);
-        if (!chat) return { name: 'Неизвестный' };
-        if (!chat.is_group) {
-            const other = chat.members.find(m => m.user_id !== currentUserIdRef.current);
-            return { name: other?.display_name || chat.name, avatarUrl: other?.avatar_url };
-        }
-        return { name: chat.name };
-    }, []);
-
-    const flushPendingCandidates = useCallback(async () => {
-        const pc = pcRef.current;
-        if (!pc || !pc.remoteDescription) return;
-        const candidates = [...pendingCandidatesRef.current];
-        pendingCandidatesRef.current = [];
-        console.log(`[Call] Flushing ${candidates.length} buffered ICE candidates`);
-        for (const c of candidates) {
-            try { await pc.addIceCandidate(c); } catch (e) { console.warn('[Call] addIceCandidate:', e); }
-        }
-    }, []);
-
-    // ── ICE restart ──────────────────────────────────────
-
-    const tryIceRestart = useCallback(async () => {
-        const pc = pcRef.current;
-        const { chatId, callId, status } = stateRef.current;
-        if (!pc || !chatId || !callId) return;
-        if (status !== 'connected' && status !== 'connecting') return;
-        if (iceRestartCountRef.current >= ICE_RESTART_MAX) {
-            console.warn('[Call] Max ICE restarts reached');
-            return;
-        }
-
-        iceRestartCountRef.current++;
-        console.log(`[Call] ICE restart #${iceRestartCountRef.current}`);
-
-        try {
-            const offer = await pc.createOffer({ iceRestart: true });
-            await pc.setLocalDescription(offer);
-            const enc = await encryptSignaling(chatId, offer.sdp!);
-            wsManager.send({
-                type: 'call_offer',
-                payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted },
-            });
-        } catch (e) {
-            console.error('[Call] ICE restart failed:', e);
-        }
-    }, []);
-
-    // ── Get audio stream with GainNode ───────────────────
-
-    const getAudioStream = useCallback(async (): Promise<MediaStream> => {
-        const originalStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-            video: false,
-        });
-        localStreamRef.current = originalStream;
-
-        try {
-            const ctx = new AudioContext();
-            audioCtxRef.current = ctx;
-            const source = ctx.createMediaStreamSource(originalStream);
-            const gain = ctx.createGain();
-            gain.gain.value = 1.0;
-            gainNodeRef.current = gain;
-            const dest = ctx.createMediaStreamDestination();
-            source.connect(gain).connect(dest);
-            return dest.stream;
-        } catch {
-            return originalStream;
-        }
-    }, []);
-
-    // ── Create PeerConnection ────────────────────────────
-
-    const createPC = useCallback((chatId: string, callId: string): RTCPeerConnection => {
-        const pc = new RTCPeerConnection(ICE_CONFIG);
-
-        pc.onicecandidate = async (e) => {
-            if (!e.candidate) {
-                console.log('[Call] ICE gathering complete');
-                return;
-            }
-            try {
-                const candidateStr = JSON.stringify(e.candidate.toJSON());
-                const enc = await encryptSignaling(chatId, candidateStr);
-                wsManager.send({
-                    type: 'call_ice',
-                    payload: { chat_id: chatId, call_id: callId, candidate: enc.data, encrypted: enc.encrypted },
-                });
-            } catch (e) {
-                console.warn('[Call] Send ICE candidate failed:', e);
-            }
-        };
-
-        pc.ontrack = (e) => {
-            console.log('[Call] Remote track received');
-            if (remoteAudioRef.current && e.streams[0]) {
-                remoteAudioRef.current.srcObject = e.streams[0];
-                remoteAudioRef.current.volume = (stateRef.current.peerVolume ?? 100) / 100;
-            }
-        };
-
-        const markConnected = () => {
-            if (connectedFiredRef.current) return;
-            connectedFiredRef.current = true;
-            console.log('[Call] ✓ CONNECTED');
-            clearAllTimeoutsRef.current();
-            ringtoneRef.current.stop();
-            iceRestartCountRef.current = 0;
-            const isEnc = cryptoManager.hasChatKey(chatId);
-            setCallState(s => ({ ...s, status: 'connected', isEncrypted: isEnc }));
-            if (!timerRef.current) {
-                timerRef.current = setInterval(() => {
-                    setCallState(s => ({ ...s, duration: s.duration + 1 }));
-                }, 1000);
-            }
-        };
-
-        const markFailed = () => {
-            const st = stateRef.current.status;
-            if (st === 'idle' || st === 'ended') return;
-            console.log('[Call] ✗ FAILED');
-            cleanupRef.current();
-            setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
-        };
-
-        pc.onconnectionstatechange = () => {
-            const st = pc.connectionState;
-            console.log('[Call] connectionState:', st);
-            if (st === 'connected') markConnected();
-            else if (st === 'failed') markFailed();
-        };
-
-        pc.oniceconnectionstatechange = () => {
-            const st = pc.iceConnectionState;
-            console.log('[Call] iceConnectionState:', st);
-
-            if (st === 'connected' || st === 'completed') {
-                markConnected();
-                if (iceDisconnectTimeoutRef.current) {
-                    clearTimeout(iceDisconnectTimeoutRef.current);
-                    iceDisconnectTimeoutRef.current = null;
-                }
-            } else if (st === 'failed') {
-                if (iceRestartCountRef.current < ICE_RESTART_MAX) {
-                    tryIceRestart();
-                } else {
-                    markFailed();
-                }
-            } else if (st === 'disconnected') {
-                if (iceDisconnectTimeoutRef.current) clearTimeout(iceDisconnectTimeoutRef.current);
-                iceDisconnectTimeoutRef.current = setTimeout(() => {
-                    const currentSt = pcRef.current?.iceConnectionState;
-                    if (currentSt === 'disconnected' || currentSt === 'failed') {
-                        console.warn('[Call] ICE still disconnected, trying restart');
-                        if (iceRestartCountRef.current < ICE_RESTART_MAX) {
-                            tryIceRestart();
-                        } else {
-                            markFailed();
-                        }
-                    }
-                }, ICE_DISCONNECTED_TIMEOUT_MS);
-            }
-        };
-
-        pc.onicegatheringstatechange = () => {
-            console.log('[Call] iceGatheringState:', pc.iceGatheringState);
-        };
-
-        pcRef.current = pc;
-        return pc;
-    }, [tryIceRestart]);
-
-    // ═══════════════════════════════════════════════════════
-    //  startCall
-    // ═══════════════════════════════════════════════════════
-
-    const startCall = useCallback(async (chatId: string) => {
-        const st = stateRef.current.status;
-        if (st !== 'idle' && st !== 'ended') return;
-        if (st === 'ended') cleanup();
-
-        const callId = crypto.randomUUID();
-        const peer = getPeerInfo(chatId);
-
-        try {
-            const stream = await getAudioStream();
-            const pc = createPC(chatId, callId);
-            stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            const enc = await encryptSignaling(chatId, offer.sdp!);
-
-            wsManager.send({
-                type: 'call_offer',
-                payload: { chat_id: chatId, call_id: callId, sdp: enc.data, encrypted: enc.encrypted },
-            });
-
-            setCallState({
-                status: 'calling', chatId, callId,
-                peerId: null, peerName: peer.name, peerAvatarUrl: peer.avatarUrl,
-                isMuted: false, peerMuted: false,
-                duration: 0, isEncrypted: enc.encrypted,
-                peerVolume: 100, micGain: 100,
-                sharedMedia: [], showMediaPanel: false,
-            });
-
-            ringtoneRef.current.start('outgoing');
-
-            callTimeoutRef.current = setTimeout(() => {
-                if (stateRef.current.status === 'calling') {
-                    wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
-                    cleanup();
-                    setCallState(s => ({ ...s, status: 'ended', endReason: 'timeout' }));
-                }
-            }, CALL_TIMEOUT_MS);
-
-        } catch (e: any) {
-            console.error('[Call] Start failed:', e);
-            cleanup();
-            setCallState(s => ({ ...s, peerName: s.peerName || peer.name, status: 'ended', endReason: 'error' }));
-        }
-    }, [createPC, getAudioStream, getPeerInfo, cleanup]);
-
-    // ═══════════════════════════════════════════════════════
-    //  answerCall
-    // ═══════════════════════════════════════════════════════
-
-    const answerCall = useCallback(async () => {
-        const offer = pendingOfferRef.current;
-        if (!offer || stateRef.current.status !== 'ringing') return;
-
-        clearAllTimeouts();
-        ringtoneRef.current.stop();
-
-        setCallState(s => (s.status === 'connected' ? s : { ...s, status: 'connecting' }));
-
-        connectingTimeoutRef.current = setTimeout(() => {
-            if (stateRef.current.status === 'connecting' && pcRef.current?.connectionState !== 'connected') {
-                console.warn('[Call] Connecting timeout (answerer)');
-                const { chatId, callId } = stateRef.current;
-                if (chatId && callId) {
-                    wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
-                }
-                cleanup();
-                setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
-            }
-        }, CONNECTING_TIMEOUT_MS);
-
-        try {
-            const stream = await getAudioStream();
-            const pc = createPC(offer.chatId, offer.callId);
-            stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
-            const sdp = await decryptSignaling(offer.chatId, offer.sdp, offer.encrypted);
-
-            console.log('[Call] Setting remote offer SDP');
-            await pc.setRemoteDescription({ type: 'offer', sdp });
-
-            console.log('[Call] Flushing candidates after setRemoteDescription');
-            await flushPendingCandidates();
-
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            const enc = await encryptSignaling(offer.chatId, answer.sdp!);
-
-            console.log('[Call] Sending call_answer');
-            wsManager.send({
-                type: 'call_answer',
-                payload: { chat_id: offer.chatId, call_id: offer.callId, sdp: enc.data, encrypted: enc.encrypted },
-            });
-
-        } catch (e: any) {
-            console.error('[Call] Answer failed:', e);
-            cleanup();
-            setCallState(s => ({ ...s, status: 'ended', endReason: 'error' }));
-        }
-    }, [createPC, getAudioStream, flushPendingCandidates, cleanup, clearAllTimeouts]);
-
-    // ═══════════════════════════════════════════════════════
-    //  rejectCall
-    // ═══════════════════════════════════════════════════════
-
-    const rejectCall = useCallback(() => {
-        const offer = pendingOfferRef.current;
-        if (!offer) return;
-        clearAllTimeouts();
-        ringtoneRef.current.stop();
-        wsManager.send({ type: 'call_reject', payload: { chat_id: offer.chatId, call_id: offer.callId } });
-        pendingOfferRef.current = null;
-        setCallState(INITIAL);
-    }, [clearAllTimeouts]);
-
-    // ═══════════════════════════════════════════════════════
-    //  hangup
-    // ═══════════════════════════════════════════════════════
-
-    const hangup = useCallback(() => {
-        const { chatId, callId } = stateRef.current;
-        if (chatId && callId) {
-            wsManager.send({ type: 'call_hangup', payload: { chat_id: chatId, call_id: callId } });
-        }
-        cleanup();
-        setCallState(s => ({ ...s, status: 'ended', endReason: 'hangup' }));
-    }, [cleanup]);
-
-    // ═══════════════════════════════════════════════════════
-    //  toggleMute
-    // ═══════════════════════════════════════════════════════
-
-    const toggleMute = useCallback(() => {
-        const stream = localStreamRef.current;
-        if (!stream) return;
-        const track = stream.getAudioTracks()[0];
-        if (!track) return;
-        track.enabled = !track.enabled;
-        const newMuted = !track.enabled;
-        setCallState(s => ({ ...s, isMuted: newMuted }));
-        const { chatId, callId } = stateRef.current;
-        if (chatId && callId) {
-            wsManager.send({ type: 'call_mute', payload: { chat_id: chatId, call_id: callId, muted: newMuted } });
-        }
-    }, []);
-
-    // ═══════════════════════════════════════════════════════
-    //  Volume controls
-    // ═══════════════════════════════════════════════════════
-
-    const setPeerVolume = useCallback((value: number) => {
-        const v = Math.max(0, Math.min(100, value));
-        if (remoteAudioRef.current) remoteAudioRef.current.volume = v / 100;
-        setCallState(s => ({ ...s, peerVolume: v }));
-    }, []);
-
-    const setMicGain = useCallback((value: number) => {
-        const v = Math.max(0, Math.min(100, value));
-        if (gainNodeRef.current) gainNodeRef.current.gain.value = (v / 100) * 2;
-        setCallState(s => ({ ...s, micGain: v }));
-    }, []);
-
-    // ═══════════════════════════════════════════════════════
-    //  dismiss
-    // ═══════════════════════════════════════════════════════
-
-    const dismissCall = useCallback(() => { setCallState(INITIAL); }, []);
-
-    // ═══════════════════════════════════════════════════════
-    //  Shared Media
-    // ═══════════════════════════════════════════════════════
-
-    const toggleMediaPanel = useCallback(() => {
-        setCallState(s => ({ ...s, showMediaPanel: !s.showMediaPanel }));
-    }, []);
-
-    // Добавление трека — синхронизируется (оба узнают о треке)
-    const shareMedia = useCallback((fileId: string, fileName: string) => {
-        const { chatId, callId } = stateRef.current;
-        if (!chatId || !callId) return;
-        wsManager.send({
-            type: 'call_media_share',
-            payload: { chat_id: chatId, call_id: callId, file_id: fileId, file_name: fileName },
-        });
-    }, []);
-
-    // Удаление трека — синхронизируется (трек убирается у обоих)
-    const removeMedia = useCallback((mediaId: string) => {
-        const { chatId, callId } = stateRef.current;
-        if (!chatId || !callId) return;
-        setCallState(s => ({ ...s, sharedMedia: s.sharedMedia.filter(m => m.id !== mediaId) }));
-        wsManager.send({
-            type: 'call_media_remove',
-            payload: { chat_id: chatId, call_id: callId, media_id: mediaId },
-        });
-    }, []);
-
-    // Управление воспроизведением — ТОЛЬКО ЛОКАЛЬНО, не синхронизируется
-    const controlMedia = useCallback((mediaId: string, action: 'play' | 'pause' | 'seek' | 'loop', time?: number) => {
-        setCallState(s => ({
-            ...s,
-            sharedMedia: s.sharedMedia.map(m => {
-                if (m.id !== mediaId) return m;
-                if (action === 'play') return { ...m, isPlaying: true };
-                if (action === 'pause') return { ...m, isPlaying: false };
-                if (action === 'loop') return { ...m, isLooping: !m.isLooping };
-                if (action === 'seek' && time !== undefined) return { ...m, currentTime: time };
-                return m;
-            }),
-        }));
-    }, []);
-
-    const setMediaVolume = useCallback((mediaId: string, volume: number) => {
-        setCallState(s => ({
-            ...s,
-            sharedMedia: s.sharedMedia.map(m =>
-                m.id !== mediaId ? m : { ...m, localVolume: volume, localMuted: false }
-            ),
-        }));
-    }, []);
-
-    const toggleMediaMute = useCallback((mediaId: string) => {
-        setCallState(s => ({
-            ...s,
-            sharedMedia: s.sharedMedia.map(m =>
-                m.id !== mediaId ? m : { ...m, localMuted: !m.localMuted }
-            ),
-        }));
-    }, []);
-
-    const updateMediaTitle = useCallback((mediaId: string, title: string) => {
-        setCallState(s => ({
-            ...s,
-            sharedMedia: s.sharedMedia.map(m => m.id !== mediaId ? m : { ...m, title }),
-        }));
-    }, []);
-
-    const updateMediaTime = useCallback((mediaId: string, currentTime: number, duration: number) => {
-        setCallState(s => ({
-            ...s,
-            sharedMedia: s.sharedMedia.map(m =>
-                m.id !== mediaId ? m : { ...m, currentTime, duration: duration || m.duration }
-            ),
-        }));
-    }, []);
-
-    // ═══════════════════════════════════════════════════════
-    //  Refs для всех callback'ов → стабильная подписка
-    // ═══════════════════════════════════════════════════════
-
-    const answerCallRef = useRef(answerCall);
-    answerCallRef.current = answerCall;
-    const rejectCallRef = useRef(rejectCall);
-    rejectCallRef.current = rejectCall;
-    const hangupRef = useRef(hangup);
-    hangupRef.current = hangup;
-    const flushRef = useRef(flushPendingCandidates);
-    flushRef.current = flushPendingCandidates;
-    const tryIceRestartRef = useRef(tryIceRestart);
-    tryIceRestartRef.current = tryIceRestart;
-    const getPeerInfoRef = useRef(getPeerInfo);
-    getPeerInfoRef.current = getPeerInfo;
-
-    // ═══════════════════════════════════════════════════════
-    //  WS подписка — ОДИН РАЗ, через refs
-    // ═══════════════════════════════════════════════════════
-
-    useEffect(() => {
-        console.log('[Call] WS subscriber registered');
-
-        const unsub = wsManager.subscribe(async (msg: WsServerMsg) => {
-            switch (msg.type) {
-
-                // ── Входящий звонок ──────────────────────
-                case 'call_incoming': {
-                    const { chat_id, call_id, caller_id, caller_name, sdp, encrypted } = msg.payload;
-                    const st = stateRef.current.status;
-
-                    console.log('[Call] ← call_incoming', { call_id, caller_name, currentStatus: st });
-
-                    if (st === 'ended') {
-                        cleanupRef.current();
-                        setCallState(INITIAL);
-                        await new Promise(r => setTimeout(r, 50));
-                    } else if (st !== 'idle') {
-                        console.log('[Call] Busy, auto-rejecting');
-                        wsManager.send({ type: 'call_reject', payload: { chat_id, call_id } });
-                        return;
-                    }
-
-                    const chat = chatsRef.current.find(c => c.id === chat_id);
-                    const callerMember = chat?.members.find(m => m.user_id === caller_id);
-
-                    pendingOfferRef.current = {
-                        chatId: chat_id, callId: call_id, sdp, encrypted,
-                        callerId: caller_id, callerName: caller_name,
-                    };
-
-                    setCallState({
-                        status: 'ringing', chatId: chat_id, callId: call_id,
-                        peerId: caller_id, peerName: caller_name,
-                        peerAvatarUrl: callerMember?.avatar_url,
-                        isMuted: false, peerMuted: false,
-                        duration: 0, isEncrypted: encrypted,
-                        peerVolume: 100, micGain: 100,
-                        sharedMedia: [], showMediaPanel: false,
-                    });
-
-                    ringtoneRef.current.start('incoming');
-
-                    callTimeoutRef.current = setTimeout(() => {
-                        if (stateRef.current.status === 'ringing') {
-                            rejectCallRef.current();
-                        }
-                    }, CALL_TIMEOUT_MS);
-                    break;
-                }
-
-                // ── Собеседник принял ────────────────────
-                case 'call_accepted': {
-                    const { call_id, sdp, encrypted, chat_id } = msg.payload;
-
-                    console.log('[Call] ← call_accepted', {
-                        call_id,
-                        myCallId: stateRef.current.callId,
-                        match: stateRef.current.callId === call_id,
-                        status: stateRef.current.status,
-                    });
-
-                    if (stateRef.current.callId !== call_id) {
-                        console.warn('[Call] call_id mismatch, ignoring');
-                        return;
-                    }
-
-                    clearAllTimeoutsRef.current();
-                    ringtoneRef.current.stop();
-
-                    setCallState(s => (s.status === 'connected' ? s : { ...s, status: 'connecting' }));
-
-                    connectingTimeoutRef.current = setTimeout(() => {
-                        if (stateRef.current.status === 'connecting' && pcRef.current?.connectionState !== 'connected') {
-                            console.warn('[Call] Connecting timeout (caller)');
-                            if (iceRestartCountRef.current < ICE_RESTART_MAX) {
-                                tryIceRestartRef.current();
-                            } else {
-                                hangupRef.current();
-                            }
-                        }
-                    }, CONNECTING_TIMEOUT_MS);
-
-                    try {
-                        const pc = pcRef.current;
-                        if (!pc) {
-                            console.error('[Call] No PeerConnection!');
-                            return;
-                        }
-
-                        const realSdp = await decryptSignaling(chat_id, sdp, encrypted);
-
-                        console.log('[Call] Setting remote answer SDP');
-                        await pc.setRemoteDescription({ type: 'answer', sdp: realSdp });
-
-                        console.log('[Call] Flushing candidates after answer');
-                        await flushRef.current();
-
-                    } catch (e) {
-                        console.error('[Call] Set answer failed:', e);
-                        hangupRef.current();
-                    }
-                    break;
-                }
-
-                // ── ICE кандидат ─────────────────────────
-                case 'call_ice': {
-                    const { call_id, candidate, encrypted: enc, chat_id } = msg.payload;
-                    const isOurCall = stateRef.current.callId === call_id;
-                    const isPendingCall = pendingOfferRef.current?.callId === call_id;
-                    if (!isOurCall && !isPendingCall) return;
-
-                    try {
-                        const chatId = stateRef.current.chatId || pendingOfferRef.current?.chatId || chat_id;
-                        const raw = await decryptSignaling(chatId, candidate, enc);
-                        const parsed = JSON.parse(raw) as RTCIceCandidateInit;
-
-                        const pc = pcRef.current;
-                        if (pc && pc.remoteDescription) {
-                            await pc.addIceCandidate(parsed);
-                        } else {
-                            pendingCandidatesRef.current.push(parsed);
-                        }
-                    } catch (e) {
-                        console.warn('[Call] ICE candidate error:', e);
-                    }
-                    break;
-                }
-
-                // ── Отклонён ─────────────────────────────
-                case 'call_rejected': {
-                    const { call_id } = msg.payload;
-                    if (stateRef.current.callId !== call_id) return;
-                    console.log('[Call] ← call_rejected');
-                    cleanupRef.current();
-                    setCallState(s => ({ ...s, status: 'ended', endReason: 'rejected' }));
-                    break;
-                }
-
-                // ── Завершён ─────────────────────────────
-                case 'call_ended': {
-                    const { call_id } = msg.payload;
-                    const isOurCall = stateRef.current.callId === call_id;
-                    const isPendingCall = pendingOfferRef.current?.callId === call_id;
-                    if (!isOurCall && !isPendingCall) return;
-                    console.log('[Call] ← call_ended');
-                    cleanupRef.current();
-                    setCallState(s => s.status === 'idle' ? s : { ...s, status: 'ended', endReason: 'hangup' });
-                    break;
-                }
-
-                // ── Мьют собеседника ─────────────────────
-                case 'call_mute_changed': {
-                    const { call_id, muted } = msg.payload;
-                    if (stateRef.current.callId !== call_id) return;
-                    setCallState(s => ({ ...s, peerMuted: muted }));
-                    break;
-                }
-
-                // ── Совместная Музыка: трек добавлен (синхронизируется) ──
-                case 'call_media_shared': {
-                    const { call_id, media_id, user_id, user_name, file_id, file_name } = msg.payload;
-                    if (stateRef.current.callId !== call_id) return;
-                    if (stateRef.current.sharedMedia.some(m => m.id === media_id)) return;
-
-                    const newItem: SharedMediaItem = {
-                        id: media_id, userId: user_id, userName: user_name,
-                        fileId: file_id, fileName: file_name, title: '',
-                        isPlaying: true, isLooping: false, currentTime: 0, duration: 0,
-                        localVolume: 70, localMuted: false,
-                    };
-                    setCallState(s => ({
-                        ...s,
-                        sharedMedia: [...s.sharedMedia, newItem],
-                    }));
-                    break;
-                }
-
-                // ── Совместная Музыка: трек удалён (синхронизируется) ──
-                case 'call_media_removed': {
-                    const { call_id, media_id } = msg.payload;
-                    if (stateRef.current.callId !== call_id) return;
-                    setCallState(s => ({
-                        ...s, sharedMedia: s.sharedMedia.filter(m => m.id !== media_id),
-                    }));
-                    break;
-                }
-
-                // call_media_controlled — игнорируем, воспроизведение независимое
-            }
-        });
-
-        return unsub;
-    }, []);
-
-    useEffect(() => {
-        return () => cleanupRef.current();
-    }, []);
-
-    return {
-        callState,
-        startCall, answerCall, rejectCall, hangup,
-        toggleMute, setPeerVolume, setMicGain, dismissCall,
-        toggleMediaPanel, shareMedia, removeMedia, controlMedia,
-        setMediaVolume, toggleMediaMute, updateMediaTitle, updateMediaTime,
-    };
-}
-
-
-================================================================================
-FILE PATH: ./client/src/hooks/useCrypto.ts
-================================================================================
-// client/src/hooks/useCrypto.ts
-
-import { useState, useCallback, useEffect } from 'react';
-import { cryptoManager, ExportedPublicKeys } from '../crypto';
-import type { ChatMemberDto, EncryptedPayload } from '../types';
-
-export function useCrypto() {
-    const [ready, setReady] = useState(false);
-    const [publicKeys, setPublicKeys] = useState<ExportedPublicKeys | null>(null);
-
-    // Инициализация при монтировании
-    useEffect(() => {
-        cryptoManager.initialize().then(keys => {
-            setPublicKeys(keys);
-            setReady(true);
-        });
-    }, []);
-
-    // Генерация новых ключей
-    const generateKeys = useCallback(async () => {
-        const keys = await cryptoManager.generateKeys();
-        setPublicKeys(keys);
-        return keys;
-    }, []);
-
-    // Установка сессионных ключей для участников чата
-    const setupChatEncryption = useCallback(async (members: ChatMemberDto[], myUserId: string) => {
-        for (const member of members) {
-            if (member.user_id === myUserId) continue;
-            if (!member.public_keys?.identity_key) continue;
-
-            try {
-                await cryptoManager.deriveSessionKey(
-                    member.public_keys.identity_key,
-                    member.user_id
-                );
-            } catch (e) {
-                console.warn(`Failed to derive key for ${member.user_id}:`, e);
-            }
-        }
-    }, []);
-
-    // Шифрование сообщения для получателя
-    const encryptMessage = useCallback(async (
-        recipientId: string,
-        plaintext: string
-    ): Promise<EncryptedPayload | null> => {
-        if (!cryptoManager.hasKeys()) return null;
-
-        try {
-            return await cryptoManager.encrypt(recipientId, plaintext);
-        } catch (e) {
-            console.warn('Encryption failed:', e);
-            return null;
-        }
-    }, []);
-
-    // Расшифровка сообщения
-    const decryptMessage = useCallback(async (
-        senderId: string,
-        encrypted: EncryptedPayload
-    ): Promise<string | null> => {
-        if (!cryptoManager.hasKeys()) return null;
-
-        try {
-            return await cryptoManager.decrypt(senderId, encrypted.ciphertext, encrypted.nonce);
-        } catch (e) {
-            console.warn('Decryption failed:', e);
-            return null;
-        }
-    }, []);
-
-    // Проверка, включено ли E2E для чата
-    const isChatEncrypted = useCallback((members: ChatMemberDto[], myUserId: string): boolean => {
-        if (!cryptoManager.hasKeys()) return false;
-
-        // Все участники должны иметь ключи
-        return members.every(m =>
-            m.user_id === myUserId || m.public_keys?.identity_key
-        );
-    }, []);
-
-    // Очистка при выходе
-    const clear = useCallback(() => {
-        cryptoManager.clear();
-        setPublicKeys(null);
-        setReady(false);
-    }, []);
-
-    return {
-        ready,
-        hasKeys: cryptoManager.hasKeys(),
-        publicKeys,
-        generateKeys,
-        setupChatEncryption,
-        encryptMessage,
-        decryptMessage,
-        isChatEncrypted,
-        clear
-    };
-}
 
 
 ================================================================================
@@ -6169,7 +4034,7 @@ FILE PATH: ./client/src/store/useChatStore.ts
 import { create } from 'zustand';
 import type {
     LocalChat, LocalMessage, MessageDto, ChatMemberDto,
-    EncryptedChatKey, EncryptedPayload, E2EStatus, WsServerMsg,
+    EncryptedChatKey, EncryptedPayload, E2EStatus, WsServerMsg, ReplyInfoDto,
 } from '../types';
 import * as api from '../api';
 import { wsManager } from '../websocket';
@@ -6243,13 +4108,38 @@ async function autoWrapMissing(chatId: string, members: ChatMemberDto[]) {
 //  Message processing
 // ═══════════════════════════════════════════════════════════
 
+function hasEncText(enc?: EncryptedPayload): boolean {
+    return !!(enc?.ciphertext && enc.ciphertext.length > 0);
+}
+
+async function decryptReply(reply: ReplyInfoDto | null | undefined, chatId: string): Promise<ReplyInfoDto | undefined> {
+    if (!reply) return undefined;
+    if (hasEncText(reply.encrypted) && cryptoManager.hasChatKey(chatId)) {
+        try {
+            const plain = await cryptoManager.decrypt(chatId, reply.encrypted!.ciphertext, reply.encrypted!.nonce, reply.id);
+            return { ...reply, content: plain };
+        } catch { return { ...reply, content: '🔒 Зашифровано' }; }
+    }
+    if (hasEncText(reply.encrypted)) return { ...reply, content: '🔒 Зашифровано' };
+    return reply;
+}
+
 async function processMsg(msg: MessageDto, currentUserId: string): Promise<LocalMessage> {
     let content = msg.content;
     let decrypted_content: string | undefined;
-    if (msg.encrypted && !msg.attachment && cryptoManager.hasChatKey(msg.chat_id)) {
-        try { content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted.ciphertext, msg.encrypted.nonce, msg.id); decrypted_content = content; }
-        catch { content = '🔒 Не удалось расшифровать'; }
-    } else if (msg.encrypted && !msg.attachment) { content = '🔒 Зашифровано'; }
+
+    // Only try to decrypt text when there is actual encrypted text (non-empty ciphertext)
+    if (hasEncText(msg.encrypted) && cryptoManager.hasChatKey(msg.chat_id)) {
+        try {
+            content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
+            decrypted_content = content;
+        } catch { content = '🔒 Не удалось расшифровать'; }
+    } else if (hasEncText(msg.encrypted)) {
+        content = '🔒 Зашифровано';
+    }
+    // If only file_nonce (no text encryption) — keep original content as-is
+
+    const reply_to = await decryptReply(msg.reply_to, msg.chat_id);
 
     return {
         id: msg.id, chat_id: msg.chat_id, sender_id: msg.sender_id,
@@ -6257,15 +4147,17 @@ async function processMsg(msg: MessageDto, currentUserId: string): Promise<Local
         edited: msg.edited, created_at: msg.created_at,
         own: msg.sender_id === currentUserId, status: 'delivered',
         attachment: msg.attachment, encrypted: msg.encrypted,
+        reply_to,
+        forwarded_from: msg.forwarded_from || undefined,
     };
 }
 
 async function reDecryptMessages(messages: LocalMessage[]): Promise<LocalMessage[]> {
     return Promise.all(messages.map(async msg => {
-        if (!msg.encrypted || msg.decrypted_content) return msg;
+        if (!hasEncText(msg.encrypted) || msg.decrypted_content) return msg;
         if (!cryptoManager.hasChatKey(msg.chat_id)) return msg;
         try {
-            const content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted.ciphertext, msg.encrypted.nonce, msg.id);
+            const content = await cryptoManager.decrypt(msg.chat_id, msg.encrypted!.ciphertext, msg.encrypted!.nonce, msg.id);
             return { ...msg, content, decrypted_content: content };
         } catch { return msg; }
     }));
@@ -6293,8 +4185,8 @@ interface ChatStore {
     setSearch: (q: string) => void;
     loadChats: (currentUserId: string) => Promise<void>;
     selectChat: (id: string | null, currentUserId: string) => Promise<void>;
-    // ★ Добавлен fileNonce в сигнатуру
-    sendMessage: (chatId: string, text: string, currentUserId: string, currentUserName: string, attachmentId?: string, fileNonce?: string) => Promise<void>;
+    sendMessage: (chatId: string, text: string, currentUserId: string, currentUserName: string, attachmentId?: string, fileNonce?: string, replyToId?: string) => Promise<void>;
+    forwardMessage: (originalMsg: LocalMessage, targetChatId: string, currentUserId: string, currentUserName: string) => Promise<void>;
     editMessage: (messageId: string, newText: string) => void;
     deleteMessage: (messageId: string) => void;
     handleWsEvent: (msg: WsServerMsg, currentUserId: string) => void;
@@ -6363,26 +4255,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         } catch { set({ loadingMessages: false }); }
     },
 
-    // ★ Обновленный sendMessage
-    sendMessage: async (chatId, text, currentUserId, currentUserName, attachmentId, fileNonce) => {
+    sendMessage: async (chatId, text, currentUserId, currentUserName, attachmentId, fileNonce, replyToId) => {
         const trimmed = text.trim();
         if (!trimmed && !attachmentId) return;
 
         const clientId = uid();
         const now = new Date().toISOString();
+
+        // Encrypt text content (only if there is text)
         let enc: EncryptedPayload | undefined;
         if (trimmed && cryptoManager.hasChatKey(chatId)) {
             try { enc = await cryptoManager.encrypt(chatId, trimmed); } catch { /* fallback */ }
         }
 
-        // ★ Добавляем file_nonce в encrypted payload
+        // Attach file_nonce to encrypted payload
         if (fileNonce) {
             if (enc) {
-                (enc as any).file_nonce = fileNonce;
+                enc.file_nonce = fileNonce;
             } else {
-                enc = { ciphertext: '', nonce: '', file_nonce: fileNonce } as any;
+                // File-only encryption (no text to encrypt)
+                enc = { ciphertext: '', nonce: '', file_nonce: fileNonce };
             }
         }
+
+        const encHasText = hasEncText(enc);
 
         set(s => ({
             chats: s.chats.map(c => c.id !== chatId ? c : {
@@ -6403,10 +4299,60 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             type: 'send_message',
             payload: {
                 chat_id: chatId,
-                content: enc ? '[Зашифрованное сообщение]' : (trimmed || '📎 Файл'),
+                content: encHasText ? '[Зашифрованное сообщение]' : (trimmed || '📎 Файл'),
                 client_id: clientId,
                 attachment_id: attachmentId,
                 encrypted: enc,
+                reply_to_id: replyToId,
+            },
+        });
+    },
+
+    forwardMessage: async (originalMsg, targetChatId, currentUserId, currentUserName) => {
+        const content = originalMsg.decrypted_content || originalMsg.content;
+        if (content === '🔒 Зашифровано' || content === '🔒 Не удалось расшифровать') return;
+
+        const clientId = uid();
+        const now = new Date().toISOString();
+
+        let enc: EncryptedPayload | undefined;
+        if (content && cryptoManager.hasChatKey(targetChatId)) {
+            try { enc = await cryptoManager.encrypt(targetChatId, content); } catch { /* fallback */ }
+        }
+
+        // Only forward non-E2E attachments (encrypted files can't be read in another chat)
+        const canForwardAtt = originalMsg.attachment && !originalMsg.encrypted?.file_nonce;
+        const encHasText = hasEncText(enc);
+
+        set(s => ({
+            chats: s.chats.map(c => c.id !== targetChatId ? c : {
+                ...c,
+                messages: [...c.messages, {
+                    id: clientId, client_id: clientId, chat_id: targetChatId,
+                    sender_id: currentUserId, sender_name: currentUserName,
+                    content: content || '📎 Файл', edited: false, created_at: now,
+                    own: true, status: 'pending' as const, encrypted: enc,
+                    forwarded_from: {
+                        original_message_id: originalMsg.id,
+                        original_sender_name: originalMsg.sender_name,
+                    },
+                }],
+                lastMessageText: 'Вы: ' + (content || '📎 Файл'),
+                lastMessageTime: formatTime(now),
+                lastActivityAt: now,
+            })
+        }));
+
+        wsManager.send({
+            type: 'send_message',
+            payload: {
+                chat_id: targetChatId,
+                content: encHasText ? '[Зашифрованное сообщение]' : (content || '📎 Файл'),
+                client_id: clientId,
+                attachment_id: canForwardAtt ? originalMsg.attachment!.id : undefined,
+                encrypted: enc,
+                forwarded_from_id: originalMsg.id,
+                forwarded_from_name: originalMsg.sender_name,
             },
         });
     },
@@ -6431,10 +4377,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             case 'new_message':
             case 'message_sent': {
                 const raw: MessageDto = msg.payload.message;
-                const clientId = msg.type === 'message_sent'
-                    ? (msg.payload as any).client_id
-                    : undefined;
-
+                const clientId = msg.type === 'message_sent' ? (msg.payload as any).client_id : undefined;
                 const local = await processMsg(raw, currentUserId);
 
                 set(s => {
@@ -6445,10 +4388,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     if (chat.messages.some(m => m.id === raw.id)) return s;
 
                     const p = buildPreview(raw, chat.is_group, currentUserId);
-
-                    const pendingIdx = clientId
-                        ? chat.messages.findIndex(m => m.client_id === clientId)
-                        : -1;
+                    const pendingIdx = clientId ? chat.messages.findIndex(m => m.client_id === clientId) : -1;
 
                     let msgs = [...chat.messages];
                     if (pendingIdx !== -1) {
@@ -6477,10 +4417,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             case 'message_edited': {
                 const { chat_id, message_id, new_content, encrypted } = msg.payload;
                 let content = new_content;
-                if (encrypted && cryptoManager.hasChatKey(chat_id)) {
-                    try { content = await cryptoManager.decrypt(chat_id, encrypted.ciphertext, encrypted.nonce, message_id); }
+                if (hasEncText(encrypted) && cryptoManager.hasChatKey(chat_id)) {
+                    try { content = await cryptoManager.decrypt(chat_id, encrypted!.ciphertext, encrypted!.nonce, message_id); }
                     catch { content = '🔒 Не удалось расшифровать'; }
-                } else if (encrypted) content = '🔒 Зашифровано';
+                } else if (hasEncText(encrypted)) content = '🔒 Зашифровано';
                 set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.id !== message_id ? m : { ...m, content, edited: true }) }) }));
                 break;
             }
@@ -6520,7 +4460,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                     if (chat?.members.some(m => m.user_id === u.id)) {
                         const status = await setupChatE2E(sel, chat.members, currentUserId);
                         set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, e2eStatus: status }) }));
-                        if (status === 'ready' && chat.messages.some(m => m.encrypted && !m.decrypted_content)) {
+                        if (status === 'ready' && chat.messages.some(m => hasEncText(m.encrypted) && !m.decrypted_content)) {
                             const msgs = await reDecryptMessages(chat.messages);
                             set(s => ({ chats: s.chats.map(c => c.id !== sel ? c : { ...c, messages: msgs }) }));
                         }
@@ -6534,7 +4474,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 break;
 
             case 'messages_read': {
-                const { chat_id, user_id, message_id } = msg.payload;
+                const { chat_id, user_id } = msg.payload;
                 if (user_id === currentUserId) break;
                 set(s => ({ chats: s.chats.map(c => c.id !== chat_id ? c : { ...c, messages: c.messages.map(m => m.own && m.status !== 'read' ? { ...m, status: 'read' as const } : m) }) }));
                 break;
@@ -6605,6 +4545,7 @@ export interface EncryptedPayload {
     ciphertext: string;
     nonce: string;
     sender_key_id?: string;
+    file_nonce?: string;
 }
 
 export interface EncryptedChatKey {
@@ -9568,138 +7509,6 @@ pub struct ChatInvite {
 
 
 ================================================================================
-FILE PATH: ./server/src/models/attachment.rs
-================================================================================
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct Attachment {
-    pub id: Uuid,
-    pub uploader_id: Uuid,
-    pub filename: String,
-    pub mime_type: String,
-    pub size_bytes: i64,
-    pub created_at: DateTime<Utc>,
-}
-
-
-
-================================================================================
-FILE PATH: ./server/src/models/avatar_history.rs
-================================================================================
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct AvatarHistory {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub attachment_id: Uuid,
-    pub set_at: DateTime<Utc>,
-    pub is_current: bool,
-}
-
-
-
-================================================================================
-FILE PATH: ./server/src/models/chat.rs
-================================================================================
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct Chat {
-    pub id: Uuid,
-    pub is_group: bool,
-    pub name: Option<String>,
-    pub created_by: Uuid,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct ChatMember {
-    pub chat_id: Uuid,
-    pub user_id: Uuid,
-    pub role: String,
-    pub joined_at: DateTime<Utc>,
-    pub encrypted_chat_key: Option<serde_json::Value>,
-    pub member_key_id: Option<String>,
-}
-
-
-
-================================================================================
-FILE PATH: ./server/src/models/invite.rs
-================================================================================
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct Invite {
-    pub id: Uuid,
-    pub code: String,
-    pub created_by: Uuid,
-    pub used_by: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: Option<DateTime<Utc>>,
-    pub used: bool,
-}
-
-
-
-================================================================================
-FILE PATH: ./server/src/models/message.rs
-================================================================================
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct Message {
-    pub id: Uuid,
-    pub chat_id: Uuid,
-    pub sender_id: Uuid,
-    pub content: String,
-    pub edited: bool,
-    pub created_at: DateTime<Utc>,
-    pub attachment_id: Option<Uuid>,
-    pub encrypted_content: Option<serde_json::Value>,
-}
-
-
-
-================================================================================
-FILE PATH: ./server/src/models/user.rs
-================================================================================
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct User {
-    pub id: Uuid,
-    pub username: String,
-    pub display_name: String,
-    pub password_hash: String,
-    pub created_at: DateTime<Utc>,
-    pub last_seen: DateTime<Utc>,
-    pub avatar_id: Option<Uuid>,
-    pub identity_key: Option<String>,
-    pub signing_key: Option<String>,
-    pub key_signature: Option<String>,
-    pub key_id: Option<String>,
-    pub bio: String,
-}
-
-
-
-================================================================================
 FILE PATH: ./server/src/state.rs
 ================================================================================
 use std::collections::HashMap;
@@ -10503,8 +8312,6 @@ chrono = { version = "0.4", features = ["serde"] }
 ================================================================================
 FILE PATH: ./shared/src/lib.rs
 ================================================================================
-// FILE: ./shared/src/lib.rs
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -10701,6 +8508,8 @@ pub struct EncryptedPayload {
     pub nonce: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_key_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_nonce: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10774,7 +8583,6 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         message_id: Uuid,
     },
-    // ── Calls ────────────────────────────────────────────
     CallOffer {
         chat_id: Uuid,
         call_id: String,
@@ -10806,7 +8614,6 @@ pub enum WsClientMsg {
         chat_id: Uuid,
         call_id: String,
     },
-    // ── Shared Media ─────────────────────────────────────
     CallMediaShare {
         chat_id: Uuid,
         call_id: String,
@@ -10876,7 +8683,6 @@ pub enum WsServerMsg {
     Error {
         message: String,
     },
-    // ── Calls ────────────────────────────────────────────
     CallIncoming {
         chat_id: Uuid,
         call_id: String,
@@ -10911,7 +8717,6 @@ pub enum WsServerMsg {
         chat_id: Uuid,
         call_id: String,
     },
-    // ── Shared Media ─────────────────────────────────────
     CallMediaShared {
         chat_id: Uuid,
         call_id: String,
